@@ -96,6 +96,7 @@ capabilities through the system is controlled by a
 \label{sec:sys_reply}
 \label{sec:sys_nbsend}
 \label{sec:sys_replywait}
+\label{sec:sys_poll}
 \label{sec:sys_yield}
 
 The seL4 kernel provides a message-passing service for communication between
@@ -160,6 +161,12 @@ The kernel provides the following system calls:
     \apifunc{seL4\_Wait}{sel4_wait}. It exists for efficiency reasons: the common case of
     replying to a request and waiting for the next can be performed in
     a single kernel system call instead of two.
+
+    \item[\apifunc{seL4\_Poll}{sel4_poll}] is used by a thread to check for
+    messages waiting to be sent through an endpoint without blocking on
+    that endpoint. This system call works only on asynchronous endpoint
+    capabilities, raising a fault (see section \ref{sec:faults}) when attempted
+    with other capability types.
 
     \item[\apifunc{seL4\_Yield}{sel4_yield}] is the only system call that does not require
     a capability to be used. It causes the calling thread to give up the

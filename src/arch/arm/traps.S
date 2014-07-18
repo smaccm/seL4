@@ -13,6 +13,9 @@
 
 .code 32
 .section .vectors, "ax"
+.extern fastpath_call
+.extern fastpath_reply_wait
+
 
 BEGIN_FUNC(arm_vector_table)
     ldr pc, =arm_reset_exception

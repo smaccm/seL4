@@ -259,27 +259,9 @@ transferCaps(message_info_t info, extra_caps_t caps,
     return message_info_set_msgExtraCaps(info, i);
 }
 
-void
-doAsyncTransfer(word_t badge, word_t msgWord, tcb_t *thread)
+void doPollFailedTransfer(tcb_t *thread)
 {
-    message_info_t msgInfo;
-    unsigned int msgTransferred;
-
-    if (n_msgRegisters < 1) {
-        word_t *ipcBuffer;
-        ipcBuffer = lookupIPCBuffer(true, thread);
-        if (ipcBuffer != NULL) {
-            ipcBuffer[1] = msgWord;
-            msgTransferred = 1;
-        } else {
-            msgTransferred = 0;
-        }
-    } else {
-        setRegister(thread, msgRegisters[0], msgWord);
-        msgTransferred = 1;
-    }
-    setRegister(thread, badgeRegister, badge);
-    msgInfo = message_info_new(0, 0, 0, msgTransferred);
+    message_info_t msgInfo = message_info_new(0, 0, 0, 0);
     setRegister(thread, msgInfoRegister,
                 wordFromMessageInfo(msgInfo));
 }
@@ -306,7 +288,7 @@ schedule(void)
         if (isRunnable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
-        if (ksDomainTime == 0) {
+        if (CONFIG_NUM_DOMAINS > 1 && ksDomainTime == 0) {
             nextDomain();
         }
         chooseThread();
@@ -328,7 +310,10 @@ chooseThread(void)
     tcb_t *thread;
 
     for (p = seL4_MaxPrio; p != -1; p--) {
-        unsigned int domprio = ksCurDomain * CONFIG_NUM_PRIORITIES + p;
+        unsigned int domprio;
+
+        domprio = ready_queues_index(ksCurDomain, p);
+
         thread = ksReadyQueues[domprio].head;
         if (thread != NULL) {
             assert(isRunnable(thread));
@@ -384,17 +369,20 @@ setPriority(tcb_t *tptr, prio_t prio)
 static void
 possibleSwitchTo(tcb_t* target, bool_t onSamePriority)
 {
-    dom_t curDom, targetDom;
     prio_t curPrio, targetPrio;
     tcb_t *action;
 
-    curDom = ksCurDomain;
     curPrio = ksCurThread->tcbPriority;
-    targetDom = target->tcbDomain;
     targetPrio = target->tcbPriority;
     action = ksSchedulerAction;
-    if (targetDom != curDom) {
-        tcbSchedEnqueue(target);
+
+    if (CONFIG_NUM_DOMAINS > 1) {
+        dom_t curDom = ksCurDomain;
+        dom_t targetDom = target->tcbDomain;
+
+        if (targetDom != curDom) {
+            tcbSchedEnqueue(target);
+        }
     } else {
         if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
                 && action == SchedulerAction_ResumeCurrentThread) {

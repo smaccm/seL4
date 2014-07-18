@@ -260,6 +260,19 @@ menu "seL4 System Parameters"
             NOTE this is only tested on the sabre and will not work on platforms with < 512mb memory.
             This is not fully implemented for x86.
 
+    config AEP_BINDING
+        bool
+        default y
+
+    config ALLOW_NULL_CSPACE
+        bool "Null CSpace support"
+        default n
+        help
+            This option allows threads to be configured and run without a
+            CSpace. Where configuring a thread with a null cap as its CSpace is
+            usually not allowed, enabling this setting will permit this
+            operation.
+
 endmenu
 
 menu "Build Options"

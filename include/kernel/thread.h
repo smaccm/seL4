@@ -15,6 +15,17 @@
 #include <util.h>
 #include <object/structures.h>
 
+static inline PURE uint32_t
+ready_queues_index(uint32_t dom, uint32_t prio)
+{
+    if (CONFIG_NUM_DOMAINS > 1) {
+        return dom * CONFIG_NUM_PRIORITIES + prio;
+    } else {
+        assert(dom == 0);
+        return prio;
+    }
+}
+
 void configureIdleThread(tcb_t *tcb);
 void activateThread(void) VISIBLE;
 void suspend(tcb_t *target);
@@ -28,7 +39,7 @@ void doNormalTransfer(tcb_t *sender, word_t *sendBuffer, endpoint_t *endpoint,
                       word_t *receiveBuffer, bool_t diminish);
 void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
                      word_t *receiverIPCBuffer);
-void doAsyncTransfer(word_t badge, word_t msgWord, tcb_t *thread);
+void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
 void chooseThread(void);
 void switchToThread(tcb_t *thread) VISIBLE;

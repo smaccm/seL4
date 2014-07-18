@@ -1659,6 +1659,22 @@ decodeARMFrameInvocation(word_t label, unsigned int length,
         return performPageFlush(label, pd.pd, asid, start, end - 1, pstart);
     }
 
+    case ARMPageGetAddress: {
+        paddr_t capFBasePtr;
+
+        /* Get the physical address of this frame. */
+        capFBasePtr = addrFromPPtr((void*)generic_frame_cap_get_capFBasePtr(cap));
+
+        /* Return it in the first message register. */
+        assert(n_msgRegisters >= 1);
+        setRegister(ksCurThread, msgRegisters[0], capFBasePtr);
+        setRegister(ksCurThread, msgInfoRegister,
+                    wordFromMessageInfo(message_info_new(0, 0, 0, 1)));
+
+        setThreadState(ksCurThread, ThreadState_Restart);
+        return EXCEPTION_NONE;
+    }
+
     default:
         current_syscall_error.type = seL4_IllegalOperation;
 

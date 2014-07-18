@@ -380,7 +380,7 @@ create_initial_thread(
     memzero((void*)pptr, 1 << TCB_BLOCK_SIZE_BITS);
     tcb = TCB_PTR(pptr + TCB_OFFSET);
     tcb->tcbTimeSlice = CONFIG_TIME_SLICE;
-    Arch_initContext(&tcb->tcbContext);
+    Arch_initContext(&tcb->tcbArch.tcbContext);
 
     /* initialise TCB (corresponds directly to abstract specification) */
     cteInsert(

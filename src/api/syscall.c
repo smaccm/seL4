@@ -276,7 +276,7 @@ handleReply(void)
 }
 
 static void
-handleWait(void)
+handleWait(bool_t isBlocking)
 {
     word_t epCPtr;
     lookupCap_ret_t lu_ret;
@@ -295,7 +295,7 @@ handleWait(void)
 
     switch (cap_get_capType(lu_ret.cap)) {
     case cap_endpoint_cap:
-        if (unlikely(!cap_endpoint_cap_get_capCanReceive(lu_ret.cap))) {
+        if (unlikely(!cap_endpoint_cap_get_capCanReceive(lu_ret.cap) || !isBlocking)) {
             current_lookup_fault = lookup_fault_missing_capability_new(0);
             current_fault = fault_cap_fault_new(epCPtr, true);
             handleFault(ksCurThread);
@@ -305,17 +305,22 @@ handleWait(void)
         receiveIPC(ksCurThread, lu_ret.cap);
         break;
 
-    case cap_async_endpoint_cap:
-        if (unlikely(!cap_async_endpoint_cap_get_capAEPCanReceive(lu_ret.cap))) {
+    case cap_async_endpoint_cap: {
+        async_endpoint_t *aepptr;
+        tcb_t *boundTCB;
+        aepptr = AEP_PTR(cap_async_endpoint_cap_get_capAEPPtr(lu_ret.cap));
+        boundTCB = (tcb_t*)async_endpoint_ptr_get_aepBoundTCB(aepptr);
+        if (unlikely(!cap_async_endpoint_cap_get_capAEPCanReceive(lu_ret.cap)
+                     || (boundTCB && boundTCB != ksCurThread))) {
             current_lookup_fault = lookup_fault_missing_capability_new(0);
             current_fault = fault_cap_fault_new(epCPtr, true);
             handleFault(ksCurThread);
             break;
         }
 
-        receiveAsyncIPC(ksCurThread, lu_ret.cap);
+        receiveAsyncIPC(ksCurThread, lu_ret.cap, isBlocking);
         break;
-
+    }
     default:
         current_lookup_fault = lookup_fault_missing_capability_new(0);
         current_fault = fault_cap_fault_new(epCPtr, true);
@@ -370,7 +375,7 @@ handleSyscall(syscall_t syscall)
         break;
 
     case SysWait:
-        handleWait();
+        handleWait(true);
         break;
 
     case SysReply:
@@ -379,7 +384,11 @@ handleSyscall(syscall_t syscall)
 
     case SysReplyWait:
         handleReply();
-        handleWait();
+        handleWait(true);
+        break;
+
+    case SysPoll:
+        handleWait(false);
         break;
 
     case SysYield:

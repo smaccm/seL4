@@ -187,8 +187,8 @@ fastpath_mi_check(word_t msgInfo)
 
 static inline bool_t hasDefaultSelectors(tcb_t *thread)
 {
-    return thread->tcbContext.registers[DS] == SEL_DS_3   &&
-           thread->tcbContext.registers[ES] == SEL_DS_3;
+    return thread->tcbArch.tcbContext.registers[DS] == SEL_DS_3   &&
+           thread->tcbArch.tcbContext.registers[ES] == SEL_DS_3;
 }
 
 static inline void FASTCALL NORETURN
@@ -205,7 +205,7 @@ fastpath_restore(word_t badge, word_t msgInfo)
          * is currently disabled */
     }
     tss_ptr_set_esp0(&ia32KStss, ((uint32_t)ksCurThread) + 0x4c);
-    ksCurThread->tcbContext.registers[EFLAGS] &= ~0x200;
+    ksCurThread->tcbArch.tcbContext.registers[EFLAGS] &= ~0x200;
     if (likely(hasDefaultSelectors(ksCurThread))) {
         asm volatile("\
                 movl %%ecx, %%esp \n\
@@ -223,8 +223,8 @@ fastpath_restore(word_t badge, word_t msgInfo)
                 sysexit \n\
             "
                      :
-                     : "c"(&ksCurThread->tcbContext.registers[EDI]),
-                     "a" (ksCurThread->tcbContext.registers[EAX]),
+                     : "c"(&ksCurThread->tcbArch.tcbContext.registers[EDI]),
+                     "a" (ksCurThread->tcbArch.tcbContext.registers[EAX]),
                      "b" (badge),
                      "S" (msgInfo)
                      : "memory"
@@ -247,8 +247,8 @@ fastpath_restore(word_t badge, word_t msgInfo)
                 sysexit \n\
             "
                      :
-                     : "c"(&ksCurThread->tcbContext.registers[EDI]),
-                     "a" (ksCurThread->tcbContext.registers[EAX]),
+                     : "c"(&ksCurThread->tcbArch.tcbContext.registers[EDI]),
+                     "a" (ksCurThread->tcbArch.tcbContext.registers[EAX]),
                      "b" (badge),
                      "S" (msgInfo)
                      : "memory"
@@ -284,6 +284,12 @@ fastpath_call(word_t cptr, word_t msgInfo)
      * saved fault. */
     if (unlikely(fastpath_mi_check(msgInfo) ||
                  fault_type != fault_null_fault)) {
+        slowpath(SysCall);
+    }
+
+    /* Check there is nothing waiting on the async endpoint */
+    if (ksCurThread->boundAsyncEndpoint &&
+            async_endpoint_ptr_get_state(ksCurThread->boundAsyncEndpoint) == AEPState_Active) {
         slowpath(SysCall);
     }
 
@@ -327,6 +333,11 @@ fastpath_call(word_t cptr, word_t msgInfo)
     /* Ensure that the endpoint has standard non-diminishing rights. */
     if (unlikely(!cap_endpoint_cap_get_capCanGrant(ep_cap) ||
                  thread_state_ptr_get_blockingIPCDiminishCaps(&dest->tcbState))) {
+        slowpath(SysCall);
+    }
+
+    /* Ensure the original caller is in the current domain and can be scheduled directly. */
+    if (CONFIG_NUM_DOMAINS > 1 && unlikely(dest->tcbDomain != ksCurDomain)) {
         slowpath(SysCall);
     }
 
@@ -415,6 +426,12 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
         slowpath(SysReplyWait);
     }
 
+    /* Check there is nothing waiting on the async endpoint */
+    if (ksCurThread->boundAsyncEndpoint &&
+            async_endpoint_ptr_get_state(ksCurThread->boundAsyncEndpoint) == AEPState_Active) {
+        slowpath(SysReplyWait);
+    }
+
     /* Get the endpoint address */
     ep_ptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(ep_cap));
 
@@ -453,6 +470,11 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
 
     /* Ensure the original caller can be scheduled directly. */
     if (unlikely(caller->tcbPriority < ksCurThread->tcbPriority)) {
+        slowpath(SysReplyWait);
+    }
+
+    /* Ensure the original caller is in the current domain and can be scheduled directly. */
+    if (CONFIG_NUM_DOMAINS > 1 && unlikely(caller->tcbDomain != ksCurDomain)) {
         slowpath(SysReplyWait);
     }
 

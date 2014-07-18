@@ -23,12 +23,7 @@
 #include <model/statedata.h>
 #include <util.h>
 
-static inline PURE
-unsigned int
-ready_queues_index(unsigned int dom, unsigned int prio)
-{
-    return dom * CONFIG_NUM_PRIORITIES + prio;
-}
+
 
 /* Add TCB to the head of a scheduler queue */
 void
@@ -36,7 +31,7 @@ tcbSchedEnqueue(tcb_t *tcb)
 {
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
-        dom_t dom;
+        UNUSED dom_t dom;
         prio_t prio;
         unsigned int idx;
 
@@ -66,7 +61,7 @@ tcbSchedAppend(tcb_t *tcb)
 {
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
-        dom_t dom;
+        UNUSED dom_t dom;
         prio_t prio;
         unsigned int idx;
 
@@ -96,7 +91,7 @@ tcbSchedDequeue(tcb_t *tcb)
 {
     if (thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
-        dom_t dom;
+        UNUSED dom_t dom;
         prio_t prio;
         unsigned int idx;
 
@@ -302,6 +297,12 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
 
     case TCBSetSpace:
         return decodeSetSpace(cap, length, slot, extraCaps, buffer);
+
+    case TCBBindAEP:
+        return decodeBindAEP(cap, extraCaps);
+
+    case TCBUnbindAEP:
+        return decodeUnbindAEP(cap);
 
     default:
         /* Haskell: "throw IllegalOperation" */
@@ -526,7 +527,9 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     }
     cRootCap = dc_ret.cap;
 
-    if (cap_get_capType(cRootCap) != cap_cnode_cap) {
+    if (cap_get_capType(cRootCap) != cap_cnode_cap &&
+            (!config_set(CONFIG_ALLOW_NULL_CSPACE) ||
+             cap_get_capType(cRootCap) != cap_null_cap)) {
         userError("TCB Configure: CSpace cap is invalid.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
@@ -682,7 +685,9 @@ decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
     }
     cRootCap = dc_ret.cap;
 
-    if (cap_get_capType(cRootCap) != cap_cnode_cap) {
+    if (cap_get_capType(cRootCap) != cap_cnode_cap &&
+            (!config_set(CONFIG_ALLOW_NULL_CSPACE) ||
+             cap_get_capType(cRootCap) != cap_null_cap)) {
         userError("TCB SetSpace: Invalid CNode cap.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
@@ -757,6 +762,58 @@ decodeDomainInvocation(word_t label, unsigned int length, extra_caps_t extraCaps
     setThreadState(ksCurThread, ThreadState_Restart);
     setDomain(TCB_PTR(cap_thread_cap_get_capTCBPtr(tcap)), domain);
     return EXCEPTION_NONE;
+}
+
+exception_t decodeBindAEP(cap_t cap, extra_caps_t extraCaps)
+{
+    async_endpoint_t *aepptr;
+    tcb_t *tcb;
+
+    if (extraCaps.excaprefs[0] == NULL) {
+        userError("TCB BindAEP: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_get_capType(extraCaps.excaprefs[0]->cap) != cap_async_endpoint_cap) {
+        userError("TCB BindAEP: Async endpoint is invalid.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
+    if (tcb->boundAsyncEndpoint) {
+        userError("TCB BindAEP: TCB already has AEP.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    aepptr = AEP_PTR(cap_async_endpoint_cap_get_capAEPPtr(extraCaps.excaprefs[0]->cap));
+    if ((tcb_t*)async_endpoint_ptr_get_aepQueue_head(aepptr)) {
+        userError("TCB BindAEP: AEP cannot be bound.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeTCB_AEPControl(tcb, aepptr);
+}
+
+exception_t decodeUnbindAEP(cap_t cap)
+{
+    tcb_t *tcb;
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
+    if (!tcb->boundAsyncEndpoint) {
+        userError("TCB UnbindAEP: TCB already has no bound AEP.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeTCB_AEPControl(tcb, NULL);
 }
 
 /* The following functions sit in the preemption monad and implement the
@@ -985,6 +1042,18 @@ invokeTCB_WriteRegisters(tcb_t *dest, bool_t resumeTarget,
 
     if (resumeTarget) {
         restart(dest);
+    }
+
+    return EXCEPTION_NONE;
+}
+
+exception_t
+invokeTCB_AEPControl(tcb_t *tcb, async_endpoint_t *aepptr)
+{
+    if (aepptr) {
+        bindAsyncEndpoint(tcb, aepptr);
+    } else {
+        unbindAsyncEndpoint(tcb);
     }
 
     return EXCEPTION_NONE;

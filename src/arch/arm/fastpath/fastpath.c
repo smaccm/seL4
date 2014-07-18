@@ -217,6 +217,12 @@ fastpath_call(word_t cptr, word_t msgInfo)
         slowpath(SysCall);
     }
 
+    /* Check there is nothing waiting on the async endpoint */
+    if (ksCurThread->boundAsyncEndpoint &&
+            async_endpoint_ptr_get_state(ksCurThread->boundAsyncEndpoint) == AEPState_Active) {
+        slowpath(SysCall);
+    }
+
     /* Lookup the cap */
     ep_cap = lookup_fp(TCB_PTR_CTE_PTR(ksCurThread, tcbCTable)->cap, cptr);
 
@@ -268,7 +274,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure the original caller is in the current domain and can be scheduled directly. */
-    if (unlikely(dest->tcbDomain != ksCurDomain && maxDom)) {
+    if (CONFIG_NUM_DOMAINS > 1 && unlikely(dest->tcbDomain != ksCurDomain)) {
         slowpath(SysCall);
     }
 
@@ -355,6 +361,12 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
         slowpath(SysReplyWait);
     }
 
+    /* Check there is nothing waiting on the async endpoint */
+    if (ksCurThread->boundAsyncEndpoint &&
+            async_endpoint_ptr_get_state(ksCurThread->boundAsyncEndpoint) == AEPState_Active) {
+        slowpath(SysReplyWait);
+    }
+
     /* Get the endpoint address */
     ep_ptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(ep_cap));
 
@@ -405,7 +417,7 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure the original caller is in the current domain and can be scheduled directly. */
-    if (unlikely(caller->tcbDomain != ksCurDomain && maxDom)) {
+    if (CONFIG_NUM_DOMAINS > 1 && unlikely(caller->tcbDomain != ksCurDomain)) {
         slowpath(SysReplyWait);
     }
 

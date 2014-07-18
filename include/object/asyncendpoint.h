@@ -14,9 +14,12 @@
 #include <types.h>
 #include <object/structures.h>
 
-void sendAsyncIPC(async_endpoint_t *aepptr, word_t badge, word_t val);
-void receiveAsyncIPC(tcb_t *thread, cap_t cap);
+void sendAsyncIPC(async_endpoint_t *aepptr, word_t badge);
+void receiveAsyncIPC(tcb_t *thread, cap_t cap, bool_t isBlocking);
 void aepCancelAll(async_endpoint_t *aepptr);
 void asyncIPCCancel(tcb_t *threadPtr, async_endpoint_t *aepptr);
+void completeAsyncIPC(async_endpoint_t *aepptr, tcb_t *tcb);
+void unbindAsyncEndpoint(tcb_t *tcb);
+void bindAsyncEndpoint(tcb_t *tcb, async_endpoint_t *aepptr);
 
 #endif
