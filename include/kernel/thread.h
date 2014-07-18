@@ -26,6 +26,41 @@ ready_queues_index(uint32_t dom, uint32_t prio)
     }
 }
 
+/* the l1 index is the top 32 bits of prio (2^5 == 32) */
+static inline PURE uint32_t
+prio_to_l1index(uint32_t prio)
+{
+    return (prio >> 5);
+}
+
+static inline PURE uint32_t
+l1index_to_prio(uint32_t l1index)
+{
+    return (l1index << 5);
+}
+
+static inline void
+addToBitmap(word_t dom, word_t prio)
+{
+    uint32_t l1index;
+
+    l1index = prio_to_l1index(prio);
+    ksReadyQueuesL1Bitmap[dom] |= BIT(l1index);
+    ksReadyQueuesL2Bitmap[dom][l1index] |= BIT(prio & MASK(5));
+}
+
+static inline void
+removeFromBitmap(word_t dom, word_t prio)
+{
+    uint32_t l1index;
+
+    l1index = prio_to_l1index(prio);
+    ksReadyQueuesL2Bitmap[dom][l1index] &= ~BIT(prio & MASK(5));
+    if (unlikely(!ksReadyQueuesL2Bitmap[dom][l1index])) {
+        ksReadyQueuesL1Bitmap[dom] &= ~BIT(l1index);
+    }
+}
+
 void configureIdleThread(tcb_t *tcb);
 void activateThread(void) VISIBLE;
 void suspend(tcb_t *target);
@@ -33,7 +68,7 @@ void restart(tcb_t *target);
 void doIPCTransfer(tcb_t *sender, endpoint_t *endpoint,
                    word_t badge, bool_t grant, tcb_t *receiver,
                    bool_t diminish);
-void doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot);
+void doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate);
 void doNormalTransfer(tcb_t *sender, word_t *sendBuffer, endpoint_t *endpoint,
                       word_t badge, bool_t canGrant, tcb_t *receiver,
                       word_t *receiveBuffer, bool_t diminish);
@@ -42,13 +77,38 @@ void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
 void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
 void chooseThread(void);
+void releaseFirstJob(sched_context_t *toRelease);
+void completeCurrentJob(void);
+void releaseRecurringJob(sched_context_t *sc);
+uint64_t getNextInterrupt(void);
+
+/* deadline heap ops */
+void deadlineAdd(sched_context_t *sc);
+void deadlineBehead(void);
+void deadlineRemove(sched_context_t *sc);
+void deadlinePostpone(void);
+void deadlineHeadChanged(void);
+
+/* release heap ops */
+void releaseBehead(void);
+void releaseAdd(sched_context_t *sc);
+void releaseRemove(sched_context_t *sc);
+void releaseHeadChanged(void);
+
+void enqueueJob(sched_context_t *sc, tcb_t *tcb);
+void releaseJobs(void);
+void cbsReload(void);
+void updateBudget(void);
+
+uint32_t getHighestPrio(void);
+
 void switchToThread(tcb_t *thread) VISIBLE;
 void switchToIdleThread(void);
 void setDomain(tcb_t *tptr, dom_t dom);
-void setPriority(tcb_t *tptr, prio_t prio);
+void setPriority(tcb_t *tptr, tcb_prio_t prio);
 void scheduleTCB(tcb_t *tptr);
-void attemptSwitchTo(tcb_t *tptr);
-void switchIfRequiredTo(tcb_t *tptr);
+void attemptSwitchTo(tcb_t *tptr, bool_t donate);
+void switchIfRequiredTo(tcb_t *tptr, bool_t donate);
 void setThreadState(tcb_t *tptr, _thread_state_t ts) VISIBLE;
 void timerTick(void);
 void rescheduleRequired(void);

@@ -8,6 +8,8 @@
 -- @TAG(GD_GPL)
 --
 
+#include <config.h>
+
 -- Default base size: uint32_t
 base 32
 
@@ -17,6 +19,29 @@ block null_cap {
 
     padding 28
     field capType 4
+}
+
+block sched_context_cap {
+    field_high capPtr 28
+    padding 4
+
+    padding 24
+    field capType         8
+}
+
+block sched_context_status {
+    padding 27
+    field inDeadlineHeap 1
+    field inReleaseHeap 1
+    field cbs 2
+    field trigger 1
+}
+
+block sched_control_cap {
+    padding       32
+
+    padding       24
+    field capType  8
 }
 
 block untyped_cap {
@@ -214,6 +239,8 @@ tagged_union cap capType {
     tag irq_handler_cap     0x1e
     tag zombie_cap          0x2e
     tag domain_cap          0x3e
+    tag sched_context_cap   0x4e
+    tag sched_control_cap   0x5e
 }
 
 ---- Arch-independent object types
@@ -378,14 +405,21 @@ tagged_union fault faultType {
     tag user_exception 4
 }
 
+-- Thread priority
+block tcb_prio {
+    field maxPrio 16
+    field prio    16
+}
+
 -- Thread state: size = 8 bytes
 block thread_state(blockingIPCBadge, blockingIPCCanGrant, blockingIPCIsCall,
                    tcbQueued, blockingIPCDiminishCaps, blockingIPCEndpoint,
+                   inSchedContextQueue,
                    tsType) {
     field blockingIPCBadge 28
     field blockingIPCCanGrant 1
     field blockingIPCIsCall 1
-    padding 1
+    field inSchedContextQueue 1
     field blockingIPCDiminishCaps 1
     
     -- this is fastpath-specific. it is useful to be able to write

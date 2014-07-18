@@ -184,6 +184,7 @@ handleInterrupt(irq_t irq)
 {
     switch (intStateIRQTable[irq]) {
     case IRQNotifyAEP: {
+
         cap_t cap;
 
         cap = intStateIRQNode[irq].cap;
@@ -203,9 +204,8 @@ handleInterrupt(irq_t irq)
 
     case IRQTimer:
         timerTick();
-        resetTimer();
+        /* for EDF, timer will be reset when we choose a new thread */
         break;
-
     case IRQReserved:
         handleReservedIRQ(irq);
         break;

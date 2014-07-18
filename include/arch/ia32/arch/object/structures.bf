@@ -21,6 +21,29 @@ block null_cap {
     field capType 4
 }
 
+block sched_context_cap {
+       
+    field_high capPtr 28
+    padding 4
+
+    padding 24
+    field capType      8
+}
+block sched_context_status {
+    padding 27
+    field inDeadlineHeap 1
+    field inReleaseHeap 1
+    field cbs 2
+    field trigger 1
+}
+
+block sched_control_cap {
+    padding       32
+
+    padding       24
+    field capType  8
+}
+
 block untyped_cap {
     field capFreeIndex 27
     field capBlockSize 5
@@ -30,7 +53,8 @@ block untyped_cap {
 }
 
 block endpoint_cap {
-    field capEPBadge 29
+    field capEPBadge 28
+    padding 1
     field capCanGrant 1
     field capCanSend 1
     field capCanReceive 1
@@ -40,8 +64,8 @@ block endpoint_cap {
 }
 
 block async_endpoint_cap {
-    field capAEPBadge 29
-    padding 1
+    field capAEPBadge 28
+    padding 2
     field capAEPCanSend 1
     field capAEPCanReceive 1
 
@@ -168,7 +192,6 @@ block asid_pool_cap {
     field_high  capASIDPool     20
     field       capType         4
 }
-
 -- IO Port Cap
 block io_port_cap {
     field   capIOPortFirstPort 16
@@ -246,7 +269,9 @@ tagged_union cap capType {
     tag irq_handler_cap     0x1e
     tag zombie_cap          0x2e
     tag domain_cap	        0x3e
-
+    tag sched_context_cap    0x4e
+    tag sched_control_cap    0x5e
+    
     -- 8-bit tag arch caps
 #ifdef CONFIG_IOMMU
     tag io_page_table_cap   0x0f
@@ -416,9 +441,17 @@ tagged_union fault faultType {
     tag user_exception 4
 }
 
+-- Thread priority
+block tcb_prio {
+    field maxPrio 16
+    field prio    16
+}
+
 -- Thread state: size = 8 bytes
+
 block thread_state {
-    field blockingIPCBadge 29
+    field blockingIPCBadge 28
+    field inSchedContextQueue 1
     field blockingIPCCanGrant 1
     field blockingIPCIsCall 1
     field tcbQueued 1

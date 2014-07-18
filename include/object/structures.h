@@ -13,12 +13,16 @@
 
 #include <api/types.h>
 #include <stdint.h>
+#include <machine/io.h>
 
 enum irq_state {
     IRQInactive  = 0,
     IRQNotifyAEP = 1,
     IRQTimer     = 2,
     IRQReserved  = 3,
+#ifdef CONFIG_BENCHMARK
+    BenchmarkTimer = 4
+#endif
 };
 typedef uint32_t irq_state_t;
 
@@ -168,7 +172,9 @@ enum tcb_cnode_index {
 };
 typedef uint32_t tcb_cnode_index_t;
 
-/* TCB: size 64 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+typedef struct sched_context sched_context_t;
+
+/* TCB: size 88 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
@@ -188,8 +194,8 @@ struct tcb {
     /* Domain, 1 byte (packed to 4) */
     uint32_t tcbDomain;
 
-    /* Priority, 1 byte (packed to 4) */
-    uint32_t tcbPriority;
+    /* Priority + Max priority 2 bytes (packed to 4) */
+    tcb_prio_t tcbPriority;
 
     /* Timeslice remaining, 4 bytes */
     word_t tcbTimeSlice;
@@ -205,6 +211,9 @@ struct tcb {
     struct tcb* tcbSchedPrev;
     struct tcb* tcbEPNext;
     struct tcb* tcbEPPrev;
+    /* sched_context object that this tcb is bound to, 4 bytes */
+    sched_context_t *tcbSchedContext;
+
 };
 typedef struct tcb tcb_t;
 
@@ -212,6 +221,48 @@ typedef struct tcb tcb_t;
 compile_assert(tcb_size_sane,
                (1 << TCB_SIZE_BITS) + sizeof(tcb_t) <= (1 << TCB_BLOCK_SIZE_BITS))
 
+
+/* size: 94 (list) 98 (heap) bytes - packed to 128 */
+struct sched_context {
+    /* These are the CBS parameters.
+     * Budget gets recharged every period and
+     * must be consumed by deadline.
+     */
+    uint64_t budget;
+    uint64_t deadline;
+    uint64_t period;
+    uint64_t ratio;
+
+    /* list of tcbs that are bound to this sched context and active */
+    tcb_t *tcb;
+
+#ifdef CONFIG_EDF_HEAP
+    /* Left, right and parent pointers for the current EDF heap, 12 bytes */
+    struct sched_context *left, *right, *parent;
+#elif defined CONFIG_EDF_LIST
+    /* prev and next pointers for the current EDF list, 8 bytes */
+    struct sched_context *prev, *next;
+#endif /* CONFIG_EDF_LIST */
+
+    /* priority for the current EDF heap (the current absolute deadline), 8 bytes */
+    uint64_t priority;
+    /* this is the currently remaining budget for CBS, loaded from the sched_context object, 8 bytes */
+    uint64_t cbsBudget;
+    /* timestamp at which this tcb was last scheduled, 8 bytes */
+    uint64_t lastScheduled;
+
+    /* 8 bytes */
+    uint64_t nextDeadline;
+    /* 8 bytes */
+    uint64_t nextRelease;
+
+    /* status bits */
+    sched_context_status_t status;
+};
+
+#define SCHED_CONTEXT_REF(p) ((unsigned int)(p))
+#define SCHED_CONTEXT_PTR(r) ((sched_context_t *)(r))
+#define SCHED_CONTEXT_SIZE_BITS 7
 
 /* helper functions */
 
@@ -277,6 +328,12 @@ cap_get_capSizeBits(cap_t cap)
     case cap_irq_handler_cap:
         return 0;
 
+    case cap_sched_control_cap:
+        return 0;
+
+    case cap_sched_context_cap:
+        return SCHED_CONTEXT_SIZE_BITS;
+
     default:
         return cap_get_archCapSizeBits(cap);
     }
@@ -320,6 +377,13 @@ cap_get_capPtr(cap_t cap)
 
     case cap_irq_handler_cap:
         return NULL;
+
+    case cap_sched_control_cap:
+        return NULL;
+
+    case cap_sched_context_cap:
+        return SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(cap));
+
     default:
         return cap_get_archCapPtr(cap);
 

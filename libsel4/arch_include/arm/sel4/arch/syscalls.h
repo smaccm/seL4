@@ -13,7 +13,6 @@
 
 #include <autoconf.h>
 #include <sel4/types.h>
-#include <stdint.h>
 
 #define __SWINUM(x) ((x) & 0x00ffffff)
 
@@ -491,6 +490,102 @@ seL4_Yield(void)
                   : /* no outputs */
                   : [swi_num] "i" __SWINUM(seL4_SysYield), "r"(scno)
                   : "memory");
+}
+
+static inline seL4_MessageInfo_t
+seL4_SendWait(seL4_CPtr dest, seL4_CPtr src, seL4_MessageInfo_t msgInfo, seL4_Word *sender)
+{
+    register seL4_Word dest_and_badge asm("r0") = (seL4_Word) dest;
+    register seL4_MessageInfo_t info asm("r1") = msgInfo;
+    /* we'll stash src in r8, but this is callee saved so do it later */
+
+    /* Load beginning of the message into registers. */
+    register seL4_Word msg0 asm("r2") = seL4_GetMR(0);
+    register seL4_Word msg1 asm("r3") = seL4_GetMR(1);
+    register seL4_Word msg2 asm("r4") = seL4_GetMR(2);
+    register seL4_Word msg3 asm("r5") = seL4_GetMR(3);
+
+    /* Perform the syscall. */
+    register seL4_Word scno asm("r7") = seL4_SysSendWait;
+    asm volatile (" push {r8, r9}\n"
+                  " mov r8, %[src]\n"
+                  " swi %[swi_num]\n"
+                  " pop {r8, r9}\n"
+                  : "+r" (msg0), "+r" (msg1), "+r" (msg2), "+r" (msg3),
+                  "+r" (info), "+r" (dest_and_badge)
+                  : [swi_num] "i" __SWINUM(seL4_SysSendWait), "r"(scno), [src] "r" (src)
+                  : "memory");
+
+    /* Write the message back out to memory. */
+    seL4_SetMR(0, msg0);
+    seL4_SetMR(1, msg1);
+    seL4_SetMR(2, msg2);
+    seL4_SetMR(3, msg3);
+
+    /* Return back sender and message information. */
+    if (sender) {
+        *sender = dest_and_badge;
+    }
+    return info;
+}
+
+static inline seL4_MessageInfo_t
+seL4_SendWaitWithMRs(seL4_CPtr dest, seL4_CPtr src, seL4_MessageInfo_t msgInfo, seL4_Word *sender,
+                     seL4_Word *mr0, seL4_Word *mr1, seL4_Word *mr2, seL4_Word *mr3)
+{
+    register seL4_Word dest_and_badge asm("r0") = (seL4_Word) dest;
+    register seL4_MessageInfo_t info asm("r1") = msgInfo;
+    /* we'll stash src in r8, but this is callee saved so do it later */
+
+    /* Load beginning of the message into registers. */
+    register seL4_Word msg0 asm("r2");
+    register seL4_Word msg1 asm("r3");
+    register seL4_Word msg2 asm("r4");
+    register seL4_Word msg3 asm("r5");
+    register seL4_Word scno asm("r7") = seL4_SysSendWait;
+
+    if (mr0 != NULL && seL4_MessageInfo_get_length(msgInfo) > 0) {
+        msg0 = *mr0;
+    }
+    if (mr1 != NULL && seL4_MessageInfo_get_length(msgInfo) > 1) {
+        msg1 = *mr1;
+    }
+    if (mr2 != NULL && seL4_MessageInfo_get_length(msgInfo) > 2) {
+        msg2 = *mr2;
+    }
+    if (mr3 != NULL && seL4_MessageInfo_get_length(msgInfo) > 3) {
+        msg3 = *mr3;
+    }
+
+    /* Perform the syscall. */
+    asm volatile (" push {r8, r9}\n"
+                  " mov r8, %[src]\n"
+                  " swi %[swi_num]\n"
+                  " pop {r8, r9}\n"
+                  : "+r" (msg0), "+r" (msg1), "+r" (msg2), "+r" (msg3),
+                  "+r" (info), "+r" (dest_and_badge)
+                  : [swi_num] "i" __SWINUM(seL4_SysSendWait), "r"(scno), [src] "r" (src)
+                  : "memory");
+
+    /* Write out the data back to memory. */
+    if (mr0 != NULL) {
+        *mr0 = msg0;
+    }
+    if (mr1 != NULL) {
+        *mr1 = msg1;
+    }
+    if (mr2 != NULL) {
+        *mr2 = msg2;
+    }
+    if (mr3 != NULL) {
+        *mr3 = msg3;
+    }
+
+    /* Return back sender and message information. */
+    if (sender) {
+        *sender = dest_and_badge;
+    }
+    return info;
 }
 
 #ifdef SEL4_DEBUG_KERNEL

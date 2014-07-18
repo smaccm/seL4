@@ -13,6 +13,11 @@
 
 #define PAGE_BITS 12
 
+#include <config.h>
+
+/* most signifigant bit */
+#define MSB(x) (31 - __builtin_clz(x))
+
 #define PPTR_VECTOR_TABLE 0xffff0000
 #define PPTR_GLOBALS_PAGE 0xffffc000
 

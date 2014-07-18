@@ -167,6 +167,9 @@ apic_init(uint32_t apic_khz, bool_t mask_legacy_irqs)
     );
 
     /* initialise timer */
+#ifndef CONFIG_EDF
+
+    /* initialise the apic timer */
     apic_write_reg(
         APIC_LVT_TIMER,
         apic_lvt_new(
@@ -180,8 +183,42 @@ apic_init(uint32_t apic_khz, bool_t mask_legacy_irqs)
             int_timer /* vector          */
         ).words[0]
     );
+#else
+    /* check that the platform supports tsc deadline mode */
+    printf("Checking APIC for tsc-deadline mode support\n");
+    asm volatile (
+        "mov $1, %%eax\n"
+        "mov $0, %%ecx\n"
+        "cpuid\n"
+        : "=c" (num_lvt_entries) /* num_lvt_entries is just a free local var */
+        : /* no inputs */
+        : "%eax", "%edx", "%ebx"
+    );
 
-    /*
+    if (num_lvt_entries | BIT(24)) {
+        printf("APIC: success, TSC-Deadline mode is supported\n");
+    } else {
+        printf("APIC: fail, TSC-deadline mode is not supported\n");
+        return false;
+    }
+
+
+    /* initialise the apic timer to one-shot mode to implement seL4_BenchmarkWait*/
+    apic_write_reg(
+        APIC_LVT_TIMER,
+        apic_lvt_new(
+            2,        /* tsc_deadline    */
+            0,        /* masked          */
+            0,        /* trigger_mode    */
+            0,        /* remote_irr      */
+            0,        /* pin_polarity    */
+            0,        /* delivery_status */
+            0,        /* delivery_mode   */
+            int_timer /* vector          */
+        ).words[0]
+    );
+#endif
+
     printf("APIC: ID=0x%x\n", apic_read_reg(APIC_ID) >> 24);
     printf("APIC: SVR=0x%x\n", apic_read_reg(APIC_SVR));
     printf("APIC: LVT_TIMER=0x%x\n", apic_read_reg(APIC_LVT_TIMER));
@@ -190,7 +227,7 @@ apic_init(uint32_t apic_khz, bool_t mask_legacy_irqs)
     printf("APIC: LVT_ERROR=0x%x\n", apic_read_reg(APIC_LVT_ERROR));
     printf("APIC: LVT_PERF_CNTR=0x%x\n", apic_read_reg(APIC_LVT_PERF_CNTR));
     printf("APIC: LVT_THERMAL=0x%x\n", apic_read_reg(APIC_LVT_THERMAL));
-    */
+
     return true;
 }
 
@@ -283,3 +320,5 @@ apic_send_startup_ipi(cpu_id_t cpu_id, paddr_t startup_addr)
         ).words[0]
     );
 }
+
+

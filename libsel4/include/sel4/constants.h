@@ -16,8 +16,32 @@
 enum priorityConstants {
     seL4_InvalidPrio = -1,
     seL4_MinPrio = 0,
-    seL4_MaxPrio = 255
+#ifdef CONFIG_EDF
+    seL4_EDFPrio = 125,
+#endif /* CONFIG_EDF */
+    seL4_MaxPrio = 255,
 };
+
+enum {
+    seL4_SoftCBS = 0,
+    seL4_HardCBS = 1,
+    seL4_Isolated = 2
+};
+typedef uint32_t seL4_CBS;
+
+typedef uint32_t seL4_TaskType;
+enum {
+    seL4_EventTriggered = 0,
+    seL4_TimeTriggered = 1
+};
+
+typedef struct {
+    uint64_t period;
+    uint64_t relativeDeadline;
+    uint64_t execution;
+    seL4_CBS cbs;
+    seL4_TaskType trigger;
+} seL4_SchedParams;
 
 /* message_info_t defined in api/types.bf */
 

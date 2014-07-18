@@ -8,6 +8,7 @@
  * @TAG(GD_GPL)
  */
 
+#include <config.h>
 #include <types.h>
 #include <benchmark.h>
 #include <api/syscall.h>
@@ -20,6 +21,11 @@
 #include <machine/io.h>
 #include <object/interrupt.h>
 #include <model/statedata.h>
+#include <object/schedcontext.h>
+
+#ifdef CONFIG_ARCH_ARM
+#include <arch/machine/priv_timer.h>
+#endif
 
 #ifdef DEBUG
 #include <arch/machine/capdl.h>
@@ -32,6 +38,7 @@ exception_t
 handleInterruptEntry(void)
 {
     irq_t irq;
+    ksCurrentTime = getCurrentTime();
 
     irq = getActiveIRQ();
     if (irq != irqInvalid) {
@@ -82,6 +89,12 @@ handleUnknownSyscall(word_t w)
 
 #ifdef CONFIG_BENCHMARK
     if (w == SysBenchmarkResetLog) {
+        /* benchmark hack: resume all threads in the edf scheduling priority */
+        for (tcb_t *tcb = ksReadyQueues[seL4_EDFPrio].head; tcb != NULL; tcb = tcb->tcbSchedNext) {
+            assert(tcb != NULL);
+            restart(tcb);
+        }
+        /* reset the log */
         ksLogIndex = 0;
         return EXCEPTION_NONE;
     } else if (w == SysBenchmarkDumpLog) {
@@ -214,6 +227,7 @@ handleInvocation(bool_t isCall, bool_t isBlocking)
     if (unlikely(length > n_msgRegisters && !buffer)) {
         length = n_msgRegisters;
     }
+
     status = decodeInvocation(message_info_get_msgLabel(info), length,
                               cptr, lu_ret.slot, lu_ret.cap,
                               current_extra_caps, isBlocking, isCall,
@@ -241,8 +255,8 @@ handleInvocation(bool_t isCall, bool_t isBlocking)
     return EXCEPTION_NONE;
 }
 
-static void
-handleReply(void)
+static bool_t
+handleReply(bool_t replyWait)
 {
     cte_t *callerSlot;
     cap_t callerCap;
@@ -252,6 +266,7 @@ handleReply(void)
     switch (cap_get_capType(callerCap)) {
     case cap_reply_cap: {
         tcb_t *caller;
+        bool_t donationOccured;
 
         if (cap_reply_cap_get_capReplyMaster(callerCap)) {
             break;
@@ -260,19 +275,207 @@ handleReply(void)
         /* Haskell error:
          * "handleReply: caller must not be the current thread" */
         assert(caller != ksCurThread);
-        doReplyTransfer(ksCurThread, caller, callerSlot);
-        return;
+        if (!replyWait && caller->tcbSchedContext == NULL) {
+            userError("Attempted to reply to a thread with no scheduling context\n");
+            /* TODO send fault */
+        }
+
+        donationOccured = replyWait && (caller->tcbSchedContext == NULL);
+        doReplyTransfer(ksCurThread, caller, callerSlot, donationOccured);
+        return donationOccured;
     }
 
     case cap_null_cap:
         userError("Attempted reply operation when no reply cap present.");
-        return;
+        return false;
 
     default:
         break;
     }
 
     fail("handleReply: invalid caller cap");
+
+    return false;
+}
+
+static void
+handleSendWait(void)
+{
+
+    tcb_t *replyTCB = NULL;
+    word_t destCPtr, srcCPtr;
+    lookupCapAndSlot_ret_t dest_lu_ret;
+    lookupCap_ret_t src_lu_ret;
+    /* we receive a donation if the send resulted in us losing our current scheduling context */
+    bool_t donationRequired;
+
+#ifdef CONFIG_ARCH_IA32
+    word_t *buffer = lookupIPCBuffer(true, ksCurThread);
+    srcCPtr = getSyscallArg(seL4_MsgMaxLength - 1, buffer);
+#elif CONFIG_ARCH_ARM
+    srcCPtr = getRegister(ksCurThread, R8);
+#else
+#error "not implemented"
+#endif
+
+    destCPtr = getRegister(ksCurThread, capRegister);
+    dest_lu_ret = lookupCapAndSlot(ksCurThread, destCPtr);
+    src_lu_ret = lookupCap(ksCurThread, srcCPtr);
+
+    if (unlikely(src_lu_ret.status != EXCEPTION_NONE)) {
+        userError("seL4_SendWait: src cap lookup failed");
+        current_fault = fault_cap_fault_new(srcCPtr, true);
+        handleFault(ksCurThread);
+        return;
+    }
+
+    if (unlikely(dest_lu_ret.status != EXCEPTION_NONE)) {
+        userError("seL4_SendWait: dest cap lookup failed");
+        current_fault = fault_cap_fault_new(destCPtr, true);
+        handleFault(ksCurThread);
+        return;
+    }
+
+
+    /* check the wait cap is a sync ep cap */
+    if (unlikely(cap_get_capType(src_lu_ret.cap) != cap_endpoint_cap)) {
+        userError("seL4_SendWait: src cap is not an endpoint cap");
+        current_lookup_fault = lookup_fault_missing_capability_new(0);
+        current_fault = fault_cap_fault_new(srcCPtr, true);
+        handleFault(ksCurThread);
+        return;
+    }
+
+
+    /* send action */
+    switch (cap_get_capType(dest_lu_ret.cap)) {
+    case cap_thread_cap: {
+        replyTCB = TCB_PTR(cap_thread_cap_get_capTCBPtr(dest_lu_ret.cap));
+        /* can't SendWait to a tcb with a scheduling context */
+        if (replyTCB->tcbSchedContext != NULL) {
+            userError("seL4_SendWait: tcb already has sched context");
+            current_fault = fault_cap_fault_new(destCPtr, true);
+            handleFault(ksCurThread);
+            return;
+        }
+
+        /* switch threads */
+        donationRequired = true;
+        thread_state_ptr_set_tsType(&replyTCB->tcbState, ThreadState_Running);
+        attemptSwitchTo(replyTCB, donationRequired);
+        /* we don't need to touch ksCurSchedContext as it isn't changing */
+    }
+    break;
+
+    case cap_endpoint_cap: {
+        /* endpoint must be in recv state */
+        endpoint_t *epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(dest_lu_ret.cap));
+        if (unlikely(endpoint_ptr_get_state(epptr) != EPState_Recv)) {
+            userError("seL4_SendWait: send EP not ready to receive message\n");
+            current_fault = fault_cap_fault_new(destCPtr, true);
+            handleFault(ksCurThread);
+            return;
+        }
+
+        if (unlikely(!cap_endpoint_cap_get_capCanSend(dest_lu_ret.cap))) {
+            userError("seL4_SendWait: attempted to send on endpoint cap without send rights\n");
+            current_fault = fault_cap_fault_new(destCPtr, true);
+            handleFault(ksCurThread);
+            return;
+        }
+
+        donationRequired = sendIPC(true, false, cap_endpoint_cap_get_capEPBadge(dest_lu_ret.cap),
+                                   cap_endpoint_cap_get_capCanGrant(dest_lu_ret.cap),
+                                   ksCurThread, epptr);
+
+    }
+    break;
+    case cap_reply_cap: {
+        tcb_t *caller;
+        if (cap_reply_cap_get_capReplyMaster(dest_lu_ret.cap)) {
+            fail("handleReply: invalid caller cap");
+        }
+
+        caller = TCB_PTR(cap_reply_cap_get_capTCBPtr(dest_lu_ret.cap));
+        donationRequired = (caller->tcbSchedContext == NULL);
+        doReplyTransfer(ksCurThread, caller, dest_lu_ret.slot, caller->tcbSchedContext == NULL);
+    }
+    break;
+    default: {
+        userError("seL4_SendWait: called on unsupported cap type\n");
+        current_lookup_fault = lookup_fault_missing_capability_new(0);
+        current_fault = fault_cap_fault_new(destCPtr, true);
+        handleFault(ksCurThread);
+        return;
+    }
+    break;
+    }
+
+    /* wait action */
+    receiveIPC(ksCurThread, src_lu_ret.cap, donationRequired);
+    return;
+}
+
+
+static void
+handleReplyWait(void)
+{
+
+    /* first look up the cap */
+    word_t epCPtr;
+    lookupCap_ret_t lu_ret;
+
+    epCPtr = getRegister(ksCurThread, capRegister);
+    lu_ret = lookupCap(ksCurThread, epCPtr);
+
+    if (unlikely(lu_ret.status != EXCEPTION_NONE)) {
+        current_fault = fault_cap_fault_new(epCPtr, true);
+        handleFault(ksCurThread);
+        return;
+    }
+
+    switch (cap_get_capType(lu_ret.cap)) {
+    case cap_endpoint_cap: {
+        bool_t donationOccured = handleReply(true);
+
+        /* now handle the wait */
+        deleteCallerCap(ksCurThread);
+        if (unlikely(!cap_endpoint_cap_get_capCanReceive(lu_ret.cap))) {
+            current_lookup_fault = lookup_fault_missing_capability_new(0);
+            current_fault = fault_cap_fault_new(epCPtr, true);
+            handleFault(ksCurThread);
+            break;
+        }
+
+        receiveIPC(ksCurThread, lu_ret.cap, donationOccured);
+        break;
+    }
+    case cap_async_endpoint_cap: {
+        async_endpoint_t *aepptr;
+        tcb_t *boundTCB;
+
+        aepptr = AEP_PTR(cap_async_endpoint_cap_get_capAEPPtr(lu_ret.cap));
+        boundTCB = (tcb_t*)async_endpoint_ptr_get_aepBoundTCB(aepptr);
+
+        if (unlikely(!cap_async_endpoint_cap_get_capAEPCanReceive(lu_ret.cap)
+                     || (boundTCB && boundTCB != ksCurThread))) {
+            current_lookup_fault = lookup_fault_missing_capability_new(0);
+            current_fault = fault_cap_fault_new(epCPtr, true);
+            handleFault(ksCurThread);
+            break;
+        }
+
+        handleReply(false);
+        receiveAsyncIPC(ksCurThread, lu_ret.cap, true);
+        break;
+    }
+    default:
+        current_lookup_fault = lookup_fault_missing_capability_new(0);
+        current_fault = fault_cap_fault_new(epCPtr, true);
+        handleFault(ksCurThread);
+        break;
+    }
+
 }
 
 static void
@@ -294,17 +497,17 @@ handleWait(bool_t isBlocking)
     }
 
     switch (cap_get_capType(lu_ret.cap)) {
-    case cap_endpoint_cap:
-        if (unlikely(!cap_endpoint_cap_get_capCanReceive(lu_ret.cap) || !isBlocking)) {
+    case cap_endpoint_cap: {
+        if (unlikely(!cap_endpoint_cap_get_capCanReceive(lu_ret.cap)) || !isBlocking) {
             current_lookup_fault = lookup_fault_missing_capability_new(0);
             current_fault = fault_cap_fault_new(epCPtr, true);
             handleFault(ksCurThread);
             break;
         }
+        receiveIPC(ksCurThread, lu_ret.cap, false);
 
-        receiveIPC(ksCurThread, lu_ret.cap);
         break;
-
+    }
     case cap_async_endpoint_cap: {
         async_endpoint_t *aepptr;
         tcb_t *boundTCB;
@@ -331,7 +534,8 @@ handleWait(bool_t isBlocking)
 
 static void
 handleYield(void)
-{
+{ 
+    /* TODO @alyons what should this really do? */ 
     tcbSchedDequeue(ksCurThread);
     tcbSchedAppend(ksCurThread);
     rescheduleRequired();
@@ -342,6 +546,7 @@ handleSyscall(syscall_t syscall)
 {
     exception_t ret;
     irq_t irq;
+    ksCurrentTime = getCurrentTime();
 
     switch (syscall) {
     case SysSend:
@@ -379,12 +584,11 @@ handleSyscall(syscall_t syscall)
         break;
 
     case SysReply:
-        handleReply();
+        handleReply(false);
         break;
 
     case SysReplyWait:
-        handleReply();
-        handleWait(true);
+        handleReplyWait();
         break;
 
     case SysPoll:
@@ -393,6 +597,10 @@ handleSyscall(syscall_t syscall)
 
     case SysYield:
         handleYield();
+        break;
+
+    case SysSendWait:
+        handleSendWait();
         break;
 
     default:

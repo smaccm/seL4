@@ -11,6 +11,7 @@
 #ifndef __ARCH_OBJECT_STRUCTURES_H
 #define __ARCH_OBJECT_STRUCTURES_H
 
+#include <config.h>
 #include <assert.h>
 #include <util.h>
 #include <api/types.h>
@@ -332,5 +333,6 @@ cap_get_archCapPtr(cap_t cap)
         return NULL;
     }
 }
+
 
 #endif

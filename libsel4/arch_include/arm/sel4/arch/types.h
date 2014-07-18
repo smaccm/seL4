@@ -13,6 +13,7 @@
 
 #include <sel4/macros.h>
 #include <stdint.h>
+#include <autoconf.h>
 
 #define seL4_WordBits 32
 
@@ -23,6 +24,7 @@
 #define seL4_PageTableBits 10
 #define seL4_PageDirBits 14
 #define seL4_ASIDPoolBits 12
+#define seL4_SchedContextBits 7
 
 #define seL4_Frame_Args 4
 #define seL4_Frame_MRs 7

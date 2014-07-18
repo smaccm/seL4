@@ -40,14 +40,6 @@ BEGIN_FUNC(ia32_rdmsr_high)
     ret
 END_FUNC(ia32_rdmsr_high)
 
-BEGIN_FUNC(ia32_wrmsr)
-    movl 4(%esp),  %ecx     # MSR register index
-    movl 8(%esp),  %edx     # 4 most significant bytes
-    movl 12(%esp), %eax     # 4 least significant bytes
-    wrmsr
-    ret
-END_FUNC(ia32_wrmsr)
-
 BEGIN_FUNC(ia32_install_gdt)
     movl 4(%esp), %eax
     lgdt (%eax)             # load gdtr register with gdt pointer
@@ -118,6 +110,14 @@ BEGIN_FUNC(ia32_cpuid_edx)
 END_FUNC(ia32_cpuid_edx)
 
 .section .text
+
+BEGIN_FUNC(ia32_wrmsr)
+    movl 4(%esp),  %ecx     # MSR register index
+    movl 8(%esp),  %edx     # 4 most significant bytes
+    movl 12(%esp), %eax     # 4 least significant bytes
+    wrmsr
+    ret
+END_FUNC(ia32_wrmsr)
 
 BEGIN_FUNC(invalidateTLB)
     movl %cr3, %eax

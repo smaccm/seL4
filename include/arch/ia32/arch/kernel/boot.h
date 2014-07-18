@@ -51,6 +51,7 @@ bool_t init_node_state(
 
 bool_t init_node_cpu(
     uint32_t apic_khz,
+    uint32_t tsc_khz,
     bool_t   mask_legacy_irqs
 );
 

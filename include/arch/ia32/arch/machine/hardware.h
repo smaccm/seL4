@@ -11,6 +11,7 @@
 #ifndef __ARCH_MACHINE_HARDWARE_H
 #define __ARCH_MACHINE_HARDWARE_H
 
+#include <config.h>
 #include <arch/types.h>
 #include <arch/linker.h>
 
@@ -32,6 +33,7 @@ enum frameSizeConstants {
 };
 
 #define PAGE_BITS 12
+#define MSB(x) (31 - __builtin_clz(x))
 
 /* Any changes to this function need to be replicated in pageBitsForSize_phys.
  */

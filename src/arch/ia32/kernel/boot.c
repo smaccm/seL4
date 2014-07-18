@@ -415,6 +415,9 @@ init_node_state(
         return false;
     }
 
+    /* create sched control cap */
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_SCHED_CTRL), cap_sched_control_cap_new());
+
     /* create the initial thread */
     if (!create_initial_thread(
                 root_cnode_cap,
@@ -481,8 +484,8 @@ init_node_state(
 BOOT_CODE bool_t
 init_node_cpu(
     uint32_t apic_khz,
-    bool_t   mask_legacy_irqs
-)
+    uint32_t tsc_khz,
+    bool_t mask_legacy_irqs)
 {
     /* initialise CPU's descriptor table registers (GDTR, IDTR, LDTR, TR) */
     init_dtrs();
@@ -503,5 +506,8 @@ init_node_cpu(
         return false;
     }
 
+#ifdef CONFIG_BENCHMARK
+    initTimer();
+#endif /* CONFIG_BENCHMARK */
     return true;
 }

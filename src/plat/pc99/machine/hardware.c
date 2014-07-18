@@ -101,3 +101,23 @@ void resetTimer(void)
 {
     /* not necessary */
 }
+
+int
+setDeadline(uint64_t deadline)
+{
+    return tsc_setDeadline(deadline);
+}
+
+uint64_t
+getCurrentTime(void)
+{
+    return tsc_getCurrentTime();
+}
+
+#ifdef CONFIG_BENCHMARK
+void
+initTimer(void)
+{
+}
+#endif /* CONFIG_BENCHMARK */
+

@@ -342,10 +342,44 @@ create_it_asid_pool(cap_t root_cnode_cap)
     return ap_cap;
 }
 
+BOOT_CODE static sched_context_t *
+create_sched_context(tcb_t *tcb)
+{
+
+    pptr_t sc_pptr;
+    sched_context_t *sc;
+    uint64_t mul;
+
+    sc_pptr = alloc_region(SCHED_CONTEXT_SIZE_BITS);
+    if (!sc_pptr) {
+        printf("Kernel init failed: Unabled to allocate sched context for start-up thread\n");
+        return NULL;
+    }
+
+    memzero((void *) sc_pptr, 1 << SCHED_CONTEXT_SIZE_BITS);
+    sc = SCHED_CONTEXT_PTR(sc_pptr);
+    tcb->tcbSchedContext = sc;
+    sc->tcb = tcb;
+
+    mul = 1000000llu;
+
+    sc->budget = mul * ksTicksPerUs;
+    sc->cbsBudget = mul * ksTicksPerUs;
+    sc->period = mul * ksTicksPerUs;
+    sc->deadline = mul * ksTicksPerUs;
+
+    assert(sc->budget > 0);
+    assert(sc->budget > mul);
+    return sc;
+}
+
 BOOT_CODE bool_t
 create_idle_thread(void)
 {
+
     pptr_t pptr;
+    sched_context_t *sched_context;
+
     pptr = alloc_region(TCB_BLOCK_SIZE_BITS);
     if (!pptr) {
         printf("Kernel init failed: Unable to allocate tcb for idle thread\n");
@@ -354,6 +388,13 @@ create_idle_thread(void)
     memzero((void *)pptr, 1 << TCB_BLOCK_SIZE_BITS);
     ksIdleThread = TCB_PTR(pptr + TCB_OFFSET);
     configureIdleThread(ksIdleThread);
+
+    sched_context = create_sched_context(ksIdleThread);
+    sched_context->lastScheduled = 1;
+    if (sched_context == NULL) {
+        return false;
+    }
+
     return true;
 }
 
@@ -379,7 +420,7 @@ create_initial_thread(
     }
     memzero((void*)pptr, 1 << TCB_BLOCK_SIZE_BITS);
     tcb = TCB_PTR(pptr + TCB_OFFSET);
-    tcb->tcbTimeSlice = CONFIG_TIME_SLICE;
+
     Arch_initContext(&tcb->tcbArch.tcbContext);
 
     /* initialise TCB (corresponds directly to abstract specification) */
@@ -403,7 +444,7 @@ create_initial_thread(
     setNextPC(tcb, ui_v_entry);
 
     /* initialise TCB */
-    tcb->tcbPriority = seL4_MaxPrio;
+    tcb->tcbPriority = tcb_prio_new(seL4_MaxPrio, seL4_MaxPrio);
     setupReplyMaster(tcb);
     setThreadState(tcb, ThreadState_Running);
     ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
@@ -418,6 +459,19 @@ create_initial_thread(
     /* create initial thread's TCB cap */
     cap = cap_thread_cap_new(TCB_REF(tcb));
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_TCB), cap);
+
+    ksSchedContext = create_sched_context(tcb);
+    if (ksSchedContext == NULL) {
+        return false;
+    }
+
+    /* binding is implicit between ksSchedContext and ksCurThread */
+    ksSchedContext->tcb = NULL;
+    ksCurThread->tcbSchedContext = NULL;
+
+    ksSchedContext->lastScheduled = getCurrentTime();
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_SC),
+               cap_sched_context_cap_new((unsigned int) ksSchedContext));
 
     return true;
 }

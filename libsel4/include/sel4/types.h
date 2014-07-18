@@ -11,6 +11,7 @@
 #ifndef __LIBSEL4_TYPES_H
 #define __LIBSEL4_TYPES_H
 
+#include <autoconf.h>
 #include <sel4/macros.h>
 #include <sel4/arch/types.h>
 #include <sel4/types_gen.h>
@@ -25,6 +26,9 @@ typedef enum {
     seL4_VMFault,
     seL4_UnknownSyscall,
     seL4_UserException,
+    seL4_SplitApproval,
+    seL4_RevokeRequest,
+    seL4_RevokeParent,
     SEL4_FORCE_LONG_ENUM(seL4_FaultType),
 } seL4_FaultType;
 
@@ -67,6 +71,10 @@ typedef seL4_CPtr seL4_IRQControl;
 typedef seL4_CPtr seL4_TCB;
 typedef seL4_CPtr seL4_Untyped;
 typedef seL4_CPtr seL4_DomainSet;
+
+typedef seL4_CPtr seL4_SchedContext;
+typedef seL4_CPtr seL4_SchedControl;
+
 
 #define seL4_NilData seL4_CapData_Badge_new(0)
 

@@ -8,6 +8,7 @@
  * @TAG(GD_GPL)
  */
 
+#include <config.h>
 #include <types.h>
 #include <api/failures.h>
 #include <api/invocation.h>
@@ -23,12 +24,14 @@
 #include <model/statedata.h>
 #include <util.h>
 
-
+#define TCB_PRIO_NULL ((tcb_prio_t) { .words[0] = 0 })
 
 /* Add TCB to the head of a scheduler queue */
 void
 tcbSchedEnqueue(tcb_t *tcb)
 {
+
+    assert(tcb->tcbSchedContext != NULL || ksCurThread == tcb);
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
         UNUSED dom_t dom;
@@ -36,12 +39,13 @@ tcbSchedEnqueue(tcb_t *tcb)
         unsigned int idx;
 
         dom = tcb->tcbDomain;
-        prio = tcb->tcbPriority;
+        prio = tcb_prio_get_prio(tcb->tcbPriority);
         idx = ready_queues_index(dom, prio);
         queue = ksReadyQueues[idx];
 
         if (!queue.end) { /* Empty list */
             queue.end = tcb;
+            addToBitmap(dom, prio);
         } else {
             queue.head->tcbSchedPrev = tcb;
         }
@@ -66,12 +70,13 @@ tcbSchedAppend(tcb_t *tcb)
         unsigned int idx;
 
         dom = tcb->tcbDomain;
-        prio = tcb->tcbPriority;
+        prio = tcb_prio_get_prio(tcb->tcbPriority);
         idx = ready_queues_index(dom, prio);
         queue = ksReadyQueues[idx];
 
         if (!queue.head) { /* Empty list */
             queue.head = tcb;
+            addToBitmap(dom, prio);
         } else {
             queue.end->tcbSchedNext = tcb;
         }
@@ -96,7 +101,7 @@ tcbSchedDequeue(tcb_t *tcb)
         unsigned int idx;
 
         dom = tcb->tcbDomain;
-        prio = tcb->tcbPriority;
+        prio = tcb_prio_get_prio(tcb->tcbPriority);
         idx = ready_queues_index(dom, prio);
         queue = ksReadyQueues[idx];
 
@@ -104,6 +109,9 @@ tcbSchedDequeue(tcb_t *tcb)
             tcb->tcbSchedPrev->tcbSchedNext = tcb->tcbSchedNext;
         } else {
             queue.head = tcb->tcbSchedNext;
+            if (likely(!tcb->tcbSchedNext)) {
+                removeFromBitmap(dom, prio);
+            }
         }
 
         if (tcb->tcbSchedNext) {
@@ -118,18 +126,142 @@ tcbSchedDequeue(tcb_t *tcb)
     }
 }
 
-/* Add TCB to the end of an endpoint queue */
+/* reorder a tcb in an ipc endpoint queue */
+tcb_queue_t
+tcbEPReorder(tcb_t *tcb, tcb_queue_t queue, prio_t oldPrio)
+{
+
+    prio_t newPrio = tcb_prio_get_prio(tcb->tcbPriority);
+
+    /* nothing to do, prio didn't change */
+    if (newPrio == oldPrio) {
+        return queue;
+    }
+
+    if (newPrio > oldPrio) {
+        /* move tcb up in the queue */
+        tcb_t *prev = tcb->tcbEPPrev;
+        
+        if (prev == NULL ||
+                tcb_prio_get_prio(tcb->tcbPriority) < tcb_prio_get_prio(prev->tcbPriority)) {
+            /* nothing to do, tcb is at head of list or in the correct place */
+            return queue;
+        }
+
+        /* take the tcb out (this will fix the end of the queue if required) */
+        queue = tcbEPDequeue(tcb, queue);
+
+        /* now find the next place to put it based on the old place */
+        while (prev != NULL &&
+                tcb_prio_get_prio(prev->tcbPriority) < newPrio) {
+            prev = prev->tcbEPPrev;
+        }
+
+        /* not possible */
+        assert(prev != queue.end);
+
+        if (prev == NULL) {
+            /* tcb goes to the head */
+            tcb->tcbEPNext = queue.head;
+            tcb->tcbEPPrev = NULL;
+            queue.head->tcbEPPrev = tcb;
+            queue.head = tcb;
+        } else {
+            /* tcb goes after prev */
+            tcb->tcbEPNext = prev->tcbEPNext;
+            tcb->tcbEPPrev = prev;
+            tcb->tcbEPNext->tcbEPPrev = tcb;
+            prev->tcbEPNext = tcb;
+        }
+
+    } else { /* new_prio < old_prio */
+        /* move tcb down in queue */
+        tcb_t *next = tcb->tcbEPNext;
+
+        if (next == NULL ||
+                tcb_prio_get_prio(tcb->tcbPriority) >= tcb_prio_get_prio(next->tcbPriority)) {
+            /* nothing to do, tcb is at tail of list or in the correct place */
+            return queue;
+        }
+
+        /* take the tcb out (this will fix up the head of the queue if required) */
+        queue = tcbEPDequeue(tcb, queue);
+
+        while (next != NULL &&
+                tcb_prio_get_prio(next->tcbPriority) >= newPrio) {
+            next = next->tcbEPNext;
+        }
+
+        /* not possible */
+        assert(next != queue.head);
+
+        if (next == NULL) {
+            /* tcb goes to the tail */
+            tcb->tcbEPPrev = queue.end;
+            tcb->tcbEPNext = NULL;
+            queue.end->tcbEPNext = tcb;
+            queue.end = tcb;
+        } else {
+            /* tcb goes before next */
+            tcb->tcbEPNext = next;
+            tcb->tcbEPPrev = next->tcbEPPrev;
+            next->tcbEPPrev->tcbEPNext = tcb;
+            next->tcbEPPrev = tcb;
+        }
+    }
+
+    return queue;
+}
+
+/* Add TCB to the ordered endpoint queue */
 tcb_queue_t
 tcbEPAppend(tcb_t *tcb, tcb_queue_t queue)
 {
     if (!queue.head) { /* Empty list */
         queue.head = tcb;
+        tcb->tcbEPPrev = NULL;
+        tcb->tcbEPNext = NULL;
+        queue.end = tcb;
     } else {
-        queue.end->tcbEPNext = tcb;
+        /* insert ordered */
+        tcb_t *prev = NULL;
+        tcb_t *current = queue.head;
+
+        /* find a place to put the tcb */
+        while (tcb_prio_get_prio(tcb->tcbPriority) <=
+                tcb_prio_get_prio(current->tcbPriority)) {
+            prev = current;
+            current = current->tcbEPNext;
+
+            /* we hit the end */
+            if (current == NULL) {
+                break;
+            }
+        }
+
+        /* there is at least one other tcb in the queue
+         * (since queue.head was not null) so we are either
+         * inserting at head, tail or middle */
+        if (prev == NULL) {
+            /* insert at head */
+            queue.head = tcb;
+            tcb->tcbEPNext = current;
+            tcb->tcbEPPrev = NULL;
+            current->tcbEPPrev = tcb;
+        } else if (current == NULL) {
+            /* insert at end */
+            prev->tcbEPNext = tcb;
+            queue.end = tcb;
+            tcb->tcbEPPrev = prev;
+            tcb->tcbEPNext = NULL;
+        } else {
+            /* insert between prev and current */
+            prev->tcbEPNext = tcb;
+            current->tcbEPPrev = tcb;
+            tcb->tcbEPPrev = prev;
+            tcb->tcbEPNext = current;
+        }
     }
-    tcb->tcbEPPrev = queue.end;
-    tcb->tcbEPNext = NULL;
-    queue.end = tcb;
 
     return queue;
 }
@@ -281,16 +413,34 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
         return invokeTCB_Suspend(
                    TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
-    case TCBResume:
-        setThreadState(ksCurThread, ThreadState_Restart);
-        return invokeTCB_Resume(
-                   TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
+    case TCBResume: {
+        tcb_t *tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+        if (tcb->tcbSchedContext == NULL) {
+            //TODO should resume take a scheduling context?
+            userError("seL4_TCBResume: cannot resume a thread with no sched context");
+            current_syscall_error.type = seL4_IllegalOperation;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+
+        //TODO@alyons this should not fail, just not run the thread
+        if (tcb->tcbSchedContext->budget == 0 || tcb->tcbSchedContext->period == 0) {
+            userError("seL4_TCBResume: thread has 0 budget in scheduling context");
+            current_syscall_error.type = seL4_IllegalOperation;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+    }
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeTCB_Resume(
+               TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
     case TCBConfigure:
         return decodeTCBConfigure(cap, length, slot, extraCaps, buffer);
 
     case TCBSetPriority:
         return decodeSetPriority(cap, length, buffer);
+
+    case TCBSetMaxPriority:
+        return decodeSetMaxPriority(cap, length, buffer);
 
     case TCBSetIPCBuffer:
         return decodeSetIPCBuffer(cap, length, slot, extraCaps, buffer);
@@ -303,7 +453,8 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
 
     case TCBUnbindAEP:
         return decodeUnbindAEP(cap);
-
+    case TCBSetSchedContext:
+        return decodeSetSchedContext(cap, extraCaps);
     default:
         /* Haskell: "throw IllegalOperation" */
         userError("TCB: Illegal operation.");
@@ -442,6 +593,22 @@ decodeWriteRegisters(cap_t cap, unsigned int length, word_t *buffer)
         return EXCEPTION_SYSCALL_ERROR;
     }
 
+    /* the user is attempting to restart the thread */
+    if (flags & BIT(WriteRegisters_resume)) {
+        /* no scheduling context */
+        if (thread->tcbSchedContext == NULL) {
+            userError("TCB WriteRegisters: Attempted to resume thread without scheduling context.");
+            current_syscall_error.type = seL4_IllegalOperation;
+            return EXCEPTION_SYSCALL_ERROR;
+            /* scheduling context with no budget */
+        } else if (thread->tcbSchedContext->budget == 0 || thread->tcbSchedContext->period == 0) {
+            userError("TCB WriteRegisters: Attempted to resume a thread with no budget.");
+            current_syscall_error.type = seL4_IllegalOperation;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        assert(thread->tcbSchedContext == NULL || thread->tcbSchedContext->tcb == thread);
+    }
+
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_WriteRegisters(thread,
                                     flags & BIT(WriteRegisters_resume),
@@ -457,14 +624,17 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
 {
     cte_t *bufferSlot, *cRootSlot, *vRootSlot;
     cap_t bufferCap, cRootCap, vRootCap;
+    cap_t scCap;
+    sched_context_t *sched_context;
     deriveCap_ret_t dc_ret;
     cptr_t faultEP;
-    unsigned int prio;
+    prio_t prio, maxPrio;
     word_t cRootData, vRootData, bufferAddr;
 
-    if (length < 5 || rootCaps.excaprefs[0] == NULL
+    if (length < 6 || rootCaps.excaprefs[0] == NULL
             || rootCaps.excaprefs[1] == NULL
-            || rootCaps.excaprefs[2] == NULL) {
+            || rootCaps.excaprefs[2] == NULL
+       ) {
         userError("TCB Configure: Truncated message.");
         current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
@@ -472,9 +642,23 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
 
     faultEP    = getSyscallArg(0, buffer);
     prio       = getSyscallArg(1, buffer);
-    cRootData  = getSyscallArg(2, buffer);
-    vRootData  = getSyscallArg(3, buffer);
-    bufferAddr = getSyscallArg(4, buffer);
+    scCap = lookupSlot(ksCurThread, getSyscallArg(2, buffer)).slot->cap;
+    if (cap_get_capType(scCap) != cap_sched_context_cap &&
+            cap_get_capType(scCap) != cap_null_cap) {
+        userError("TCB Configure: sched_context_cap is invalid.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (unlikely(cap_get_capType(scCap) != cap_null_cap)) {
+        sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap));
+    } else {
+        sched_context = NULL;
+    }
+
+    cRootData  = getSyscallArg(3, buffer);
+    vRootData  = getSyscallArg(4, buffer);
+    bufferAddr = getSyscallArg(5, buffer);
 
     cRootSlot  = rootCaps.excaprefs[0];
     cRootCap   = rootCaps.excaprefs[0]->cap;
@@ -483,11 +667,22 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     bufferSlot = rootCaps.excaprefs[2];
     bufferCap  = rootCaps.excaprefs[2]->cap;
 
+    maxPrio =  (prio >> 8) & MASK(8);
     prio = prio & MASK(8);
 
-    if (prio > ksCurThread->tcbPriority) {
+
+    if (prio > tcb_prio_get_maxPrio(ksCurThread->tcbPriority)) {
         userError("TCB Configure: Requested priority %d too high (max %d).",
-                  (int)prio, (int)(ksCurThread->tcbPriority));
+                  (int) prio,
+                  (int) tcb_prio_get_maxPrio(ksCurThread->tcbPriority));
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (maxPrio > tcb_prio_get_maxPrio(ksCurThread->tcbPriority)) {
+        userError("TCB Configure: Requested max prio %d too high (max %d).",
+                  (int) maxPrio,
+                  (int) tcb_prio_get_maxPrio(ksCurThread->tcbPriority));
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
     }
@@ -554,17 +749,138 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
-               faultEP, prio,
+               faultEP, tcb_prio_new(maxPrio, prio),
                cRootCap, cRootSlot,
                vRootCap, vRootSlot,
                bufferAddr, bufferCap,
-               bufferSlot, thread_control_update_all);
+               bufferSlot,
+               sched_context,
+               thread_control_update_all);
+}
+
+exception_t
+invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
+{
+
+    exception_t status;
+    /* TODO@alyons support changing scheduling params */
+    assert(tcb->tcbSchedContext == NULL);
+
+    status = invokeTCB_ThreadControl(
+                 tcb, NULL,
+                 0, TCB_PRIO_NULL,
+                 cap_null_cap_new(), 0,
+                 cap_null_cap_new(), 0,
+                 0, cap_null_cap_new(),
+                 0, sched_context,
+                 thread_control_update_sc);
+
+    if (status == EXCEPTION_NONE) {
+        setThreadState(ksCurThread, ThreadState_Restart);
+    }
+
+    /* don't even ask */
+#ifdef CONFIG_BENCHMARK
+    //TODO@alyons remove
+    /* Fine. The kernel needs to be able to start
+     * all of the edf threads at once for the benchmarks.
+     * But it doesn't have a list of all of them.
+     * Unless we sneakily put them all (unresumed) into
+     * the scheduler queue anyway... */
+    tcbSchedEnqueue(tcb);
+#endif
+
+    return status;
+}
+
+
+exception_t
+decodeSetSchedContext(cap_t cap, extra_caps_t rootCaps)
+{
+    cap_t scCap;
+    sched_context_t *sched_context;
+    tcb_t *tcb;
+
+    if (rootCaps.excaprefs[0] == NULL) {
+        userError("TCB SetSchedContext: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    /* sched_context cap must be valid */
+    scCap = rootCaps.excaprefs[0]->cap;
+
+    if (cap_get_capType(scCap) != cap_sched_context_cap) {
+        userError("TCB SetSchedContext: sched_context cap is invalid.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap));
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
+    /* tcb can't already have a sched context */
+    if (tcb->tcbSchedContext != NULL) {
+        userError("TCB SetSchedContext: tcb already bound to a sched context\n");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (sched_context->period == 0) {
+        userError("TCB SetSchedContext: sched_context cap does not have filled parameters.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    return invokeTCB_SetSchedContext(tcb, SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap)));
+}
+
+
+exception_t
+decodeSetMaxPriority(cap_t cap, unsigned int length, word_t *buffer)
+{
+    prio_t newMaxPrio;
+    tcb_t *tcb;
+
+    if (length < 1) {
+        userError("TCB SetPriority: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    newMaxPrio = getSyscallArg(0, buffer);
+
+    /* assuming here seL4_MaxPrio is of form 2^n - 1 */
+    newMaxPrio = newMaxPrio & MASK(8);
+
+    if (newMaxPrio > tcb_prio_get_maxPrio(ksCurThread->tcbPriority)) {
+        userError("TCB SetPriority: Requested max priority %d too high (max %d).",
+                  (int) newMaxPrio,
+                  (int) tcb_prio_get_maxPrio(ksCurThread->tcbPriority));
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
+    return invokeTCB_ThreadControl(
+               tcb, NULL,
+               0, tcb_prio_new(newMaxPrio, tcb_prio_get_prio(tcb->tcbPriority)),
+               cap_null_cap_new(), NULL,
+               cap_null_cap_new(), NULL,
+               0, cap_null_cap_new(),
+               NULL,
+               NULL,
+               thread_control_update_priority);
+
 }
 
 exception_t
 decodeSetPriority(cap_t cap, unsigned int length, word_t *buffer)
 {
     prio_t newPrio;
+    tcb_t *tcb;
 
     if (length < 1) {
         userError("TCB SetPriority: Truncated message.");
@@ -577,21 +893,26 @@ decodeSetPriority(cap_t cap, unsigned int length, word_t *buffer)
     /* assuming here seL4_MaxPrio is of form 2^n - 1 */
     newPrio = newPrio & MASK(8);
 
-    if (newPrio > ksCurThread->tcbPriority) {
+    if (newPrio > tcb_prio_get_maxPrio(ksCurThread->tcbPriority)) {
         userError("TCB SetPriority: Requested priority %d too high (max %d).",
-                  (int)newPrio, (int)ksCurThread->tcbPriority);
+                  (int) newPrio,
+                  (int) tcb_prio_get_maxPrio(ksCurThread->tcbPriority));
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
     setThreadState(ksCurThread, ThreadState_Restart);
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+
     return invokeTCB_ThreadControl(
-               TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), NULL,
-               0, newPrio,
+               tcb, NULL,
+               0, tcb_prio_new(tcb_prio_get_maxPrio(tcb->tcbPriority), newPrio),
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                0, cap_null_cap_new(),
-               NULL, thread_control_update_priority);
+               NULL,
+               NULL,
+               thread_control_update_priority);
 }
 
 exception_t
@@ -633,11 +954,13 @@ decodeSetIPCBuffer(cap_t cap, unsigned int length, cte_t* slot,
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
                0,
-               0, /* used to be prioInvalid, but it doesn't matter */
+               TCB_PRIO_NULL,
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                cptr_bufferPtr, bufferCap,
-               bufferSlot, thread_control_update_ipc_buffer);
+               bufferSlot,
+               NULL,
+               thread_control_update_ipc_buffer);
 }
 
 exception_t
@@ -713,10 +1036,12 @@ decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
                faultEP,
-               0, /* used to be prioInvalid, but it doesn't matter */
+               TCB_PRIO_NULL,
                cRootCap, cRootSlot,
                vRootCap, vRootSlot,
-               0, cap_null_cap_new(), NULL, thread_control_update_space);
+               0, cap_null_cap_new(), NULL,
+               NULL,
+               thread_control_update_space);
 }
 
 exception_t
@@ -834,11 +1159,12 @@ invokeTCB_Resume(tcb_t *thread)
 
 exception_t
 invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
-                        cptr_t faultep, prio_t priority,
+                        cptr_t faultep, tcb_prio_t priority,
                         cap_t cRoot_newCap, cte_t *cRoot_srcSlot,
                         cap_t vRoot_newCap, cte_t *vRoot_srcSlot,
                         word_t bufferAddr, cap_t bufferCap,
                         cte_t *bufferSrcSlot,
+                        sched_context_t *sched_context,
                         thread_control_flag_t updateFlags)
 {
     exception_t e;
@@ -847,6 +1173,22 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
     if (updateFlags & thread_control_update_space) {
         target->tcbFaultHandler = faultep;
     }
+
+    if (updateFlags & thread_control_update_sc) {
+        target->tcbSchedContext = sched_context;
+        if (sched_context != NULL) {
+            sched_context->tcb = target;
+            if (isRunnable(target)) {
+                releaseFirstJob(target->tcbSchedContext);
+            }
+        } else {
+            if (isRunnable(target)) {
+                suspend(target);
+            }
+        }
+    }
+
+    setupReplyMaster(target);
 
     if (updateFlags & thread_control_update_priority) {
         setPriority(target, priority);
@@ -1058,3 +1400,4 @@ invokeTCB_AEPControl(tcb_t *tcb, async_endpoint_t *aepptr)
 
     return EXCEPTION_NONE;
 }
+

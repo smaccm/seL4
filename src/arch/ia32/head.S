@@ -15,6 +15,7 @@
    indicating that the structure of the image should be taken from its ELF
    headers. */
 
+#include <config.h>
 #include <machine/assembler.h>
 
 #define MULTIBOOT_HEADER_MAGIC 0x1BADB002
@@ -83,9 +84,15 @@ BEGIN_FUNC(_start)
     /* Measure APIC/bus frequency */
     pushl %eax
     call apic_measure_freq
+    /* save apic_khz to edx */
+    movl %eax, %edx
+    pushl %edx
+    call tsc_init
+    popl %edx
 
     /* Already push parameters for calling boot_sys later */
-    pushl %eax /* 3rd parameter: apic_khz */
+    pushl %eax /* 4th parameter: tsc_khz */
+    pushl %edx /* 3rd parameter: apic_khz */
     pushl %esi /* 2nd parameter: multiboot_info_ptr */
     pushl %edi /* 1st parameter: multiboot_magic    */
 

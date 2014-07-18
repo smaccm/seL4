@@ -15,7 +15,8 @@ PLAT_C_SOURCES += machine/acpi.c \
                   machine/pci.c \
                   machine/pic.c \
                   machine/pit.c \
-                  machine/io.c
+                  machine/io.c \
+                  machine/tsc.c
 ifdef DEBUG
 PLAT_C_SOURCES += machine/debug_helpers.c
 endif

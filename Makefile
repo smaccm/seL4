@@ -423,7 +423,7 @@ endif
 ### Top-level targets
 ############################################################
 
-all: kernel.elf kernel.elf.strip
+all: kernel.elf kernel.elf.strip 
 
 theories: ${THEORIES}
 
@@ -474,7 +474,7 @@ kernel_final.c: kernel_all.c_pp
 
 LINKER_SCRIPT = src/plat/${PLAT}/linker.lds
 
-kernel.elf: ${OBJECTS} ${LINKER_SCRIPT}
+kernel.elf: sanity ${OBJECTS} ${LINKER_SCRIPT}
 	@echo " [LD] $@"
 	$(Q)${CHANGED} $@ ${LD} ${LDFLAGS} -T ${SOURCE_ROOT}/${LINKER_SCRIPT} \
 		-o $@ ${OBJECTS}
@@ -491,6 +491,19 @@ kernel.elf: ${OBJECTS} ${LINKER_SCRIPT}
 	@echo " [AS] $@"
 	$(Q)${AS} ${ASFLAGS} $< -o $@
 
+############################################################
+### Sanity -- check files that should be the same are the same
+############################################################
+
+DIFF_CMD:= ${SOURCE_ROOT}/tools/sanity.sh
+
+.PHONY sanity:
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/include/sel4/constants.h ${SOURCE_ROOT}/include/api/constants.h 
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/arch_include/${ARCH}/sel4/arch/objecttype.h ${SOURCE_ROOT}/include/arch/${ARCH}/arch/api/objecttype.h 
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/include/api/syscall.xml ${SOURCE_ROOT}/include/api/syscall.xml
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/include/api/syscall.xsd ${SOURCE_ROOT}/include/api/syscall.xsd 
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/include/sel4/errors.h ${SOURCE_ROOT}/include/api/errors.h
+	$(Q)${DIFF_CMD} ${SOURCE_ROOT}/libsel4/include/sel4/objecttype.h ${SOURCE_ROOT}/include/api/objecttype.h
 
 ###################
 # Header generation
@@ -575,6 +588,8 @@ endif
 %.h_pp: %.h ${GENHEADERS} ${STATICHEADERS} | ${DIRECTORIES}
 	@echo " [CPP] $@"
 	$(Q)${CPP} ${CPPFLAGS} -CC -E -o $@ $<
+
+	
 
 ############################################################
 ### Utility targets

@@ -252,9 +252,9 @@ menu "seL4 System Parameters"
             The number of priority levels per domain
 
     config BENCHMARK
-        bool "Adds a log buffer to the kernel for instrumentation."
+        bool "Adds a log buffer to the kernel for instrumentation"
         default n
-        help    
+        help
             Enables a 1MB log buffer and functions for extracting data from it at user level.
             Use TRACE_POINT_START and TRACE_POINT_STOP macros for recording data.
             NOTE this is only tested on the sabre and will not work on platforms with < 512mb memory.
@@ -263,6 +263,40 @@ menu "seL4 System Parameters"
     config AEP_BINDING
         bool
         default y
+
+    config EDF
+        bool "Enable EDF"
+        default y 
+        help 
+            Adds another priority level with EDF scheduling
+
+    choice 
+        prompt "EDF Implementation"
+        depends on EDF
+        default EDF_HEAP
+        help 
+            Choose EDF implementation
+
+        config EDF_HEAP
+            bool "EDF_HEAP"
+
+        config EDF_LIST
+            bool "EDF_LIST"
+    endchoice
+        
+    config EDF_CBS
+        bool "Enable CBS for edf"
+        depends on EDF
+        default y 
+        help
+            Blah blah blah blah
+       
+    config FAIL_CBS
+        bool "Fail if cbs is triggered"
+        depends on EDF
+        default n
+        help
+            Used for benchmarks
 
     config ALLOW_NULL_CSPACE
         bool "Null CSpace support"
@@ -273,6 +307,12 @@ menu "seL4 System Parameters"
             usually not allowed, enabling this setting will permit this
             operation.
 
+
+    config BENCHMARK
+        bool "Enable benchmarking"
+        default y
+        help
+            Enables EDF instrumentation points for benchmarking
 endmenu
 
 menu "Build Options"

@@ -20,24 +20,6 @@
 
 #include <object/asyncendpoint.h>
 
-static inline tcb_queue_t PURE
-aep_ptr_get_queue(async_endpoint_t *aepptr)
-{
-    tcb_queue_t aep_queue;
-
-    aep_queue.head = (tcb_t*)async_endpoint_ptr_get_aepQueue_head(aepptr);
-    aep_queue.end = (tcb_t*)async_endpoint_ptr_get_aepQueue_tail(aepptr);
-
-    return aep_queue;
-}
-
-static inline void
-aep_ptr_set_queue(async_endpoint_t *aepptr, tcb_queue_t aep_queue)
-{
-    async_endpoint_ptr_set_aepQueue_head(aepptr, (word_t)aep_queue.head);
-    async_endpoint_ptr_set_aepQueue_tail(aepptr, (word_t)aep_queue.end);
-}
-
 static inline void
 aep_set_active(async_endpoint_t *aepptr, word_t badge)
 {
@@ -45,6 +27,20 @@ aep_set_active(async_endpoint_t *aepptr, word_t badge)
     async_endpoint_ptr_set_aepMsgIdentifier(aepptr, badge);
 }
 
+void
+doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge)
+{
+    if ((tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
+        /* TODO could this be optimised? */
+        sched_context_t *sched_context = tcb == ksCurThread ? ksSchedContext : tcb->tcbSchedContext;
+        assert(sched_context != NULL);
+        enqueueJob(sched_context, tcb);
+    } else {
+        setThreadState(tcb, ThreadState_Running);
+    }
+
+    setRegister(tcb, badgeRegister, badge);
+}
 
 void
 sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
@@ -57,9 +53,8 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
             if (thread_state_ptr_get_tsType(&tcb->tcbState) == ThreadState_BlockedOnReceive) {
                 /* Send and start thread running */
                 ipcCancel(tcb);
-                setThreadState(tcb, ThreadState_Running);
-                setRegister(tcb, badgeRegister, badge);
-                attemptSwitchTo(tcb);
+                doAsyncTransfer(aepptr, tcb, badge);
+                attemptSwitchTo(tcb, false);
             } else {
                 aep_set_active(aepptr, badge);
             }
@@ -69,6 +64,7 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
         break;
     }
     case AEPState_Waiting: {
+
         tcb_queue_t aep_queue;
         tcb_t *dest;
 
@@ -87,9 +83,8 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
             async_endpoint_ptr_set_state(aepptr, AEPState_Idle);
         }
 
-        setThreadState(dest, ThreadState_Running);
-        setRegister(dest, badgeRegister, badge);
-        switchIfRequiredTo(dest);
+        doAsyncTransfer(aepptr, dest, badge);
+        switchIfRequiredTo(dest, false);
         break;
     }
 
@@ -112,13 +107,25 @@ receiveAsyncIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
 
     aepptr = AEP_PTR(cap_async_endpoint_cap_get_capAEPPtr(cap));
 
+    /* if the thread is bound and has a time cap this ends the current task,
+     * regardless of state */
+    /* TODO@alyons think hard about this */
+    if (isBlocking && ((tcb_t *) async_endpoint_ptr_get_aepBoundTCB(aepptr) == thread)) {
+        assert(thread->tcbSchedContext == ksDeadlinePQ.head || thread == ksCurThread);
+        completeCurrentJob();
+    }
+
+
     switch (async_endpoint_ptr_get_state(aepptr)) {
     case AEPState_Idle:
         /* Fall through */
     case AEPState_Waiting: {
         tcb_queue_t aep_queue;
 
+        /* Note: you can't call recieve on a waiting endpoint if it is bound */
+
         if (isBlocking) {
+
             /* Block thread on endpoint */
             thread_state_ptr_set_tsType(&thread->tcbState,
                                         ThreadState_BlockedOnAsyncEvent);
@@ -129,9 +136,9 @@ receiveAsyncIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
             /* Enqueue TCB */
             aep_queue = aep_ptr_get_queue(aepptr);
             aep_queue = tcbEPAppend(thread, aep_queue);
+            aep_ptr_set_queue(aepptr, aep_queue);
 
             async_endpoint_ptr_set_state(aepptr, AEPState_Waiting);
-            aep_ptr_set_queue(aepptr, aep_queue);
         } else {
             doPollFailedTransfer(thread);
         }
@@ -139,9 +146,8 @@ receiveAsyncIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
     }
 
     case AEPState_Active:
-        setRegister(
-            thread, badgeRegister,
-            async_endpoint_ptr_get_aepMsgIdentifier(aepptr));
+        assert(thread == ksCurThread);
+        doAsyncTransfer(aepptr, thread, async_endpoint_ptr_get_aepMsgIdentifier(aepptr));
         async_endpoint_ptr_set_state(aepptr, AEPState_Idle);
         break;
     }
@@ -196,7 +202,7 @@ completeAsyncIPC(async_endpoint_t *aepptr, tcb_t *tcb)
     if (likely(tcb && async_endpoint_ptr_get_state(aepptr) == AEPState_Active)) {
         async_endpoint_ptr_set_state(aepptr, AEPState_Idle);
         badge = async_endpoint_ptr_get_aepMsgIdentifier(aepptr);
-        setRegister(tcb, badgeRegister, badge);
+        doAsyncTransfer(aepptr, tcb, badge);
     } else {
         fail("tried to complete async ipc with unactive aep");
     }

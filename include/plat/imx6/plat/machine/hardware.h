@@ -37,6 +37,7 @@
 
 #include <arch/machine/gic_pl390.h>
 #include <arch/machine/l2c_310.h>
+
 #include <arch/machine/priv_timer.h>
 
 static inline void * CONST
@@ -79,6 +80,23 @@ void map_kernel_devices(void);
 bool_t CONST isReservedIRQ(irq_t irq);
 void handleReservedIRQ(irq_t irq);
 
+
+#define PLAT_LEEWAY (ksTicksPerUs * 2)
+#define IA32_EXTRA 0
+
+uint64_t getCurrentTime(void);
+
+/* @return the period of the timer in ns */
+uint32_t initTimer(void);
+
+/*
+ * @param deadline absolute deadline
+ *
+ * @return 1 if the deadline has already passed, 0 otherwise
+ */
+int setDeadline(uint64_t deadline);
+
+void ackDeadlineIRQ(void);
 
 #endif /* !__ASSEMBLER__ */
 

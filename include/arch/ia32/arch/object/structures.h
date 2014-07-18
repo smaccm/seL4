@@ -11,10 +11,12 @@
 #ifndef __ARCH_OBJECT_STRUCTURES_H
 #define __ARCH_OBJECT_STRUCTURES_H
 
+#include <config.h>
 #include <assert.h>
 #include <config.h>
 #include <util.h>
 #include <api/types.h>
+
 #include <arch/types.h>
 #include <arch/object/structures_gen.h>
 #include <arch/machine/hardware.h>

@@ -7,9 +7,11 @@
  *
  * @TAG(GD_GPL)
  */
+#ifndef __PRIV_TIMER_H
+#define __PRIV_TIMER_H
 
 /** MODIFIES: [*] */
 void resetTimer(void);
-/** MODIFIES: [*] */
-void initTimer(void);
+
+#endif /* __PRIV_TIMER_H */
 

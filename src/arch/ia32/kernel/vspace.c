@@ -20,6 +20,7 @@
 #include <arch/kernel/apic.h>
 #include <arch/kernel/vspace.h>
 #include <arch/linker.h>
+#include <benchmark.h>
 
 struct findPDForASID_ret {
     exception_t status;

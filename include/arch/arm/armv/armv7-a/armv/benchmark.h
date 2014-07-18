@@ -23,7 +23,7 @@
 static inline uint32_t
 timestamp(void)
 {
-    int ret;
+    uint32_t ret;
 
     asm volatile (
         "mrc p15, 0, %0, c9, c13, 0\n"

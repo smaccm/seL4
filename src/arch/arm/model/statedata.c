@@ -32,3 +32,10 @@ pde_t armKSGlobalPD[BIT(PD_BITS)] ALIGN_BSS(BIT(PD_SIZE_BITS));
 
 /* The global, privileged, page table. */
 pte_t armKSGlobalPT[BIT(PT_BITS)] ALIGN_BSS(BIT(PT_SIZE_BITS));
+
+/* note - this is hardcoded for the sabre */
+#ifdef CONFIG_PLAT_IMX6
+uint32_t ksTicksPerUs = 498u;
+#else
+#error "ksTicksPerUs undefined for this platform"
+#endif /* CONFIG_PLAT_IMX6 */

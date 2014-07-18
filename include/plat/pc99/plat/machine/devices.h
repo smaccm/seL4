@@ -21,4 +21,4 @@
 #define MAX_NUM_DRHU    ((-PPTR_DRHU_START) >> PAGE_BITS)
 #endif
 
-#endif
+#endif /* __PLAT_MACHINE_DEVICES_H */

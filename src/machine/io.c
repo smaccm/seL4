@@ -163,7 +163,6 @@ vprintf(const char *format, va_list ap)
                 n += print_unsigned_long(va_arg(ap, unsigned long), 10);
                 format++;
                 break;
-
             case 'x':
                 n += print_unsigned_long(va_arg(ap, unsigned long), 16);
                 format++;

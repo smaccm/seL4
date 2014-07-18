@@ -8,14 +8,33 @@
  * @TAG(GD_GPL)
  */
 
+#include <config.h>
 #include <types.h>
 #include <plat/machine.h>
 #include <model/statedata.h>
 #include <object/structures.h>
 #include <object/tcb.h>
 
+#ifdef CONFIG_BENCHMARK
+tcb_t *suspended;
+#endif
+
+/* The head of the EDF deadline queue */
+#ifdef CONFIG_EDF
+sc_prio_queue_t ksDeadlinePQ;
+#endif /* CONFIG_EDF */
+sc_prio_queue_t ksReleasePQ;
+uint64_t ksCurrentTime;
+bool_t ksReprogram = false;
+sched_context_t *ksSchedContext;
+
 /* Pointer to the head of the scheduler queue for each priority */
 tcb_queue_t ksReadyQueues[NUM_READY_QUEUES];
+
+#ifdef CONFIG_BENCHMARK
+/* one thread can wait on the apic timer (unused in edf impl) */
+tcb_t *ksWaitingThread = NULL;
+#endif /* CONFIG_BENCHMARK */
 
 /* Current thread TCB pointer */
 tcb_t *ksCurThread;
@@ -27,6 +46,9 @@ tcb_t *ksIdleThread;
  * respectively; other values encode SwitchToThread and must be valid
  * tcb pointers */
 tcb_t *ksSchedulerAction;
+
+/* Should ksCurSc still be bound to ksCurThread? */
+bool_t ksRestoreSC = true;
 
 /* Units of work we have completed since the last time we checked for
  * pending interrupts */

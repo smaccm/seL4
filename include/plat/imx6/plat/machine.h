@@ -43,7 +43,7 @@ enum IRQConstants {
 //  INTERRUPT_RESERVED      =  24,
 //  INTERRUPT_RESERVED      =  25,
 //  INTERRUPT_RESERVED      =  26,
-//  INTERRUPT_RESERVED      =  27,
+    INTERRUPT_GLOBAL_TIMER  =  27,
 //  INTERRUPT_RESERVED      =  28,
     INTERRUPT_PRIV_TIMER    =  29,
 //  INTERRUPT_RESERVED      =  30,
@@ -179,7 +179,11 @@ enum IRQConstants {
     maxIRQ = 159
 } platform_interrupt_t;
 
+#ifdef CONFIG_EDF
+#define KERNEL_TIMER_IRQ INTERRUPT_GLOBAL_TIMER
+#else
 #define KERNEL_TIMER_IRQ INTERRUPT_PRIV_TIMER
+#endif
 
 enum irqNumbers {
     irqInvalid = (irq_t) - 1

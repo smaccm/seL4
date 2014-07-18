@@ -22,6 +22,7 @@
 #include <object/cnode.h>
 #include <object/interrupt.h>
 #include <object/tcb.h>
+#include <object/schedcontext.h>
 #include <object/untyped.h>
 #include <model/preemption.h>
 #include <model/statedata.h>
@@ -46,6 +47,8 @@ word_t getObjectSize(word_t t, word_t userObjSize)
             return CTE_SIZE_BITS + userObjSize;
         case seL4_UntypedObject:
             return userObjSize;
+        case seL4_SchedContextObject:
+            return SCHED_CONTEXT_SIZE_BITS;
         default:
             fail("Invalid object type");
             return 0;
@@ -167,6 +170,15 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
             cte_ptr = TCB_PTR_CTE_PTR(tcb, tcbCTable);
             unbindAsyncEndpoint(tcb);
             suspend(tcb);
+
+            if (tcb->tcbSchedContext != NULL) {
+                sched_context_t *sc = tcb->tcbSchedContext;
+                sched_context_purge(sc);
+                tcb->tcbSchedContext->tcb = NULL;
+                tcb->tcbSchedContext = NULL;
+
+            }
+
             Arch_prepareThreadDelete(tcb);
             fc_ret.remainder =
                 Zombie_new(
@@ -184,7 +196,19 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         fc_ret.remainder = cap;
         fc_ret.irq = irqInvalid;
         return fc_ret;
+    case cap_sched_context_cap:
+        if (final) {
+            sched_context_t *sc = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(cap));
+            if (sc->tcb != NULL) {
+                suspend(sc->tcb);
+                sc->tcb->tcbSchedContext = NULL;
+                sc->tcb = NULL;
+            }
 
+            sched_context_purge(sc);
+            return fc_ret;
+        }
+        break;
     case cap_irq_handler_cap:
         if (final) {
             irq_t irq = cap_irq_handler_cap_get_capIRQ(cap);
@@ -242,6 +266,7 @@ recycleCap(bool_t is_final, cap_t cap)
              * "Zombie cap should not point at bound thread" */
             assert(tcb->boundAsyncEndpoint == NULL);
 
+            assert(tcb->tcbSchedContext == NULL);
             /* makeObject doesn't exist in C, objects are initialised by
              * zeroing. The effect of recycle in Haskell is to reinitialise
              * the TCB, with the exception of the TCB CTEs.  I achieve this
@@ -265,6 +290,17 @@ recycleCap(bool_t is_final, cap_t cap)
                              cap_endpoint_cap_get_capEPPtr(cap);
             epCancelBadgedSends(ep, badge);
         }
+        return cap;
+    }
+    case cap_sched_context_cap: {
+        sched_context_t *sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(cap));
+
+        if (sched_context->tcb != NULL) {
+            sched_context->tcb->tcbSchedContext = NULL;
+            sched_context->tcb = NULL;
+        }
+        sched_context_purge(sched_context);
+
         return cap;
     }
     default:
@@ -372,6 +408,13 @@ sameRegionAs(cap_t cap_a, cap_t cap_b)
         }
         break;
 
+    case cap_sched_context_cap:
+        if (cap_get_capType(cap_b) == cap_sched_context_cap) {
+            return cap_sched_context_cap_get_capPtr(cap_a) ==
+                   cap_sched_context_cap_get_capPtr(cap_b);
+        }
+        break;
+
     default:
         if (isArchCap(cap_a) &&
                 isArchCap(cap_b)) {
@@ -463,6 +506,8 @@ maskCapRights(cap_rights_t cap_rights, cap_t cap)
     case cap_irq_handler_cap:
     case cap_zombie_cap:
     case cap_thread_cap:
+    case cap_sched_context_cap:
+    case cap_sched_control_cap:
         return cap;
 
     case cap_endpoint_cap: {
@@ -555,7 +600,9 @@ createObject(object_t t, void *regionBase, word_t userSize)
          * the destination slots.
          */
         return cap_untyped_cap_new(0, userSize, WORD_REF(regionBase));
-
+    case seL4_SchedContextObject:
+        memzero(regionBase, 1UL << SCHED_CONTEXT_SIZE_BITS);
+        return cap_sched_context_cap_new(SCHED_CONTEXT_REF(regionBase));
     default:
         fail("Invalid object type");
     }
@@ -673,6 +720,14 @@ decodeInvocation(word_t label, unsigned int length,
         return decodeIRQHandlerInvocation(label,
                                           cap_irq_handler_cap_get_capIRQ(cap), extraCaps);
 
+    case cap_sched_control_cap:
+        return decodeSchedControlInvocation(label, length, extraCaps, buffer);
+
+    case cap_sched_context_cap:
+        /* there are no direct sched context cap invocations */
+        userError("Invalid capability type\n");
+        return EXCEPTION_SYSCALL_ERROR;
+
     default:
         fail("Invalid cap type");
     }
@@ -699,6 +754,10 @@ performInvocation_AsyncEndpoint(async_endpoint_t *aep, word_t badge)
 exception_t
 performInvocation_Reply(tcb_t *thread, cte_t *slot)
 {
-    doReplyTransfer(ksCurThread, thread, slot);
+    /* this is only called by Send on a reply cap, which
+     * means we don't donate. SendWait and ReplyWait use
+     * a different code path. Verification will probably
+     * hate me for this. */
+    doReplyTransfer(ksCurThread, thread, slot, false);
     return EXCEPTION_NONE;
 }

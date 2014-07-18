@@ -80,6 +80,8 @@ switchToThread_fp(tcb_t *thread, pde_t *pd)
         setCurrentPD(new_pd);
     }
 
+    assert(thread->tcbSchedContext == NULL);
+
     /* Code equivalent to in Arch_switchToThread, see arch/object/structures.bf
      * for layout of gdt_data */
     /* update the GDT_TLS entry with the thread's TLS_BASE address */
@@ -279,7 +281,6 @@ fastpath_call(word_t cptr, word_t msgInfo)
     info = messageInfoFromWord(msgInfo);
     length = message_info_get_msgLength(info);
     fault_type = fault_get_faultType(ksCurThread->tcbFault);
-
     /* Check there's no extra caps, the length is ok and there's no
      * saved fault. */
     if (unlikely(fastpath_mi_check(msgInfo) ||
@@ -326,7 +327,8 @@ fastpath_call(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure the destination has a higher/equal priority to us. */
-    if (unlikely(dest->tcbPriority < ksCurThread->tcbPriority)) {
+    if (unlikely(tcb_prio_get_prio(dest->tcbPriority) <
+                 tcb_prio_get_prio(ksCurThread->tcbPriority))) {
         slowpath(SysCall);
     }
 
@@ -338,6 +340,11 @@ fastpath_call(word_t cptr, word_t msgInfo)
 
     /* Ensure the original caller is in the current domain and can be scheduled directly. */
     if (CONFIG_NUM_DOMAINS > 1 && unlikely(dest->tcbDomain != ksCurDomain)) {
+        slowpath(SysCall);
+    }
+
+    /* Ensure caller is on same scheduling context */
+    if (unlikely(dest->tcbSchedContext != NULL)) {
         slowpath(SysCall);
     }
 
@@ -359,6 +366,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
     }
 
     badge = cap_endpoint_cap_get_capEPBadge(ep_cap);
+
 
     /* Block sender */
     thread_state_ptr_set_tsType_np(&ksCurThread->tcbState,
@@ -399,6 +407,7 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     tcb_t *caller;
     word_t badge;
     tcb_t *endpointTail;
+    tcb_t *endpointHead;
     uint32_t fault_type;
 
     cap_t newVTable;
@@ -469,12 +478,45 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure the original caller can be scheduled directly. */
-    if (unlikely(caller->tcbPriority < ksCurThread->tcbPriority)) {
+    if (unlikely(tcb_prio_get_prio(caller->tcbPriority) <
+                 tcb_prio_get_prio(ksCurThread->tcbPriority))) {
         slowpath(SysReplyWait);
     }
 
     /* Ensure the original caller is in the current domain and can be scheduled directly. */
     if (CONFIG_NUM_DOMAINS > 1 && unlikely(caller->tcbDomain != ksCurDomain)) {
+        slowpath(SysReplyWait);
+    }
+
+    if (unlikely(caller->tcbSchedContext != NULL)) {
+        slowpath(SysReplyWait);
+    }
+
+    endpointHead = TCB_PTR(endpoint_ptr_get_epQueue_head(ep_ptr));
+    endpointTail = TCB_PTR(endpoint_ptr_get_epQueue_tail(ep_ptr));
+
+    /* only hit the fast path if we are appending at the tail and/or head of the list */
+    if (likely(endpointHead == NULL)) {
+        /* queue is empty */
+        endpoint_ptr_set_epQueue_head_np(ep_ptr, TCB_REF(ksCurThread));
+        endpoint_ptr_mset_epQueue_tail_state(ep_ptr, TCB_REF(ksCurThread),
+                                             EPState_Recv);
+        ksCurThread->tcbEPNext = NULL;
+        ksCurThread->tcbEPPrev = NULL;
+    } else if (likely(tcb_prio_get_prio(ksCurThread->tcbPriority) <=
+                      tcb_prio_get_prio(endpointTail->tcbPriority))) {
+        /* append tcb at tail */
+        endpoint_ptr_mset_epQueue_tail_state(ep_ptr, TCB_REF(ksCurThread),
+                                             EPState_Recv);
+        ksCurThread->tcbEPNext = NULL;
+        ksCurThread->tcbEPPrev = endpointTail;
+    } else if (likely(tcb_prio_get_prio(ksCurThread->tcbPriority) >
+                      tcb_prio_get_prio(endpointHead->tcbPriority))) {
+        /* prepend at head */
+        endpoint_ptr_set_epQueue_head_np(ep_ptr, TCB_REF(ksCurThread));
+        ksCurThread->tcbEPPrev = NULL;
+        ksCurThread->tcbEPNext = endpointHead;
+    } else {
         slowpath(SysReplyWait);
     }
 
@@ -492,27 +534,6 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
         &ksCurThread->tcbState, (word_t)ep_ptr, ThreadState_BlockedOnReceive);
     thread_state_ptr_set_blockingIPCDiminish_np(
         &ksCurThread->tcbState, ! cap_endpoint_cap_get_capCanSend(ep_cap));
-
-    /* Place the thread in the endpoint queue */
-    endpointTail = TCB_PTR(endpoint_ptr_get_epQueue_tail(ep_ptr));
-    if (likely(!endpointTail)) {
-        ksCurThread->tcbEPPrev = NULL;
-        ksCurThread->tcbEPNext = NULL;
-
-        /* Set head/tail of queue and endpoint state. */
-        endpoint_ptr_set_epQueue_head_np(ep_ptr, TCB_REF(ksCurThread));
-        endpoint_ptr_mset_epQueue_tail_state(ep_ptr, TCB_REF(ksCurThread),
-                                             EPState_Recv);
-    } else {
-        /* Append current thread onto the queue. */
-        endpointTail->tcbEPNext = ksCurThread;
-        ksCurThread->tcbEPPrev = endpointTail;
-        ksCurThread->tcbEPNext = NULL;
-
-        /* Update tail of queue. */
-        endpoint_ptr_mset_epQueue_tail_state(ep_ptr, TCB_REF(ksCurThread),
-                                             EPState_Recv);
-    }
 
     /* Delete the reply cap. */
     mdb_node_ptr_mset_mdbNext_mdbRevocable_mdbFirstBadged(

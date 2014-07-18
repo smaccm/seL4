@@ -26,7 +26,7 @@ const p_region_t BOOT_RODATA avail_p_regs[] = {
     /* 1MB stolen for logging */
     { /* .start = */ 0x10000000, /* .end = */ 0x2fd00000 }
 #else
-    { /* .start = */ 0x10000000, /* .end = */ 0x50000000 }
+    { /* .start = */ 0x10000000, /* .end = */ 0x2fe00000 }
 #endif /* CONFIG_BENCHMARK */
 };
 
@@ -185,7 +185,7 @@ get_dev_p_reg(unsigned int i)
 bool_t CONST
 isReservedIRQ(irq_t irq)
 {
-    return irq == KERNEL_TIMER_IRQ;
+    return irq == KERNEL_TIMER_IRQ || irq == INTERRUPT_PRIV_TIMER;
 }
 
 /* Handle a platform-reserved IRQ. */
@@ -193,6 +193,108 @@ void
 handleReservedIRQ(irq_t irq)
 {
     printf("Received reserved IRQ: %d\n", (int)irq);
+}
+
+
+static volatile struct globalTimerMap {
+    uint32_t countLower;
+    uint32_t countUpper;
+    uint32_t control;
+    uint32_t isr;
+    uint32_t comparatorLower;
+    uint32_t comparatorUpper;
+    uint32_t autoInc;
+} *globalTimer;
+
+enum control {
+    ENABLE = 0,
+    COMP_ENABLE = 1,
+    IRQ_ENABLE = 2,
+    AUTO_INC = 3,
+    RESERVED = 4,
+    PRESCALER = 8,
+    RESERVED_2 = 16
+};
+
+int
+setDeadline(uint64_t deadline)
+{
+
+    uint64_t currentTime;
+    if (deadline < ksCurrentTime) {
+        printf("Deadline %llx, ksCurrentTime %llx\n", deadline, ksCurrentTime);
+        assert(deadline > ksCurrentTime);
+    }
+
+    /* write to the lower bits */
+    globalTimer->comparatorLower = (uint32_t) deadline;
+    /* write to the higher bits */
+    globalTimer->comparatorUpper = (uint32_t) (deadline >> 32llu);
+    /* set the enable bit */
+    globalTimer->control |= (1 << COMP_ENABLE);
+
+    /* turn on the interrupt */
+    globalTimer->control |= (1 << IRQ_ENABLE);
+
+    /* to avoid a race, we check if our deadline has already passed */
+    currentTime = getCurrentTime();
+
+    if (currentTime > deadline && globalTimer->isr == 0) {
+        /* we missed the deadline and no interrupt fired, turn the timer off */
+        globalTimer->control &= ~(1 << COMP_ENABLE);
+        globalTimer->control &= ~(1 << IRQ_ENABLE);
+        return 1;
+    }
+    /* if the interrupt did fire we will catch it on kernel exit, so return success */
+    return 0;
+}
+
+void
+ackDeadlineIRQ(void)
+{
+    assert(globalTimer->isr == 1);
+    /* clear comparator enable bit and the interrupt enable bit */
+    globalTimer->control &= ~(1 << COMP_ENABLE);
+    globalTimer->control &= ~(1 << IRQ_ENABLE);
+    /* ack the isr */
+    globalTimer->isr = 1;
+}
+
+uint64_t
+getCurrentTime(void)
+{
+    uint32_t upper, upper2, lower;
+
+    /* these values can't start the same */
+    upper = 1;
+    upper2 = 2;
+
+    while (upper != upper2) {
+        upper = globalTimer->countUpper;
+        lower = globalTimer->countLower;
+        upper2 = globalTimer->countUpper;
+    }
+
+    return (((uint64_t) upper) << 32) + (uint64_t) lower;
+}
+
+BOOT_CODE uint32_t
+initTimer(void)
+{
+    globalTimer = (volatile struct globalTimerMap *) ARM_MP_GLOBAL_TIMER_PPTR;
+    /* disable the timer */
+    globalTimer->control = 0;
+    /* zero the timer */
+    globalTimer->countLower = 0;
+    globalTimer->countUpper = 0;
+    /* turn it on again, wih interrupts on, comparator register off,
+     * in one-shot mode, with standard prescaler */
+    globalTimer->control = (1 << ENABLE) | (1 << IRQ_ENABLE);
+
+    /* BEWARE  this timer will overflow once 1GHz / 2 overflows.
+     * Good enough for a prototype */
+    /* this timer runs at 500Mhz, return KHz */
+    return 500000;
 }
 
 

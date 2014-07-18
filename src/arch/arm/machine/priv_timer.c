@@ -26,40 +26,11 @@ volatile struct priv_timer {
 #define TMR_INTS_EVENT       BIT(0)
 
 
-#define CLK_MHZ 400ULL
+#define CLK_MHZ 498ULL
 #define TIMER_INTERVAL_MS    (CONFIG_TIMER_TICK_MS)
 #define TIMER_COUNT_BITS 32
 
 #define PRESCALE ((CLK_MHZ*1000 * TIMER_INTERVAL_MS) >> TIMER_COUNT_BITS)
 #define TMR_LOAD ((CLK_MHZ*1000 * TIMER_INTERVAL_MS) / (PRESCALE + 1))
-
-/**
-   DONT_TRANSLATE
- */
-BOOT_CODE void
-initTimer(void)
-{
-    /* reset */
-    priv_timer->ctrl = 0;
-    priv_timer->ints = 0;
-
-    /* setup */
-    priv_timer->load = TMR_LOAD;
-    priv_timer->ctrl |= ((PRESCALE) << (TMR_CTRL_PRESCALE))
-                        | TMR_CTRL_AUTORELOAD | TMR_CTRL_IRQEN;
-
-    /* Enable */
-    priv_timer->ctrl |= TMR_CTRL_ENABLE;
-}
-
-/**
-   DONT_TRANSLATE
- */
-void
-resetTimer(void)
-{
-    priv_timer->ints = TMR_INTS_EVENT;
-}
-
 
 

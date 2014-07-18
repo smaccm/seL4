@@ -130,6 +130,9 @@ init_irqs(cap_t root_cnode_cap)
         setIRQState(IRQInactive, i);
     }
     setIRQState(IRQTimer, KERNEL_TIMER_IRQ);
+#ifdef CONFIG_BENCHMARK
+    setIRQState(BenchmarkTimer, INTERRUPT_PRIV_TIMER);
+#endif
 
     /* provide the IRQ control cap */
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IRQ_CTRL), cap_irq_control_cap_new());
@@ -439,6 +442,11 @@ try_init_kernel(
     if (!create_idle_thread()) {
         return false;
     }
+
+#ifdef CONFIG_EDF
+    /* create sched control cap */
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_SCHED_CTRL), cap_sched_control_cap_new());
+#endif
 
     /* create the initial thread */
     if (!create_initial_thread(

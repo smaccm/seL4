@@ -193,6 +193,8 @@ types = [
         Type("bool", 1, native_size_bits=8),
         Type("seL4_Word", WORD_SIZE_BITS),
         Type("seL4_CapRights", WORD_SIZE_BITS),
+        Type("seL4_CBS", WORD_SIZE_BITS),
+        Type("seL4_TaskType", WORD_SIZE_BITS),
 
         # seL4 Structures
         CapDataType(),
@@ -205,6 +207,8 @@ types = [
         CapType("seL4_TCB"),
         CapType("seL4_Untyped"),
         CapType("seL4_DomainSet"),
+        CapType("seL4_SchedContext"),
+        CapType("seL4_SchedControl")
         ]
 
 #

@@ -21,5 +21,25 @@ void asyncIPCCancel(tcb_t *threadPtr, async_endpoint_t *aepptr);
 void completeAsyncIPC(async_endpoint_t *aepptr, tcb_t *tcb);
 void unbindAsyncEndpoint(tcb_t *tcb);
 void bindAsyncEndpoint(tcb_t *tcb, async_endpoint_t *aepptr);
+void doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge);
+
+static inline tcb_queue_t PURE
+aep_ptr_get_queue(async_endpoint_t *aepptr)
+{
+    tcb_queue_t aep_queue;
+
+    aep_queue.head = (tcb_t*)async_endpoint_ptr_get_aepQueue_head(aepptr);
+    aep_queue.end = (tcb_t*)async_endpoint_ptr_get_aepQueue_tail(aepptr);
+
+    return aep_queue;
+}
+
+static inline void
+aep_ptr_set_queue(async_endpoint_t *aepptr, tcb_queue_t aep_queue)
+{
+    async_endpoint_ptr_set_aepQueue_head(aepptr, (word_t)aep_queue.head);
+    async_endpoint_ptr_set_aepQueue_tail(aepptr, (word_t)aep_queue.end);
+}
+
 
 #endif

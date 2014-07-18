@@ -13,6 +13,8 @@
 
 #define IA32_PAT_MSR            0x277
 
+#define IA32_TSC_DEADLINE_MSR    0x6e0
+
 #define IA32_PAT_MT_UNCACHEABLE     0x00
 #define IA32_PAT_MT_WRITE_COMBINING 0x01
 #define IA32_PAT_MT_WRITE_THROUGH   0x04

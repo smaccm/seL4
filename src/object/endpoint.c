@@ -18,28 +18,12 @@
 #include <object/endpoint.h>
 #include <object/tcb.h>
 
-static inline tcb_queue_t PURE
-ep_ptr_get_queue(endpoint_t *epptr)
-{
-    tcb_queue_t queue;
-
-    queue.head = (tcb_t*)endpoint_ptr_get_epQueue_head(epptr);
-    queue.end = (tcb_t*)endpoint_ptr_get_epQueue_tail(epptr);
-
-    return queue;
-}
-
-static inline void
-ep_ptr_set_queue(endpoint_t *epptr, tcb_queue_t queue)
-{
-    endpoint_ptr_set_epQueue_head(epptr, (word_t)queue.head);
-    endpoint_ptr_set_epQueue_tail(epptr, (word_t)queue.end);
-}
-
-void
+bool_t
 sendIPC(bool_t blocking, bool_t do_call, word_t badge,
         bool_t canGrant, tcb_t *thread, endpoint_t *epptr)
 {
+    bool_t donationOccured = false;
+
     switch (endpoint_ptr_get_state(epptr)) {
     case EPState_Idle:
     case EPState_Send:
@@ -94,7 +78,9 @@ sendIPC(bool_t blocking, bool_t do_call, word_t badge,
         doIPCTransfer(thread, epptr, badge, canGrant, dest, diminish);
 
         setThreadState(dest, ThreadState_Running);
-        attemptSwitchTo(dest);
+
+        donationOccured = (dest->tcbSchedContext == NULL);
+        attemptSwitchTo(dest, donationOccured);
 
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {
@@ -108,10 +94,12 @@ sendIPC(bool_t blocking, bool_t do_call, word_t badge,
         break;
     }
     }
+
+    return donationOccured;
 }
 
 void
-receiveIPC(tcb_t *thread, cap_t cap)
+receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
 {
     endpoint_t *epptr;
     bool_t diminish;
@@ -125,7 +113,8 @@ receiveIPC(tcb_t *thread, cap_t cap)
 
     /* Check for anything waiting in the async endpoint*/
     aepptr = thread->boundAsyncEndpoint;
-    if (aepptr && async_endpoint_ptr_get_state(aepptr) == AEPState_Active) {
+    if (!donationRequired && aepptr && async_endpoint_ptr_get_state(aepptr) == AEPState_Active) {
+        /* if a donation is required then we don't have a sc to run on */
         completeAsyncIPC(aepptr, thread);
     } else {
         switch (endpoint_ptr_get_state(epptr)) {
@@ -186,14 +175,32 @@ receiveIPC(tcb_t *thread, cap_t cap)
 
             if (do_call ||
                     fault_get_faultType(sender->tcbFault) != fault_null_fault) {
+
+                if (donationRequired) {
+                    /* This flag means the receiver requires a scheduling context
+                     * in order to run. */
+                    assert(sender->tcbSchedContext != NULL);
+                    ksCurThread->tcbSchedContext = sender->tcbSchedContext;
+                    ksCurThread->tcbSchedContext->tcb = ksCurThread;
+                    sender->tcbSchedContext = NULL;
+                }
+
                 if (canGrant && !diminish) {
                     setupCallerCap(sender, thread);
                 } else {
                     setThreadState(sender, ThreadState_Inactive);
                 }
+
             } else {
+                /* if the sender wasn't doing a call or fault we can't do a donation.
+                 * as a result the receiver becomes not runnable */
+                if (donationRequired) {
+                    rescheduleRequired();
+                    setThreadState(ksCurThread, ThreadState_Inactive);
+                }
+                assert(sender->tcbSchedContext != NULL);
                 setThreadState(sender, ThreadState_Running);
-                switchIfRequiredTo(sender);
+                switchIfRequiredTo(sender, false);
             }
 
             break;
@@ -293,8 +300,13 @@ epCancelAll(endpoint_t *epptr)
 
         /* Set all blocked threads to restart */
         for (; thread; thread = thread->tcbEPNext) {
-            setThreadState (thread, ThreadState_Restart);
-            tcbSchedEnqueue(thread);
+            if (thread->tcbSchedContext != NULL) {
+                setThreadState (thread, ThreadState_Restart);
+                tcbSchedEnqueue(thread);
+            } else {
+                setThreadState(thread, ThreadState_Inactive);
+            }
+
         }
 
         rescheduleRequired();
@@ -347,3 +359,5 @@ epCancelBadgedSends(endpoint_t *epptr, word_t badge)
         fail("invalid EP state");
     }
 }
+
+

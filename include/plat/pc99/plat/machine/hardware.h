@@ -67,4 +67,23 @@ void platAddDevices(void);
 
 void handleSpuriousIRQ(void);
 
+/* TODO@alyons this should be based on the actual clock frequency... */
+#define PLAT_LEEWAY 100
+#define IA32_EXTRA 500
+
+uint64_t getCurrentTime(void);
+int setDeadline(uint64_t deadline);
+/* unused */
+#define ackDeadlineIRQ()
+
+uint32_t tsc_init(void);
+uint64_t tsc_getCurrentTime(void);
+int tsc_setDeadline(uint64_t deadline);
+
+
+void apic_one_shot(uint32_t ms);
+
+#ifdef CONFIG_BENCHMARK
+void initTimer(void);
+#endif /* CONFIG_BENCHMARK */
 #endif

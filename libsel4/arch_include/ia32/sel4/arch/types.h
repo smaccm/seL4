@@ -12,6 +12,7 @@
 #define __LIBSEL4_ARCH_TYPES_H
 
 #include <stdint.h>
+#include <autoconf.h>
 
 #define seL4_WordBits        32
 #define seL4_PageBits        12
@@ -22,6 +23,7 @@
 #define seL4_PageTableBits   12
 #define seL4_PageDirBits     12
 #define seL4_IOPageTableBits 12
+#define seL4_SchedContextBits   7
 
 typedef uint32_t  seL4_Word;
 typedef seL4_Word seL4_CPtr;

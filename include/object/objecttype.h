@@ -24,6 +24,7 @@ struct deriveCap_ret {
 typedef struct deriveCap_ret deriveCap_ret_t;
 
 struct finaliseCap_ret {
+    exception_t status;
     cap_t remainder;
     irq_t irq;
 };

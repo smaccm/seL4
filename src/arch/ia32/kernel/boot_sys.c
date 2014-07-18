@@ -70,6 +70,7 @@ typedef struct glks {
     ui_info_t    ui_info_list   [CONFIG_MAX_NUM_NODES]; /* info about userland images */
     dev_p_regs_t dev_p_regs;  /* device memory regions */
     uint32_t     apic_khz;    /* frequency of APIC/bus */
+    uint32_t     tsc_khz;     /* clock frequency */
 #ifdef CONFIG_IOMMU
     uint32_t     num_drhu; /* number of IOMMUs */
     paddr_t      drhu_list[MAX_NUM_DRHU]; /* list of physical addresses of the IOMMUs */
@@ -334,6 +335,8 @@ try_boot_node(void)
     if (!lift_ndks(node_id)) {
         return false;
     }
+    ksTicksPerUs = glks.tsc_khz / 1000;
+    printf("KsTicksPerUs is %u\n", ksTicksPerUs);
 
     /* initialise NDKS and kernel heap */
     if (!init_node_state(
@@ -362,10 +365,12 @@ try_boot_node(void)
     /* initialise the CPU */
     if (!init_node_cpu(
                 glks.apic_khz,
+                glks.tsc_khz,
                 node_id != 0
             )) {
         return false;
     }
+
     return true;
 }
 
@@ -396,8 +401,8 @@ static BOOT_CODE bool_t
 try_boot_sys(
     unsigned long multiboot_magic,
     multiboot_info_t* mbi,
-    uint32_t apic_khz
-)
+    uint32_t apic_khz,
+    uint32_t tsc_khz)
 {
     /* ==== following code corresponds to the "select" in abstract specification ==== */
 
@@ -461,6 +466,9 @@ try_boot_sys(
 
     glks.apic_khz = apic_khz;
     printf("APIC: Bus frequency is %d MHz\n", glks.apic_khz / 1000);
+
+    glks.tsc_khz = tsc_khz;
+    printf("TSC: CPU frequency is %d MHz\n", glks.tsc_khz / 1000);
 
     /* remapping legacy IRQs to their correct vectors */
     pic_remap_irqs(IRQ_INT_OFFSET);
@@ -615,11 +623,13 @@ BOOT_CODE VISIBLE void
 boot_sys(
     unsigned long multiboot_magic,
     multiboot_info_t* mbi,
-    uint32_t apic_khz)
+    uint32_t apic_khz,
+    uint32_t tsc_khz
+)
 {
     bool_t result;
-    result = try_boot_sys(multiboot_magic, mbi, apic_khz);
 
+    result = try_boot_sys(multiboot_magic, mbi, apic_khz, tsc_khz);
     if (!result) {
         fail("boot_sys failed for some reason :(\n");
     }
