@@ -1380,6 +1380,23 @@ static exception_t performASIDPoolInvocation(asid_t asid, asid_pool_t* poolPtr, 
     return EXCEPTION_NONE;
 }
 
+static exception_t
+performPageGetAddress(void *vbase_ptr)
+{
+    paddr_t capFBasePtr;
+
+    /* Get the physical address of this frame. */
+    capFBasePtr = pptr_to_paddr(vbase_ptr);
+
+    /* return it in the first message register */
+    setRegister(ksCurThread, msgRegisters[0], capFBasePtr);
+    setRegister(ksCurThread, msgInfoRegister,
+                wordFromMessageInfo(message_info_new(0, 0, 0, 1)));
+
+    return EXCEPTION_NONE;
+}
+
+
 static inline bool_t
 checkVPAlignment(vm_page_size_t sz, word_t w)
 {
@@ -1832,21 +1849,13 @@ decodeIA32FrameInvocation(
 #endif
 
     case IA32PageGetAddress: {
-        paddr_t capFBasePtr;
-
-        /* Get the physical address of this frame. */
-        capFBasePtr = pptr_to_paddr((void*)cap_frame_cap_get_capFBasePtr(cap));
-
         /* Return it in the first message register. */
         assert(n_msgRegisters >= 1);
-        setRegister(ksCurThread, msgRegisters[0], capFBasePtr);
-        setRegister(ksCurThread, msgInfoRegister,
-                    wordFromMessageInfo(message_info_new(0, 0, 0, 1)));
 
         setThreadState(ksCurThread, ThreadState_Restart);
-        return EXCEPTION_NONE;
+        return performPageGetAddress((void*)cap_frame_cap_get_capFBasePtr(cap));
     }
-
+    
     default:
         current_syscall_error.type = seL4_IllegalOperation;
 
