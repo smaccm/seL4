@@ -1855,7 +1855,7 @@ decodeIA32FrameInvocation(
         setThreadState(ksCurThread, ThreadState_Restart);
         return performPageGetAddress((void*)cap_frame_cap_get_capFBasePtr(cap));
     }
-    
+
     default:
         current_syscall_error.type = seL4_IllegalOperation;
 
