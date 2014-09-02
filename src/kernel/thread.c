@@ -412,6 +412,9 @@ cbsReload(void)
 #ifdef CONFIG_FAIL_CBS
     assert(0);
 #endif /* CONFIG_FAIL_CBS */
+    if (!isRunnable(ksCurThread)) {
+        return;
+    }
 
     /* recharge the budget */
     ksSchedContext->cbsBudget = ksSchedContext->budget;
