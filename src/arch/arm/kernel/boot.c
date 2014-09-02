@@ -448,6 +448,12 @@ try_init_kernel(
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_SCHED_CTRL), cap_sched_control_cap_new());
 #endif
 
+    /* Before creating the initial thread (which also switches to it)
+     * we clean the cache so that any page table information written
+     * as a result of calling create_frames_of_region will be correctly
+     * read by the hardware page table walker */
+    cleanInvalidateL1Caches();
+
     /* create the initial thread */
     if (!create_initial_thread(
                 root_cnode_cap,

@@ -17,7 +17,7 @@
 
 ARCH_LIST:=arm ia32
 CPU_LIST:=arm1136jf-s ixp420 cortex-a8 cortex-a9 cortex-a15
-PLAT_LIST:=imx31 pc99 integratorcp ixp420 omap3 am335x exynos4 exynos5 imx6 apq8064
+PLAT_LIST:=imx31 pc99 ixp420 omap3 am335x exynos4 exynos5 imx6 apq8064
 ARMV_LIST:=armv6 armv7-a
 
 ifndef SOURCE_ROOT
@@ -147,7 +147,7 @@ default: all
 ### Paths
 ############################################################
 
-PYTHONPATH = ${SOURCE_ROOT}/tools
+PYTHONPATH := ${PYTHONPATH}:${SOURCE_ROOT}/tools
 export PYTHONPATH
 
 vpath %.c   ${SOURCE_ROOT}
@@ -338,9 +338,12 @@ ifdef FASTPATH
 DEFINES += -DFASTPATH
 endif
 
+# Only set CFLAGS if we're building standalone.
+# common/Makefile.Flags sets NK_CFLAGS  in Kbuild environments.
+ifndef NK_CFLAGS
 ifeq (${ARCH}, arm)
 CFLAGS += -mtune=${CPU} -marm -march=${ARMV}
-ASFLAGS += -mcpu=${CPU}
+ASFLAGS += -mcpu=${CPU} -march=${ARMV}
 DEFINES += -D$(shell echo ${ARMV}|tr [:lower:] [:upper:]|tr - _)
 ifeq (${CPU},cortex-a8)
 DEFINES += -DARM_CORTEX_A8
@@ -354,6 +357,7 @@ endif
 ifeq (${ARCH}, ia32)
 CFLAGS += -m32 -mno-mmx -mno-sse
 ASFLAGS += --32
+endif
 endif
 
 ifeq (${CPU}, arm1136jf-s)

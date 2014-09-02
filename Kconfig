@@ -55,13 +55,6 @@ config ARCH_IA32
             help
                 Support for ARM1136JF-S
 
-        config ARM926EJ_S
-            bool "ARM926EJ-S"
-            depends on ARCH_ARM
-            select ARCH_ARM_V5
-            help 
-                Support for ARM926EJ_S
-
         config ARM_CORTEX_A8 
             bool "Cortex A8"
             depends on ARCH_ARM
@@ -96,13 +89,6 @@ config ARCH_IA32
             depends on ARM1136JF_S
             help
                 Support for the KZM platform
-
-        config PLAT_INTEGRATORCP
-            bool "IntegratorCP Platform"
-            depends on ARCH_ARM
-            depends on ARM926EJ_S
-            help
-                Support for the IntegratorCP platform
 
         config PLAT_OMAP3
             bool "OMAP3 (BeagleBoard)"
@@ -428,5 +414,15 @@ menu "Errata"
             Enables a workaround for the 430973 Cortex-A8 (r1p0..r1p2) erratum. Error occurs
             if code containing ARM/Thumb interworking branch is replaced by different code
             at the same virtual address.
+
+    config ARM_ERRATA_773022
+        bool "Enable workaround for 773022 Cortex-A15 (r0p0..r0p4) erratum"
+        depends on ARCH_ARM
+        depends on ARM_CORTEX_A15
+        default y
+        help
+            Enables a workaround for the 773022 Cortex-A15 (r0p0..r0p4) erratum. Error occurs
+            on rare sequences of instructions and results in the loop buffer delivering
+            incorrect instructions. The work around is to disable the loop buffer
 
 endmenu

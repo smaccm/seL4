@@ -156,6 +156,12 @@ This function is used by the kernel to acknowledge an interrupt, after it has be
 > ackInterrupt :: IRQ -> MachineMonad ()
 > ackInterrupt (IRQ irq) = Arch.ackInterrupt irq
 
+This function is used to implement IOAPIC functionality in the kernel.
+
+> setInterruptMode :: IRQ -> Bool -> Bool -> MachineMonad ()
+> setInterruptMode (IRQ irq) levelTrigger polarityLow = Arch.setInterruptMode irq levelTrigger polarityLow
+
+
 \subsubsection{Timers}
 
 The timer interval is set at boot time by calling this function. It returns the IRQ that is used for timer interrupts.
@@ -201,4 +207,4 @@ The constant "nullPointer" is a physical pointer guaranteed to be invalid.
 > nullPointer :: PPtr a
 > nullPointer = PPtr 0
 
-% arch-tag: 36b378a0-bd18-450e-8750-801303d45ef4
+

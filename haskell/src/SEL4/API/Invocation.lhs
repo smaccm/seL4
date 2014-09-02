@@ -138,6 +138,10 @@ The following data type defines the set of possible invocations for IRQ capabili
 >             setIRQHandlerCap :: Capability,
 >             setIRQHandlerSlot :: PPtr CTE }
 >         | ClearIRQHandler { irqHandlerIRQ :: IRQ }
+>         | SetMode {
+>             modeIRQ :: IRQ,
+>             modeTrigger :: Bool,
+>             modePolarity :: Bool }
 >         deriving Show
 
 \subsection{Invocation Labels}
@@ -172,6 +176,7 @@ This datatype is defined globally over architectures as well as object types.
 >         | IRQAckIRQ
 >         | IRQSetIRQHandler
 >         | IRQClearIRQHandler
+>         | IRQSetMode
 >         | DomainSetSet
 >         | ARMPDClean_Data
 >         | ARMPDInvalidate_Data
@@ -186,6 +191,7 @@ This datatype is defined globally over architectures as well as object types.
 >         | ARMPageInvalidate_Data
 >         | ARMPageCleanInvalidate_Data
 >         | ARMPageUnify_Instruction
+>         | ARMPageGetAddress
 >         | ARMASIDControlMakePool
 >         | ARMASIDPoolAssign
 >         deriving (Enum, Bounded, Eq)
@@ -214,4 +220,4 @@ Decode the invocation type requested by a particular message label.
 >       ARMPageUnify_Instruction -> True
 >       _ -> False
 
-% arch-tag: DF38ABBD-0D6E-4996-8E5B-42FC4E54CFA9
+

@@ -63,6 +63,44 @@ void setRestartPC(tcb_t *thread, word_t v);
 /* Architecture specific machine operations */
 
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
+static inline uint32_t getProcessorID(void)
+{
+    uint32_t processor_id;
+    MRC("p15, 0, %0, c0, c0, 0", processor_id);
+    return processor_id;
+}
+
+/** DONT_TRANSLATE */
+static inline uint32_t readSystemControlRegister(void)
+{
+    uint32_t scr;
+    MRC("p15, 0, %0, c1, c0, 0", scr);
+    return scr;
+}
+
+/** DONT_TRANSLATE */
+static inline void writeSystemControlRegister(uint32_t scr)
+{
+    MCR("p15, 0, %0, c1, c0, 0", scr);
+}
+
+/** DONT_TRANSLATE */
+static inline uint32_t readAuxiliaryControlRegister(void)
+{
+    uint32_t acr;
+    MRC("p15, 0, %0, c1, c0, 1", acr);
+    return acr;
+}
+
+/** DONT_TRANSLATE */
+static inline void writeAuxiliaryControlRegister(uint32_t acr)
+{
+    MCR("p15, 0, %0, c1, c0, 1", acr);
+}
+
+/** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void clearExMonitor(void)
 {
     word_t tmp;
@@ -70,12 +108,14 @@ static inline void clearExMonitor(void)
 }
 
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void flushBTAC(void)
 {
     asm volatile("mcr p15, 0, %0, c7, c5, 6" : : "r"(0));
 }
 
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void writeContextID(word_t id)
 {
     asm volatile("mcr p15, 0, %0, c13, c0, 1" : : "r"(id));
@@ -87,6 +127,7 @@ void setHardwareASID(hw_asid_t hw_asid);
 
 /* Address space control */
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void setCurrentPD(paddr_t addr)
 {
     /* Mask supplied address (retain top 19 bits).  Set the lookup cache bits:
@@ -100,6 +141,7 @@ static inline void setCurrentPD(paddr_t addr)
 
 /* TLB control */
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void invalidateTLB(void)
 {
     dsb();
@@ -108,6 +150,7 @@ static inline void invalidateTLB(void)
     isb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void invalidateTLB_ASID(hw_asid_t hw_asid)
 {
     dsb();
@@ -116,6 +159,7 @@ static inline void invalidateTLB_ASID(hw_asid_t hw_asid)
     isb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void invalidateTLB_VAASID(word_t mva_plus_asid)
 {
     dsb();
@@ -127,6 +171,7 @@ static inline void invalidateTLB_VAASID(word_t mva_plus_asid)
 void lockTLBEntry(vptr_t vaddr);
 
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void cleanByVA(vptr_t vaddr, paddr_t paddr)
 {
 #ifdef ARM_CORTEX_A8
@@ -163,6 +208,7 @@ static inline void cleanByVA_PoU(vptr_t vaddr, paddr_t paddr)
 }
 /* D-Cache invalidate to PoC (v6/v7 common) */
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 static inline void invalidateByVA(vptr_t vaddr, paddr_t paddr)
 {
 #ifdef ARM_CORTEX_A8
@@ -175,6 +221,7 @@ static inline void invalidateByVA(vptr_t vaddr, paddr_t paddr)
     dmb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 /* I-Cache invalidate to PoU (L2 cache) (v6/v7 common) */
 static inline void invalidateByVA_I(vptr_t vaddr, paddr_t paddr)
 {
@@ -187,6 +234,7 @@ static inline void invalidateByVA_I(vptr_t vaddr, paddr_t paddr)
     isb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 /* I-Cache invalidate all to PoU (L2 cache) (v6/v7 common) */
 static inline void invalidate_I_PoU(void)
 {
@@ -198,6 +246,7 @@ static inline void invalidate_I_PoU(void)
     isb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 /* D-Cache clean & invalidate to PoC (v6/v7 common) */
 static inline void cleanInvalByVA(vptr_t vaddr, paddr_t paddr)
 {
@@ -213,6 +262,7 @@ static inline void cleanInvalByVA(vptr_t vaddr, paddr_t paddr)
     dsb();
 }
 /** MODIFIES: [*] */
+/** DONT_TRANSLATE */
 /* Invalidate branch predictors by VA (v6/v7 common) */
 static inline void branchFlush(vptr_t vaddr, paddr_t paddr)
 {
@@ -243,6 +293,7 @@ void cleanInvalidateL1Caches(void);
 
 /* Fault status */
 /** MODIFIES: */
+/** DONT_TRANSLATE */
 static inline word_t PURE getIFSR(void)
 {
     word_t IFSR;
@@ -250,6 +301,7 @@ static inline word_t PURE getIFSR(void)
     return IFSR;
 }
 /** MODIFIES: */
+/** DONT_TRANSLATE */
 static inline word_t PURE getDFSR(void)
 {
     word_t DFSR;
@@ -257,6 +309,7 @@ static inline word_t PURE getDFSR(void)
     return DFSR;
 }
 /** MODIFIES: */
+/** DONT_TRANSLATE */
 static inline word_t PURE getFAR(void)
 {
     word_t FAR;
