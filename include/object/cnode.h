@@ -25,6 +25,7 @@ typedef struct slot_range slot_range_t;
 exception_t decodeCNodeInvocation(word_t label, unsigned int length,
                                   cap_t cap, extra_caps_t extraCaps,
                                   word_t *buffer);
+exception_t decodeCNodeSaveCaller(cte_t *destSlot, tcb_t *target);
 exception_t invokeCNodeRevoke(cte_t *destSlot);
 exception_t invokeCNodeDelete(cte_t *destSlot);
 exception_t invokeCNodeRecycle(cte_t *destSlot);
@@ -32,7 +33,7 @@ exception_t invokeCNodeInsert(cap_t cap, cte_t *srcSlot, cte_t *destSlot);
 exception_t invokeCNodeMove(cap_t cap, cte_t *srcSlot, cte_t *destSlot);
 exception_t invokeCNodeRotate(cap_t cap1, cap_t cap2, cte_t *slot1,
                               cte_t *slot2, cte_t *slot3);
-exception_t invokeCNodeSaveCaller(cte_t *destSlot);
+exception_t invokeCNodeSaveCaller(cte_t *destSlot, cte_t *srcSlot, cap_t cap);
 void cteInsert(cap_t newCap, cte_t *srcSlot, cte_t *destSlot);
 void cteMove(cap_t newCap, cte_t *srcSlot, cte_t *destSlot);
 void capSwapForDelete(cte_t *slot1, cte_t *slot2);

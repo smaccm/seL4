@@ -138,6 +138,11 @@
 			<param dir="in" name="src_index" type="seL4_Word"/>
 			<param dir="in" name="src_depth" type="uint8_t"/>
 		</method>
+		<method id="CNodeSaveTCBCaller" name="SaveTCBCaller">
+            <param dir="in" name="index" type="seL4_Word"/>
+            <param dir="in" name="depth" type="uint8_t"/>
+            <param dir="in" name="tcb" type="seL4_CPtr"/>
+		</method>
 		<method id="CNodeSaveCaller" name="SaveCaller">
 			<param dir="in" name="index" type="seL4_Word"/>
 			<param dir="in" name="depth" type="uint8_t"/>

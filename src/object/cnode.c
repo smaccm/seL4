@@ -202,14 +202,28 @@ decodeCNodeInvocation(word_t label, unsigned int length, cap_t cap,
     }
 
     if (label == CNodeSaveCaller) {
-        status = ensureEmptySlot(destSlot);
-        if (status != EXCEPTION_NONE) {
-            userError("CNode SaveCaller: Destination slot not empty.");
-            return status;
+        return decodeCNodeSaveCaller(destSlot, ksCurThread);
+    }
+
+    if (label == CNodeSaveTCBCaller) {
+        tcb_t *tcb;
+        cap_t tcbCap;
+
+        if (extraCaps.excaprefs[0] == NULL) {
+            userError("CNode SaveTCBCaller: Truncated message.");
+            current_syscall_error.type = seL4_TruncatedMessage;
+            return EXCEPTION_SYSCALL_ERROR;
         }
 
-        setThreadState(ksCurThread, ThreadState_Restart);
-        return invokeCNodeSaveCaller(destSlot);
+        tcbCap = extraCaps.excaprefs[0]->cap;
+        if (cap_get_capType(tcbCap) != cap_thread_cap) {
+            userError("Cnode SaveTCBCaller: invalid argument");
+            current_syscall_error.type = seL4_InvalidArgument;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+
+        tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(tcbCap));
+        return decodeCNodeSaveCaller(destSlot, tcb);
     }
 
     if (label == CNodeRecycle) {
@@ -354,31 +368,45 @@ invokeCNodeRotate(cap_t cap1, cap_t cap2, cte_t *slot1,
 }
 
 exception_t
-invokeCNodeSaveCaller(cte_t *destSlot)
+invokeCNodeSaveCaller(cte_t *destSlot, cte_t *srcSlot, cap_t cap)
 {
+    assert(cap_get_capType(cap) == cap_reply_cap);
+
+    if (!cap_reply_cap_get_capReplyMaster(cap)) {
+        cteMove(cap, srcSlot, destSlot);
+    }
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeCNodeSaveCaller(cte_t *destSlot, tcb_t *target)
+{
+    exception_t status;
     cap_t cap;
     cte_t *srcSlot;
+    uint32_t type;
 
-    srcSlot = TCB_PTR_CTE_PTR(ksCurThread, tcbCaller);
-    cap = srcSlot->cap;
-
-    switch (cap_get_capType(cap)) {
-    case cap_null_cap:
-        userError("CNode SaveCaller: Reply cap not present.");
-        break;
-
-    case cap_reply_cap:
-        if (!cap_reply_cap_get_capReplyMaster(cap)) {
-            cteMove(cap, srcSlot, destSlot);
-        }
-        break;
-
-    default:
-        fail("caller capability must be null or reply");
-        break;
+    status = ensureEmptySlot(destSlot);
+    if (status != EXCEPTION_NONE) {
+        userError("CNode SaveCaller: Destination slot not empty.");
+        return status;
     }
 
-    return EXCEPTION_NONE;
+    srcSlot = TCB_PTR_CTE_PTR(target, tcbCaller);
+    cap = srcSlot->cap;
+
+    type = cap_get_capType(cap);
+    if (type == cap_null_cap) {
+        userError("CNode SaveCaller: Reply cap not present.");
+        current_syscall_error.type = seL4_FailedLookup;
+        current_syscall_error.failedLookupWasSource = false;
+        return EXCEPTION_SYSCALL_ERROR;
+    } else if (type != cap_reply_cap) {
+        fail("caller capability must be null or reply");
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeCNodeSaveCaller(destSlot, srcSlot, cap);
 }
 
 /*
