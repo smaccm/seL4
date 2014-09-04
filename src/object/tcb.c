@@ -141,7 +141,7 @@ tcbEPReorder(tcb_t *tcb, tcb_queue_t queue, prio_t oldPrio)
     if (newPrio > oldPrio) {
         /* move tcb up in the queue */
         tcb_t *prev = tcb->tcbEPPrev;
-        
+
         if (prev == NULL ||
                 tcb_prio_get_prio(tcb->tcbPriority) < tcb_prio_get_prio(prev->tcbPriority)) {
             /* nothing to do, tcb is at head of list or in the correct place */

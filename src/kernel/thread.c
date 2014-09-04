@@ -896,10 +896,10 @@ chooseThread(void)
     }
 #endif /* CONFIG_EDF */
 
-        assert(thread);
-        assert(isRunnable(thread));
-        switchToThread(thread);
-        return;
+    assert(thread);
+    assert(isRunnable(thread));
+    switchToThread(thread);
+    return;
 }
 
 void
