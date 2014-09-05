@@ -527,8 +527,10 @@ sched_context_purge(sched_context_t *sc)
     /* remove sched context from any queues it is in */
     if (sched_context_status_get_inReleaseHeap(sc->status)) {
         releaseRemove(sc);
+#ifdef CONFIG_EDF
     } else if (sched_context_status_get_inDeadlineHeap(sc->status)) {
         deadlineRemove(sc);
+#endif /* CONFIG_EDF */
     }
 
 }
