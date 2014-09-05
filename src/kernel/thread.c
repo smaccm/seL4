@@ -115,24 +115,64 @@ suspend(tcb_t *target)
     ipcCancel(target);
     setThreadState(target, ThreadState_Inactive);
     tcbSchedDequeue(target);
-    /* TODO@alyons should this complete the current job? */
+
+    if (target->tcbSchedContext) {
+        sched_context_purge(target->tcbSchedContext);
+    }
 
 }
 
 void
+releaseJob(sched_context_t *target)
+{
+    assert(target->tcb != NULL);
+
+#ifdef CONFIG_EDF
+    if (isEDFThread(target->tcb)) {
+        deadlineAdd(target);
+        return;
+    }
+#endif
+    tcbSchedEnqueue(target->tcb);
+    rescheduleRequired();
+}
+
+
+
+void
 restart(tcb_t *target)
 {
+    sched_context_t *sc = target->tcbSchedContext;
+
     if (isBlocked(target)) {
         ipcCancel(target);
-        assert(target->tcbSchedContext != NULL);
-        assert(target->tcbSchedContext->tcb != NULL);
+        assert(sc != NULL);
+        assert(sc->tcb != NULL);
         setThreadState(target, ThreadState_Restart);
-        /* the first job is released as soon as the thread is resumed,
-         * if there isn't already a thread in the scheduling context */
-        if (isTimeTriggered(target->tcbSchedContext)) {
-            releaseFirstJob(target->tcbSchedContext);
+
+        if (isTimeTriggered(sc)) {
+#ifdef CONFIG_EDF_CBS
+            if (sc->nextRelease < ksCurrentTime) {
+                /* recharge time has passed, recharge */
+                sc->cbsBudget = sc->budget;
+                sc->nextRelease = ksCurrentTime + sc->period;
+#ifdef CONFIG_EDF
+                sc->nextDeadline = ksCurrentTime + sc->deadline;
+#endif /* CONFIG_EDF */
+                releaseJob(sc);
+            } else if (sc->cbsBudget > 0) {
+                /* still has budget, release time has not passed, just resume */
+                releaseJob(sc);
+            } else {
+                /* release time hasn't passed, no budget left */
+                releaseAdd(sc);
+            }
+#else
+            releaseJob(sc);
+#endif
         }
     }
+    /* event triggered jobs will be throttled when the job comes in */
 }
 
 void
@@ -435,15 +475,19 @@ cbsReload(void)
     } else {
         /* fixed priority thread */
         assert(isRunnable(ksCurThread));
-        ksSchedContext->nextRelease += ksSchedContext->period;
-        if (ksSchedContext->nextRelease > ksCurrentTime + PLAT_LEEWAY) {
+        if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
+            /* recharge */
+            ksSchedContext->cbsBudget = ksSchedContext->budget;
+            ksSchedContext->nextRelease = ksCurrentTime + ksSchedContext->period;
+            tcbSchedAppend(ksCurThread);
+            TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
+        } else {
             TRACE("Rate limited FP thread %llx < %llx\n",
                   ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
+            ksSchedContext->cbsBudget = 0;
+            /* TODO@alyons is inactive really the right state here?? */
             setThreadState(ksCurThread, ThreadState_Inactive);
             releaseAdd(ksSchedContext);
-        } else {
-            TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
-            tcbSchedAppend(ksCurThread);
         }
     }
 }
@@ -451,40 +495,6 @@ cbsReload(void)
 #else
 #define cbsReload(...)
 #endif /* CONFIG_EDF_CBS */
-
-/* release a job from a task that has not been scheduled before */
-void
-releaseFirstJob(sched_context_t *toRelease)
-{
-    assert(toRelease != NULL);
-    assert(toRelease->tcb != NULL);
-    assert(toRelease->period > 0);
-    assert(toRelease->deadline > 0);
-    assert(toRelease->budget > 0);
-
-    toRelease->nextRelease =  ksCurrentTime;
-    toRelease->nextDeadline =  ksCurrentTime + toRelease->deadline;
-    toRelease->priority = toRelease->nextDeadline;
-
-#ifdef CONFIG_EDF_CBS
-    toRelease->cbsBudget = toRelease->budget;
-#endif /* CONFIG_EDF_CBS */
-
-#ifdef CONFIG_EDF
-    if (isEDFThread(toRelease->tcb)) {
-        assert(toRelease != ksDeadlinePQ.head);
-        deadlineAdd(toRelease);
-    } else {
-        tcbSchedEnqueue(toRelease->tcb);
-        rescheduleRequired();
-    }
-#else
-    tcbSchedEnqueue(toRelease->tcb);
-    rescheduleRequired();
-#endif /* CONFIG_EDF */
-
-}
-
 
 /* Release heap operations */
 void
@@ -609,15 +619,14 @@ void
 completeCurrentJob(void)
 {
 
-    /* TODO should probably store this */
-    assert(ksCurThread->tcbSchedContext == NULL);
 
+    /* TODO@alyons is inactive the correct state here??*/
+    setThreadState(ksCurThread, ThreadState_Inactive);
 #ifdef CONFIG_EDF
     if (isEDFThread(ksCurThread)) {
         deadlineBehead();
     } else {
 #endif /* CONFIG_EDF */
-        setThreadState(ksCurThread, ThreadState_Inactive);
         rescheduleRequired();
 #ifdef CONFIG_EDF
     }
@@ -627,9 +636,7 @@ completeCurrentJob(void)
     /* update parameters */
     ksSchedContext->lastScheduled = ksCurrentTime;
     /* remaining budget is forfeit (job is finished) */
-    ksSchedContext->cbsBudget = ksSchedContext->budget;
-    ksSchedContext->nextRelease += ksSchedContext->period;
-    ksSchedContext->nextDeadline = ksSchedContext->nextRelease + ksSchedContext->deadline;
+    ksSchedContext->cbsBudget = 0;
     TRACE("%p Job complete at %llx,next: %llx, dl: %llx\n", ksCurThread, ksCurrentTime, ksSchedContext->nextRelease, ksSchedContext->nextDeadline);
 
     if (isTimeTriggered(ksSchedContext)) {
@@ -745,6 +752,10 @@ void releaseJobs(void)
         }
         assert(thread != NULL);
 
+        setThreadState(thread, ThreadState_Running);
+        /* recharge the budget */
+        head->cbsBudget = head->budget;
+        head->nextRelease = ksCurrentTime + head->period;
         //TODO@alyons need to check that it is blocked on the bound endpoint!
         if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
             TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
@@ -887,7 +898,7 @@ chooseThread(void)
             thread = ksDeadlinePQ.head->tcb;
         }
         assert(thread != NULL);
-        TRACE("Chose EDF thread %p, budget: %llx\n", thread, thread->tcbSchedContext->cbsBudget);
+        TRACE("Chose EDF thread %p, budget: %llx\n", thread, ksDeadlinePQ.head->cbsBudget);
     } else {
 #endif /* CONFIG_EDF */
         thread = ksReadyQueues[ready_queues_index(dom, prio)].head;

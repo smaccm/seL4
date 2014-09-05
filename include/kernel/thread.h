@@ -77,7 +77,7 @@ void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
 void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
 void chooseThread(void);
-void releaseFirstJob(sched_context_t *toRelease);
+void releaseJob(sched_context_t *toRelease);
 void completeCurrentJob(void);
 void releaseRecurringJob(sched_context_t *sc);
 uint64_t getNextInterrupt(void);
