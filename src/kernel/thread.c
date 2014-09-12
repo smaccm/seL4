@@ -201,8 +201,10 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate)
     if (likely(fault_get_faultType(receiver->tcbFault) == fault_null_fault)) {
         doIPCTransfer(sender, NULL, 0, true, receiver, false);
         cteDeleteOne(slot);
-        setThreadState(receiver, ThreadState_Running);
-        attemptSwitchTo(receiver, donate);
+        if (donate || receiver->tcbSchedContext != NULL) {
+            setThreadState(receiver, ThreadState_Running);
+            attemptSwitchTo(receiver, donate);
+        }
     } else {
         bool_t restart;
 

@@ -275,11 +275,6 @@ handleReply(bool_t replyWait)
         /* Haskell error:
          * "handleReply: caller must not be the current thread" */
         assert(caller != ksCurThread);
-        if (!replyWait && caller->tcbSchedContext == NULL) {
-            userError("Attempted to reply to a thread with no scheduling context\n");
-            /* TODO send fault */
-        }
-
         donationOccured = replyWait && (caller->tcbSchedContext == NULL);
         doReplyTransfer(ksCurThread, caller, callerSlot, donationOccured);
         return donationOccured;
