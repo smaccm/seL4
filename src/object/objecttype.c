@@ -173,7 +173,6 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
 
             if (tcb->tcbSchedContext != NULL) {
                 sched_context_t *sc = tcb->tcbSchedContext;
-                sched_context_purge(sc);
                 tcb->tcbSchedContext->tcb = NULL;
                 tcb->tcbSchedContext = NULL;
 
@@ -205,7 +204,6 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                 sc->tcb = NULL;
             }
 
-            sched_context_purge(sc);
             return fc_ret;
         }
         break;
@@ -290,17 +288,6 @@ recycleCap(bool_t is_final, cap_t cap)
                              cap_endpoint_cap_get_capEPPtr(cap);
             epCancelBadgedSends(ep, badge);
         }
-        return cap;
-    }
-    case cap_sched_context_cap: {
-        sched_context_t *sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(cap));
-
-        if (sched_context->tcb != NULL) {
-            sched_context->tcb->tcbSchedContext = NULL;
-            sched_context->tcb = NULL;
-        }
-        sched_context_purge(sched_context);
-
         return cap;
     }
     default:
