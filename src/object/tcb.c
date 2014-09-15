@@ -453,8 +453,13 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
 
     case TCBUnbindAEP:
         return decodeUnbindAEP(cap);
+
     case TCBSetSchedContext:
         return decodeSetSchedContext(cap, extraCaps);
+
+    case TCBClearSchedContext:
+        return decodeClearSchedContext(cap);
+
     default:
         /* Haskell: "throw IllegalOperation" */
         userError("TCB: Illegal operation.");
@@ -791,6 +796,39 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
 #endif
 
     return status;
+}
+
+exception_t
+invokeTCB_ClearSchedContext(tcb_t *tcb)
+{
+
+    tcb->tcbSchedContext->tcb = NULL;
+    tcb->tcbSchedContext = NULL;
+
+    if (isRunnable(tcb)) {
+        setThreadState(tcb, ThreadState_Inactive);
+    }
+
+    if (tcb == ksCurThread) {
+        rescheduleRequired();
+    }
+
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeClearSchedContext(cap_t cap)
+{
+
+    tcb_t *tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    if (tcb->tcbSchedContext == NULL) {
+        userError("TCB has no scheduling context\n");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeTCB_ClearSchedContext(tcb);
 }
 
 

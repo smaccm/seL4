@@ -80,6 +80,7 @@
         <method id="TCBSetSchedContext" name="SetSchedContext">
             <param dir="in" name="sched_context" type="seL4_SchedContext"/>
         </method>
+        <method id="TCBClearSchedContext" name="ClearSchedContext" />
 	</interface>
 	<interface name="seL4_CNode">
         <method id="CNodeRevoke" name="Revoke">
