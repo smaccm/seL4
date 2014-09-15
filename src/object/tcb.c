@@ -781,6 +781,9 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
                  thread_control_update_sc);
 
     if (status == EXCEPTION_NONE) {
+        if (isBlockedInSyscall(tcb)) {
+            restart(tcb);
+        }
         setThreadState(ksCurThread, ThreadState_Restart);
     }
 
