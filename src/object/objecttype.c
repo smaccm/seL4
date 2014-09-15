@@ -172,10 +172,8 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
             suspend(tcb);
 
             if (tcb->tcbSchedContext != NULL) {
-                sched_context_t *sc = tcb->tcbSchedContext;
                 tcb->tcbSchedContext->tcb = NULL;
                 tcb->tcbSchedContext = NULL;
-
             }
 
             Arch_prepareThreadDelete(tcb);
