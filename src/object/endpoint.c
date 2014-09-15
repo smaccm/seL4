@@ -19,7 +19,7 @@
 #include <object/tcb.h>
 
 bool_t
-sendIPC(bool_t blocking, bool_t do_call, word_t badge,
+sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
         bool_t canGrant, tcb_t *thread, endpoint_t *epptr)
 {
     bool_t donationOccured = false;
@@ -77,10 +77,20 @@ sendIPC(bool_t blocking, bool_t do_call, word_t badge,
             thread_state_get_blockingIPCDiminishCaps(dest->tcbState);
         doIPCTransfer(thread, epptr, badge, canGrant, dest, diminish);
 
-        setThreadState(dest, ThreadState_Running);
+        donationOccured = donate && (dest->tcbSchedContext == NULL);
 
-        donationOccured = (dest->tcbSchedContext == NULL);
-        attemptSwitchTo(dest, donationOccured);
+        if (donationOccured || dest->tcbSchedContext != NULL) {
+            attemptSwitchTo(dest, donationOccured);
+            /* otherwise don't enqueue */
+            setThreadState(dest, ThreadState_Running);
+        } else {
+            /*
+             * receiving thread has no sched context and we
+             * cannot donate. In this case we deliver and if the
+             * thread is resumed it will recieve it
+             */
+            setThreadState(dest, ThreadState_BlockedInSyscall);
+        }
 
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {

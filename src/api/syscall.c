@@ -379,7 +379,7 @@ handleSendWait(void)
             return;
         }
 
-        donationRequired = sendIPC(true, false, cap_endpoint_cap_get_capEPBadge(dest_lu_ret.cap),
+        donationRequired = sendIPC(true, false, true, cap_endpoint_cap_get_capEPBadge(dest_lu_ret.cap),
                                    cap_endpoint_cap_get_capCanGrant(dest_lu_ret.cap),
                                    ksCurThread, epptr);
 

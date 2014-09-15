@@ -57,11 +57,18 @@ isBlocked(const tcb_t *thread)
     case ThreadState_BlockedOnSend:
     case ThreadState_BlockedOnAsyncEvent:
     case ThreadState_BlockedOnReply:
+    case ThreadState_BlockedInSyscall:
         return true;
 
     default:
         return false;
     }
+}
+
+static inline bool_t PURE
+isBlockedInSyscall(const tcb_t *thread)
+{
+    return thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedInSyscall;
 }
 
 static inline bool_t PURE
@@ -148,7 +155,11 @@ restart(tcb_t *target)
         ipcCancel(target);
         assert(sc != NULL);
         assert(sc->tcb != NULL);
-        setThreadState(target, ThreadState_Restart);
+        if (isBlockedInSyscall(target)) {
+            setThreadState(target, ThreadState_Running);
+        } else {
+            setThreadState(target, ThreadState_Restart);
+        }
 
         if (isTimeTriggered(sc)) {
 #ifdef CONFIG_EDF_CBS

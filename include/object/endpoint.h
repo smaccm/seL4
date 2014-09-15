@@ -14,7 +14,7 @@
 #include <types.h>
 #include <object/structures.h>
 
-bool_t sendIPC(bool_t blocking, bool_t do_call, word_t badge,
+bool_t sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
                bool_t canGrant, tcb_t *thread, endpoint_t *epptr);
 void receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired);
 void ipcCancel(tcb_t *tptr);

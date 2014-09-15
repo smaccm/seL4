@@ -145,6 +145,9 @@ enum _thread_state {
     ThreadState_BlockedOnSend,
     ThreadState_BlockedOnReply,
     ThreadState_BlockedOnAsyncEvent,
+    /* thread is blocked in a syscall that should not restart on resume -- needs
+     * to be resumed with running state. */
+    ThreadState_BlockedInSyscall,
     ThreadState_IdleThreadState
 };
 typedef uint32_t _thread_state_t;
