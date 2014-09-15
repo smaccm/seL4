@@ -723,7 +723,7 @@ performInvocation_Endpoint(endpoint_t *ep, word_t badge,
                            bool_t canGrant, bool_t block,
                            bool_t call)
 {
-    sendIPC(block, call, false, badge, canGrant, ksCurThread, ep);
+    sendIPC(block, call, call, badge, canGrant, ksCurThread, ep);
 
     return EXCEPTION_NONE;
 }

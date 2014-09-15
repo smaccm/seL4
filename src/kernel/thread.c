@@ -215,6 +215,8 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate)
         if (donate || receiver->tcbSchedContext != NULL) {
             setThreadState(receiver, ThreadState_Running);
             attemptSwitchTo(receiver, donate);
+        } else {
+            setThreadState(receiver, ThreadState_BlockedInSyscall);
         }
     } else {
         bool_t restart;
