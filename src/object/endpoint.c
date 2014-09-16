@@ -204,13 +204,13 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
             } else {
                 /* if the sender wasn't doing a call or fault we can't do a donation.
                  * as a result the receiver becomes not runnable */
-                if (donationRequired) {
+                if (donationRequired || sender->tcbSchedContext == NULL) {
                     rescheduleRequired();
-                    setThreadState(ksCurThread, ThreadState_Inactive);
+                    setThreadState(sender, ThreadState_BlockedInSyscall);
+                } else {
+                    setThreadState(sender, ThreadState_Running);
+                    switchIfRequiredTo(sender, false);
                 }
-                assert(sender->tcbSchedContext != NULL);
-                setThreadState(sender, ThreadState_Running);
-                switchIfRequiredTo(sender, false);
             }
 
             break;
