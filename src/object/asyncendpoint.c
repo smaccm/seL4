@@ -30,11 +30,21 @@ aep_set_active(async_endpoint_t *aepptr, word_t badge)
 void
 doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge)
 {
-    if ((tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
-        /* TODO could this be optimised? */
-        sched_context_t *sched_context = tcb == ksCurThread ? ksSchedContext : tcb->tcbSchedContext;
-        assert(sched_context != NULL);
-        enqueueJob(sched_context, tcb);
+
+    sched_context_t *sc;
+
+    if (tcb == ksCurThread) {
+        sc = ksSchedContext;
+    } else {
+        sc = tcb->tcbSchedContext;
+    }
+
+    setRegister(tcb, badgeRegister, badge);
+
+    if (sc == NULL) {
+        setThreadState(tcb, ThreadState_BlockedInSyscall);
+    } else if ((tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
+        enqueueJob(sc, tcb);
     } else {
         setThreadState(tcb, ThreadState_Running);
     }
@@ -54,7 +64,9 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
                 /* Send and start thread running */
                 ipcCancel(tcb);
                 doAsyncTransfer(aepptr, tcb, badge);
-                attemptSwitchTo(tcb, false);
+                if (isRunnable(tcb)) {
+                    attemptSwitchTo(tcb, false);
+                }
             } else {
                 aep_set_active(aepptr, badge);
             }
@@ -84,7 +96,10 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
         }
 
         doAsyncTransfer(aepptr, dest, badge);
-        switchIfRequiredTo(dest, false);
+
+        if (isRunnable(dest)) {
+            switchIfRequiredTo(dest, false);
+        }
         break;
     }
 
