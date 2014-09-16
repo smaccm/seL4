@@ -57,6 +57,8 @@ handleInterruptEntry(void)
 exception_t
 handleUnknownSyscall(word_t w)
 {
+    ksCurrentTime = getCurrentTime();
+
 #ifdef DEBUG
     if (w == SysDebugPutChar) {
         kernel_putchar(getRegister(ksCurThread, capRegister));
@@ -154,6 +156,7 @@ handleUnknownSyscall(word_t w)
 exception_t
 handleUserLevelFault(word_t w_a, word_t w_b)
 {
+    ksCurrentTime = getCurrentTime();
     current_fault = fault_user_exception_new(w_a, w_b);
     handleFault(ksCurThread);
 
@@ -167,6 +170,7 @@ exception_t
 handleVMFaultEvent(vm_fault_type_t vm_faultType)
 {
     exception_t status;
+    ksCurrentTime = getCurrentTime();
 
     status = handleVMFault(ksCurThread, vm_faultType);
     if (status != EXCEPTION_NONE) {
