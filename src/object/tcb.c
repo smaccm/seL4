@@ -771,6 +771,7 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
     /* TODO@alyons support changing scheduling params */
     assert(tcb->tcbSchedContext == NULL);
 
+    setThreadState(ksCurThread, ThreadState_Restart);
     status = invokeTCB_ThreadControl(
                  tcb, NULL,
                  0, TCB_PRIO_NULL,
@@ -781,10 +782,9 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
                  thread_control_update_sc);
 
     if (status == EXCEPTION_NONE) {
-        if (isBlockedInSyscall(tcb)) {
-            restart(tcb);
+        if (isSchedulable(tcb, sched_context)) {
+            possibleSwitchTo(tcb, false, false);
         }
-        setThreadState(ksCurThread, ThreadState_Restart);
     }
 
     /* don't even ask */
@@ -807,10 +807,6 @@ invokeTCB_ClearSchedContext(tcb_t *tcb)
 
     tcb->tcbSchedContext->tcb = NULL;
     tcb->tcbSchedContext = NULL;
-
-    if (isRunnable(tcb)) {
-        setThreadState(tcb, ThreadState_Inactive);
-    }
 
     if (tcb == ksCurThread) {
         rescheduleRequired();

@@ -82,15 +82,10 @@ sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
         if (donationOccured || dest->tcbSchedContext != NULL) {
             attemptSwitchTo(dest, donationOccured);
             /* otherwise don't enqueue */
-            setThreadState(dest, ThreadState_Running);
-        } else {
-            /*
-             * receiving thread has no sched context and we
-             * cannot donate. In this case we deliver and if the
-             * thread is resumed it will recieve it
-             */
-            setThreadState(dest, ThreadState_BlockedInSyscall);
         }
+
+        /* thread is in running state, but can't run until it somehow gets a sched context */
+        setThreadState(dest, ThreadState_Running);
 
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {
@@ -206,11 +201,11 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
                  * as a result the receiver becomes not runnable */
                 if (donationRequired || sender->tcbSchedContext == NULL) {
                     rescheduleRequired();
-                    setThreadState(sender, ThreadState_BlockedInSyscall);
+                    /* thread has no sc, will not be able to run */
                 } else {
-                    setThreadState(sender, ThreadState_Running);
                     switchIfRequiredTo(sender, false);
                 }
+                setThreadState(sender, ThreadState_Running);
             }
 
             break;
@@ -310,13 +305,10 @@ epCancelAll(endpoint_t *epptr)
 
         /* Set all blocked threads to restart */
         for (; thread; thread = thread->tcbEPNext) {
+            setThreadState (thread, ThreadState_Restart);
             if (thread->tcbSchedContext != NULL) {
-                setThreadState (thread, ThreadState_Restart);
                 tcbSchedEnqueue(thread);
-            } else {
-                setThreadState(thread, ThreadState_Inactive);
             }
-
         }
 
         rescheduleRequired();

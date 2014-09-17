@@ -165,9 +165,44 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         if (final) {
             tcb_t *tcb;
             cte_t *cte_ptr;
+            sched_context_t *sc;
 
             tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
             cte_ptr = TCB_PTR_CTE_PTR(tcb, tcbCTable);
+            sc = getSchedContext(tcb);
+
+            if (sc != NULL) {
+                if (sc->home == tcb || sc->home == NULL) {
+                    /* sched context is home and tcb is suspended.
+                     * take the sched context out of the relevant queues */
+                    sched_context_purge(sc);
+                } else {
+                    cte_t *callerSlot = TCB_PTR_CTE_PTR(tcb, tcbCaller);
+                    cap_t callerCap = callerSlot->cap;
+                    uint32_t capType = cap_get_capType(callerCap);
+
+                    if (capType == cap_reply_cap && !cap_reply_cap_get_capReplyMaster(callerCap)) {
+                        /* tcb has valid reply cap, return the sc there */
+                        tcb_t *caller = TCB_PTR(cap_reply_cap_get_capTCBPtr(callerCap));
+                        caller->tcbSchedContext = sc;
+                        sc->tcb = caller;
+
+                        setThreadState(caller, ThreadState_Running);
+                        if (isSchedulable(caller, sc)) {
+                            attemptSwitchTo(caller, false);
+                        }
+
+                    } else {
+                        /* send tcb home */
+                        sc->tcb = sc->home;
+                        sc->tcb->tcbSchedContext = sc;
+                        if (isSchedulable(sc->home, sc)) {
+                            attemptSwitchTo(sc->home, false);
+                        }
+                    }
+                }
+            }
+
             unbindAsyncEndpoint(tcb);
             suspend(tcb);
 

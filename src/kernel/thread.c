@@ -57,18 +57,11 @@ isBlocked(const tcb_t *thread)
     case ThreadState_BlockedOnSend:
     case ThreadState_BlockedOnAsyncEvent:
     case ThreadState_BlockedOnReply:
-    case ThreadState_BlockedInSyscall:
         return true;
 
     default:
         return false;
     }
-}
-
-static inline bool_t PURE
-isBlockedInSyscall(const tcb_t *thread)
-{
-    return thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedInSyscall;
 }
 
 static inline bool_t PURE
@@ -82,6 +75,23 @@ isRunnable(const tcb_t *thread)
     default:
         return false;
     }
+}
+
+static inline bool_t
+isSchedulable(const tcb_t *thread, const sched_context_t *sc)
+{
+    /* a thread can only be scheduled if its runnable
+     * and has a valid scheduling context
+     * that is not currently in the release queue */
+    if (unlikely(!isRunnable(thread))) {
+        return false;
+    } else if (unlikely(sc == NULL)) {
+        return false;
+    } else if (unlikely(sched_context_status_get_inReleaseHeap(sc->status))) {
+        return false;
+    }
+
+    return true;
 }
 
 BOOT_CODE void
@@ -155,11 +165,7 @@ restart(tcb_t *target)
         ipcCancel(target);
         assert(sc != NULL);
         assert(sc->tcb != NULL);
-        if (isBlockedInSyscall(target)) {
-            setThreadState(target, ThreadState_Running);
-        } else {
-            setThreadState(target, ThreadState_Restart);
-        }
+        setThreadState(target, ThreadState_Restart);
 
         if (isTimeTriggered(sc)) {
 #ifdef CONFIG_EDF_CBS
@@ -213,11 +219,9 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate)
         doIPCTransfer(sender, NULL, 0, true, receiver, false);
         cteDeleteOne(slot);
         if (donate || receiver->tcbSchedContext != NULL) {
-            setThreadState(receiver, ThreadState_Running);
             attemptSwitchTo(receiver, donate);
-        } else {
-            setThreadState(receiver, ThreadState_BlockedInSyscall);
         }
+        setThreadState(receiver, ThreadState_Running);
     } else {
         bool_t restart;
 
@@ -407,16 +411,17 @@ schedule(void)
 
     action = (word_t)ksSchedulerAction;
     if (action == (word_t)SchedulerAction_ChooseNewThread) {
-        if (isRunnable(ksCurThread)) {
+        if (isSchedulable(ksCurThread, getCurThreadSC())) {
             tcbSchedEnqueue(ksCurThread);
         }
+
         if (CONFIG_NUM_DOMAINS > 1 && ksDomainTime == 0) {
             nextDomain();
         }
         chooseThread();
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     } else if (action != (word_t)SchedulerAction_ResumeCurrentThread) {
-        if (isRunnable(ksCurThread)) {
+        if (isSchedulable(ksCurThread, getCurThreadSC())) {
             tcbSchedEnqueue(ksCurThread);
         }
         /* SwitchToThread */
@@ -467,7 +472,8 @@ cbsReload(void)
 #ifdef CONFIG_FAIL_CBS
     assert(0);
 #endif /* CONFIG_FAIL_CBS */
-    if (!isRunnable(ksCurThread)) {
+    if (!isSchedulable(ksCurThread, getCurThreadSC())) {
+        /* TODO@alyons really ?? */
         return;
     }
 
@@ -500,8 +506,6 @@ cbsReload(void)
             TRACE("Rate limited FP thread %llx < %llx\n",
                   ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
             ksSchedContext->cbsBudget = 0;
-            /* TODO@alyons is inactive really the right state here?? */
-            setThreadState(ksCurThread, ThreadState_Inactive);
             releaseAdd(ksSchedContext);
         }
     }
@@ -635,8 +639,6 @@ completeCurrentJob(void)
 {
 
 
-    /* TODO@alyons is inactive the correct state here??*/
-    setThreadState(ksCurThread, ThreadState_Inactive);
 #ifdef CONFIG_EDF
     if (isEDFThread(ksCurThread)) {
         deadlineBehead();
@@ -841,7 +843,6 @@ updateBudget()
 
     /* now check if we need to enforce cbs */
     if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
-
         cbsReload();
     }
 

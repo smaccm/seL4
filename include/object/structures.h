@@ -145,9 +145,6 @@ enum _thread_state {
     ThreadState_BlockedOnSend,
     ThreadState_BlockedOnReply,
     ThreadState_BlockedOnAsyncEvent,
-    /* thread is blocked in a syscall that should not restart on resume -- needs
-     * to be resumed with running state. */
-    ThreadState_BlockedInSyscall,
     ThreadState_IdleThreadState
 };
 typedef uint32_t _thread_state_t;
@@ -177,7 +174,7 @@ typedef uint32_t tcb_cnode_index_t;
 
 typedef struct sched_context sched_context_t;
 
-/* TCB: size 88 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+/* TCB: size 92 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
@@ -214,8 +211,10 @@ struct tcb {
     struct tcb* tcbSchedPrev;
     struct tcb* tcbEPNext;
     struct tcb* tcbEPPrev;
-    /* sched_context object that this tcb is bound to, 4 bytes */
+    /* sched_context object that this tcb is running on, 4 bytes */
     sched_context_t *tcbSchedContext;
+    /* sched context object that this tcb is bound to, 4 bytes */
+    sched_context_t *tcbHomeSchedContext;
 
 };
 typedef struct tcb tcb_t;
@@ -225,7 +224,7 @@ compile_assert(tcb_size_sane,
                (1 << TCB_SIZE_BITS) + sizeof(tcb_t) <= (1 << TCB_BLOCK_SIZE_BITS))
 
 
-/* size: 94 (list) 98 (heap) bytes - packed to 128 */
+/* size: 92 (list) 96 (heap) bytes - packed to 128 */
 struct sched_context {
     /* These are the CBS parameters.
      * Budget gets recharged every period and
@@ -236,8 +235,14 @@ struct sched_context {
     uint64_t period;
     uint64_t ratio;
 
-    /* list of tcbs that are bound to this sched context and active */
+    /* TCB that is currently running on this sched context --
+     * NULL if the sched context is unbound OR the sched context is bound
+     * to the currently running thread (in which case KsSchedContext will
+     * point to it) */
     tcb_t *tcb;
+
+    /* TCB that the sched context is bound to (but not neccessarily running on)*/
+    tcb_t *home;
 
 #ifdef CONFIG_EDF_HEAP
     /* Left, right and parent pointers for the current EDF heap, 12 bytes */

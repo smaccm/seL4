@@ -31,19 +31,11 @@ void
 doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge)
 {
 
-    sched_context_t *sc;
-
-    if (tcb == ksCurThread) {
-        sc = ksSchedContext;
-    } else {
-        sc = tcb->tcbSchedContext;
-    }
+    sched_context_t *sc = getSchedContext(tcb);
 
     setRegister(tcb, badgeRegister, badge);
 
-    if (sc == NULL) {
-        setThreadState(tcb, ThreadState_BlockedInSyscall);
-    } else if ((tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
+    if (sc != NULL && (tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
         enqueueJob(sc, tcb);
     } else {
         setThreadState(tcb, ThreadState_Running);
@@ -64,7 +56,7 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
                 /* Send and start thread running */
                 ipcCancel(tcb);
                 doAsyncTransfer(aepptr, tcb, badge);
-                if (isRunnable(tcb)) {
+                if (isSchedulable(tcb, tcb->tcbSchedContext)) {
                     attemptSwitchTo(tcb, false);
                 }
             } else {
