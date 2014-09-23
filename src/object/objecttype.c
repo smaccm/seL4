@@ -211,6 +211,11 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                 tcb->tcbSchedContext = NULL;
             }
 
+            if (tcb->tcbHomeSchedContext != NULL) {
+                tcb->tcbHomeSchedContext->tcb = NULL;
+                tcb->tcbHomeSchedContext = NULL;
+            }
+
             Arch_prepareThreadDelete(tcb);
             fc_ret.remainder =
                 Zombie_new(
@@ -235,6 +240,10 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                 suspend(sc->tcb);
                 sc->tcb->tcbSchedContext = NULL;
                 sc->tcb = NULL;
+            }
+            if (sc->home != NULL) {
+                sc->home->tcbHomeSchedContext = NULL;
+                sc->home = NULL;
             }
 
             return fc_ret;

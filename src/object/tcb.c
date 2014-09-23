@@ -1213,8 +1213,10 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
 
     if (updateFlags & thread_control_update_sc) {
         target->tcbSchedContext = sched_context;
+        target->tcbHomeSchedContext = sched_context;
         if (sched_context != NULL) {
             sched_context->tcb = target;
+            sched_context->home = target;
             /* TODO@alyons what if we are changing scheduling contexts?? */
         } else {
             if (isRunnable(target)) {
