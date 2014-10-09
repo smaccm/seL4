@@ -34,11 +34,26 @@
 /* The haskell function 'handleEvent' is split into 'handleXXX' variants
  * for each event causing a kernel entry */
 
+/* this function is called on every kernel entry except
+ * the fastpath */
+static inline void
+passageOfTime(void)
+{
+    /* read current kernel time */
+    ksCurrentTime = getCurrentTime();
+
+    /* restore sched context binding */
+    ksCurThread->tcbSchedContext = ksSchedContext;
+    ksSchedContext->tcb = ksCurThread;
+}
+
+
 exception_t
 handleInterruptEntry(void)
 {
     irq_t irq;
-    ksCurrentTime = getCurrentTime();
+
+    passageOfTime();
 
     irq = getActiveIRQ();
     if (irq != irqInvalid) {
@@ -57,7 +72,6 @@ handleInterruptEntry(void)
 exception_t
 handleUnknownSyscall(word_t w)
 {
-    ksCurrentTime = getCurrentTime();
 
 #ifdef DEBUG
     if (w == SysDebugPutChar) {
@@ -156,7 +170,8 @@ handleUnknownSyscall(word_t w)
 exception_t
 handleUserLevelFault(word_t w_a, word_t w_b)
 {
-    ksCurrentTime = getCurrentTime();
+    passageOfTime();
+
     current_fault = fault_user_exception_new(w_a, w_b);
     handleFault(ksCurThread);
 
@@ -170,7 +185,8 @@ exception_t
 handleVMFaultEvent(vm_fault_type_t vm_faultType)
 {
     exception_t status;
-    ksCurrentTime = getCurrentTime();
+
+    passageOfTime();
 
     status = handleVMFault(ksCurThread, vm_faultType);
     if (status != EXCEPTION_NONE) {
@@ -545,7 +561,8 @@ handleSyscall(syscall_t syscall)
 {
     exception_t ret;
     irq_t irq;
-    ksCurrentTime = getCurrentTime();
+
+    passageOfTime();
 
     switch (syscall) {
     case SysSend:

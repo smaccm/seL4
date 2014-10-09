@@ -21,14 +21,15 @@ handleFault(tcb_t *tptr)
     exception_t status;
     fault_t fault = current_fault;
 
-    status = sendFaultIPC(tptr);
+    status = sendFaultIPC(tptr, true);
+
     if (status != EXCEPTION_NONE) {
         handleDoubleFault(tptr, fault);
     }
 }
 
 exception_t
-sendFaultIPC(tcb_t *tptr)
+sendFaultIPC(tcb_t *tptr, bool_t donate)
 {
     cptr_t handlerCPtr;
     cap_t  handlerCap;
@@ -37,7 +38,12 @@ sendFaultIPC(tcb_t *tptr)
 
     original_lookup_fault = current_lookup_fault;
 
-    handlerCPtr = tptr->tcbFaultHandler;
+    if (fault_get_faultType(current_fault) == fault_temporal) {
+        handlerCPtr = tptr->tcbTemporalFaultHandler;
+    } else {
+        handlerCPtr = tptr->tcbFaultHandler;
+    }
+
     lu_ret = lookupCap(tptr, handlerCPtr);
     if (lu_ret.status != EXCEPTION_NONE) {
         current_fault = fault_cap_fault_new(handlerCPtr, false);
@@ -52,7 +58,7 @@ sendFaultIPC(tcb_t *tptr)
         if (fault_get_faultType(current_fault) == fault_cap_fault) {
             tptr->tcbLookupFailure = original_lookup_fault;
         }
-        sendIPC(true, false, true,
+        sendIPC(true, false, donate,
                 cap_endpoint_cap_get_capEPBadge(handlerCap),
                 true, tptr,
                 EP_PTR(cap_endpoint_cap_get_capEPPtr(handlerCap)));

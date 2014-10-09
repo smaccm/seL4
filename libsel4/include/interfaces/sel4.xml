@@ -52,6 +52,7 @@
 			<param dir="in" name="vspace_root_data" type="seL4_CapData_t"/>
 			<param dir="in" name="buffer" type="seL4_Word"/>
 			<param dir="in" name="bufferFrame" type="seL4_CPtr"/>
+			<param dir="in" name="temporal_fault_ep" type="seL4_Word"/>
 		</method>
 		<method id="TCBSetPriority" name="SetPriority">
 			<param dir="in" name="priority" type="uint8_t"/>
@@ -68,7 +69,8 @@
 			<param dir="in" name="cspace_root" type="seL4_CNode"/>
 			<param dir="in" name="cspace_root_data" type="seL4_CapData_t"/>
 			<param dir="in" name="vspace_root" type="seL4_CNode"/>
-			<param dir="in" name="vspace_root_data" type="seL4_CapData_t"/>
+            <param dir="in" name="vspace_root_data" type="seL4_CapData_t"/>
+            <param dir="in" name="temporal_fault_ep" type="seL4_Word"/>
 		</method>
 		<method id="TCBSuspend" name="Suspend"/>
 		<method id="TCBResume" name="Resume"/>
@@ -178,6 +180,7 @@
             <param dir="in" name="ratio" type="uint64_t" />
             <param dir="in" name="type" type="seL4_CBS" />
             <param dir="in" name="trigger" type="seL4_TaskType" />
+            <param dir="in" name="data" type="seL4_Word" />
         </method>
     </interface>
 	<interface name="seL4_DomainSet">

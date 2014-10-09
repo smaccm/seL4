@@ -188,7 +188,7 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                         sc->tcb = caller;
 
                         setThreadState(caller, ThreadState_Running);
-                        if (isSchedulable(caller, sc)) {
+                        if (isSchedulable(caller)) {
                             attemptSwitchTo(caller, false);
                         }
 
@@ -196,7 +196,7 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                         /* send tcb home */
                         sc->tcb = sc->home;
                         sc->tcb->tcbSchedContext = sc;
-                        if (isSchedulable(sc->home, sc)) {
+                        if (isSchedulable(sc->home)) {
                             attemptSwitchTo(sc->home, false);
                         }
                     }

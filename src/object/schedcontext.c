@@ -20,7 +20,7 @@
 
 exception_t
 invokeSchedControl(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
-                   uint64_t e, uint64_t r, word_t trigger)
+                   uint64_t e, uint64_t r, word_t trigger, uint32_t data)
 {
 
     /* convert to ticks */
@@ -28,6 +28,7 @@ invokeSchedControl(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uin
     sched_context->period = p * ksTicksPerUs;
     sched_context->deadline = d * ksTicksPerUs;
     sched_context->ratio = r;
+    sched_context->data = data;
 
     sched_context_status_ptr_set_trigger(&sched_context->status, trigger);
     sched_context_status_ptr_set_cbs(&sched_context->status, cbs);
@@ -40,13 +41,13 @@ exception_t
 decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_t *buffer)
 {
     uint64_t e, p, d, r;
-    uint32_t type;
+    uint32_t type, data;
     word_t trigger;
     cap_t targetCap;
     sched_context_t *destSc;
 
     /* Ensure message length valid */
-    if (length < 9 || extra_caps.excaprefs[0] == NULL) {
+    if (length < 11 || extra_caps.excaprefs[0] == NULL) {
         userError("SchedControl Configure: Truncated message.");
         current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
@@ -61,6 +62,7 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     type = getSyscallArg(8, buffer);
     trigger = getSyscallArg(9, buffer);
     targetCap = extra_caps.excaprefs[0]->cap;
+    data = getSyscallArg(10, buffer);
 
 
     if ((p * ksTicksPerUs) < p) {
@@ -105,7 +107,7 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     }
 
     setThreadState(ksCurThread, ThreadState_Restart);
-    return invokeSchedControl(destSc, type, p, d, e, r, trigger);
+    return invokeSchedControl(destSc, type, p, d, e, r, trigger, data);
 }
 
 exception_t

@@ -41,6 +41,7 @@ typedef struct {
     uint64_t execution;
     seL4_CBS cbs;
     seL4_TaskType trigger;
+    uint32_t data;
 } seL4_SchedParams;
 
 /* message_info_t defined in api/types.bf */

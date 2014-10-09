@@ -14,7 +14,7 @@
 #include <object.h>
 
 void handleFault(tcb_t *tptr);
-exception_t sendFaultIPC(tcb_t *tptr);
+exception_t sendFaultIPC(tcb_t *tptr, bool_t donate);
 void handleDoubleFault(tcb_t *tptr, fault_t ex1);
 
 #endif

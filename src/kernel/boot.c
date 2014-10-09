@@ -453,6 +453,12 @@ create_initial_thread(
     ksDomainTime = ksDomSchedule[ksDomScheduleIdx].length;
     assert(ksCurDomain < CONFIG_NUM_DOMAINS && ksDomainTime > 0);
 
+    ksSchedContext = create_sched_context(tcb);
+    if (ksSchedContext == NULL) {
+        return false;
+    }
+    tcb->tcbSchedContext = ksSchedContext;
+
     /* initialise current thread pointer */
     switchToThread(tcb); /* initialises ksCurThread */
 
@@ -460,19 +466,12 @@ create_initial_thread(
     cap = cap_thread_cap_new(TCB_REF(tcb));
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_TCB), cap);
 
-    ksSchedContext = create_sched_context(tcb);
-    if (ksSchedContext == NULL) {
-        return false;
-    }
-
-    /* binding is implicit between ksSchedContext and ksCurThread */
-    ksSchedContext->tcb = NULL;
-    ksCurThread->tcbSchedContext = NULL;
-
     ksSchedContext->lastScheduled = getCurrentTime();
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_SC),
                cap_sched_context_cap_new((unsigned int) ksSchedContext));
 
+    ksCurThread->tcbSchedContext = NULL;
+    ksSchedContext->tcb = NULL;
     return true;
 }
 

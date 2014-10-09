@@ -62,19 +62,6 @@ removeFromBitmap(word_t dom, word_t prio)
 }
 
 static inline sched_context_t *
-getCurThreadSC(void)
-{
-
-    if (unlikely(ksCurThread->tcbSchedContext != NULL)) {
-        return ksCurThread->tcbSchedContext;
-    } else if (likely(ksRestoreSC)) {
-        return ksSchedContext;
-    }
-
-    return NULL;
-}
-
-static inline sched_context_t *
 getSchedContext(const tcb_t *tcb)
 {
     if (tcb->tcbSchedContext != NULL) {
@@ -103,6 +90,7 @@ void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
                      word_t *receiverIPCBuffer);
 void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
+tcb_t *pickThread(void);
 void chooseThread(void);
 void releaseJob(sched_context_t *toRelease);
 void completeCurrentJob(void);
@@ -124,7 +112,7 @@ void releaseHeadChanged(void);
 
 void enqueueJob(sched_context_t *sc, tcb_t *tcb);
 void releaseJobs(void);
-void cbsReload(void);
+void enforceBudget(void);
 void updateBudget(void);
 
 uint32_t getHighestPrio(void);

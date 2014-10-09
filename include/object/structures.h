@@ -174,7 +174,7 @@ typedef uint32_t tcb_cnode_index_t;
 
 typedef struct sched_context sched_context_t;
 
-/* TCB: size 92 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+/* TCB: size 96 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
@@ -203,6 +203,9 @@ struct tcb {
     /* Capability pointer to thread fault handler, 4 bytes */
     cptr_t tcbFaultHandler;
 
+    /* Capability pointer to a thread temporal fault handler, 4 bytes */
+    cptr_t tcbTemporalFaultHandler;
+
     /* userland virtual address of thread IPC buffer, 4 bytes */
     word_t tcbIPCBuffer;
 
@@ -224,7 +227,7 @@ compile_assert(tcb_size_sane,
                (1 << TCB_SIZE_BITS) + sizeof(tcb_t) <= (1 << TCB_BLOCK_SIZE_BITS))
 
 
-/* size: 92 (list) 96 (heap) bytes - packed to 128 */
+/* size: 96 (list) 100 (heap) bytes - packed to 128 */
 struct sched_context {
     /* These are the CBS parameters.
      * Budget gets recharged every period and
@@ -243,6 +246,9 @@ struct sched_context {
 
     /* TCB that the sched context is bound to (but not neccessarily running on)*/
     tcb_t *home;
+
+    /* data word to be passed to exception handler */
+    uint32_t data;
 
 #ifdef CONFIG_EDF_HEAP
     /* Left, right and parent pointers for the current EDF heap, 12 bytes */

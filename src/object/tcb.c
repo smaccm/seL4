@@ -31,7 +31,8 @@ void
 tcbSchedEnqueue(tcb_t *tcb)
 {
 
-    assert(tcb->tcbSchedContext != NULL || ksCurThread == tcb);
+    assert(tcb->tcbSchedContext != NULL);
+    assert(tcb->tcbSchedContext->cbsBudget > PLAT_LEEWAY);
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
         UNUSED dom_t dom;
@@ -632,11 +633,11 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     cap_t scCap;
     sched_context_t *sched_context;
     deriveCap_ret_t dc_ret;
-    cptr_t faultEP;
+    cptr_t faultEP, temporalFEP;
     prio_t prio, maxPrio;
     word_t cRootData, vRootData, bufferAddr;
 
-    if (length < 6 || rootCaps.excaprefs[0] == NULL
+    if (length < 7 || rootCaps.excaprefs[0] == NULL
             || rootCaps.excaprefs[1] == NULL
             || rootCaps.excaprefs[2] == NULL
        ) {
@@ -648,17 +649,17 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     faultEP    = getSyscallArg(0, buffer);
     prio       = getSyscallArg(1, buffer);
     scCap = lookupSlot(ksCurThread, getSyscallArg(2, buffer)).slot->cap;
-    if (cap_get_capType(scCap) != cap_sched_context_cap &&
-            cap_get_capType(scCap) != cap_null_cap) {
+    temporalFEP = getSyscallArg(6, buffer);
+
+    /* sched context cap should either be null or a valid sc cap */
+    if (likely(cap_get_capType(scCap) == cap_sched_context_cap)) {
+        sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap));
+    } else if (cap_get_capType(scCap) == cap_null_cap) {
+        sched_context = NULL;
+    } else {
         userError("TCB Configure: sched_context_cap is invalid.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    if (unlikely(cap_get_capType(scCap) != cap_null_cap)) {
-        sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap));
-    } else {
-        sched_context = NULL;
     }
 
     cRootData  = getSyscallArg(3, buffer);
@@ -754,7 +755,7 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
-               faultEP, tcb_prio_new(maxPrio, prio),
+               faultEP, temporalFEP, tcb_prio_new(maxPrio, prio),
                cRootCap, cRootSlot,
                vRootCap, vRootSlot,
                bufferAddr, bufferCap,
@@ -774,7 +775,7 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
     setThreadState(ksCurThread, ThreadState_Restart);
     status = invokeTCB_ThreadControl(
                  tcb, NULL,
-                 0, TCB_PRIO_NULL,
+                 0, 0, TCB_PRIO_NULL,
                  cap_null_cap_new(), 0,
                  cap_null_cap_new(), 0,
                  0, cap_null_cap_new(),
@@ -782,7 +783,7 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
                  thread_control_update_sc);
 
     if (status == EXCEPTION_NONE) {
-        if (isSchedulable(tcb, sched_context)) {
+        if (isSchedulable(tcb)) {
             possibleSwitchTo(tcb, false, false);
         }
     }
@@ -903,7 +904,7 @@ decodeSetMaxPriority(cap_t cap, unsigned int length, word_t *buffer)
 
     return invokeTCB_ThreadControl(
                tcb, NULL,
-               0, tcb_prio_new(newMaxPrio, tcb_prio_get_prio(tcb->tcbPriority)),
+               0, 0, tcb_prio_new(newMaxPrio, tcb_prio_get_prio(tcb->tcbPriority)),
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                0, cap_null_cap_new(),
@@ -943,7 +944,7 @@ decodeSetPriority(cap_t cap, unsigned int length, word_t *buffer)
 
     return invokeTCB_ThreadControl(
                tcb, NULL,
-               0, tcb_prio_new(tcb_prio_get_maxPrio(tcb->tcbPriority), newPrio),
+               0, 0, tcb_prio_new(tcb_prio_get_maxPrio(tcb->tcbPriority), newPrio),
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                0, cap_null_cap_new(),
@@ -990,8 +991,7 @@ decodeSetIPCBuffer(cap_t cap, unsigned int length, cte_t* slot,
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
-               0,
-               TCB_PRIO_NULL,
+               0, 0, TCB_PRIO_NULL,
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                cptr_bufferPtr, bufferCap,
@@ -1004,13 +1004,13 @@ exception_t
 decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
                extra_caps_t extraCaps, word_t *buffer)
 {
-    cptr_t faultEP;
+    cptr_t faultEP, temporalFEP;
     word_t cRootData, vRootData;
     cte_t *cRootSlot, *vRootSlot;
     cap_t cRootCap, vRootCap;
     deriveCap_ret_t dc_ret;
 
-    if (length < 3 || extraCaps.excaprefs[0] == NULL
+    if (length < 4 || extraCaps.excaprefs[0] == NULL
             || extraCaps.excaprefs[1] == NULL) {
         userError("TCB SetSpace: Truncated message.");
         current_syscall_error.type = seL4_TruncatedMessage;
@@ -1020,6 +1020,7 @@ decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
     faultEP   = getSyscallArg(0, buffer);
     cRootData = getSyscallArg(1, buffer);
     vRootData = getSyscallArg(2, buffer);
+    temporalFEP = getSyscallArg(3, buffer);
 
     cRootSlot  = extraCaps.excaprefs[0];
     cRootCap   = extraCaps.excaprefs[0]->cap;
@@ -1072,7 +1073,7 @@ decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_ThreadControl(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)), slot,
-               faultEP,
+               faultEP, temporalFEP,
                TCB_PRIO_NULL,
                cRootCap, cRootSlot,
                vRootCap, vRootSlot,
@@ -1196,7 +1197,7 @@ invokeTCB_Resume(tcb_t *thread)
 
 exception_t
 invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
-                        cptr_t faultep, tcb_prio_t priority,
+                        cptr_t faultep, cptr_t temporalFEP, tcb_prio_t priority,
                         cap_t cRoot_newCap, cte_t *cRoot_srcSlot,
                         cap_t vRoot_newCap, cte_t *vRoot_srcSlot,
                         word_t bufferAddr, cap_t bufferCap,
@@ -1209,6 +1210,7 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
 
     if (updateFlags & thread_control_update_space) {
         target->tcbFaultHandler = faultep;
+        target->tcbTemporalFaultHandler = temporalFEP;
     }
 
     if (updateFlags & thread_control_update_sc) {

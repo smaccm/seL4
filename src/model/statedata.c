@@ -50,9 +50,6 @@ tcb_t *ksIdleThread;
  * tcb pointers */
 tcb_t *ksSchedulerAction;
 
-/* Should ksCurSc still be bound to ksCurThread? */
-bool_t ksRestoreSC = true;
-
 /* Units of work we have completed since the last time we checked for
  * pending interrupts */
 word_t ksWorkUnitsCompleted;

@@ -43,7 +43,7 @@ exception_t decodeSchedControlInvocation(word_t label, unsigned int length,
 exception_t decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_t *buffer);
 
 exception_t invokeSchedControl(sched_context_t *sched_context, uint32_t type, uint64_t p, uint64_t d,
-                               uint64_t e, uint64_t r, word_t trigger);
+                               uint64_t e, uint64_t r, word_t trigger, uint32_t data);
 /*
  * Remove an arbitrary memory of a sched context priority queue
  */

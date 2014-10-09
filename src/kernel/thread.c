@@ -78,16 +78,16 @@ isRunnable(const tcb_t *thread)
 }
 
 static inline bool_t
-isSchedulable(const tcb_t *thread, const sched_context_t *sc)
+isSchedulable(const tcb_t *thread)
 {
     /* a thread can only be scheduled if its runnable
      * and has a valid scheduling context
      * that is not currently in the release queue */
     if (unlikely(!isRunnable(thread))) {
         return false;
-    } else if (unlikely(sc == NULL)) {
+    } else if (unlikely(thread->tcbSchedContext == NULL)) {
         return false;
-    } else if (unlikely(sched_context_status_get_inReleaseHeap(sc->status))) {
+    } else if (unlikely(sched_context_status_get_inReleaseHeap(thread->tcbSchedContext->status))) {
         return false;
     }
 
@@ -124,6 +124,8 @@ activateThread(void)
     default:
         fail("Current thread is blocked");
     }
+
+    assert(ksCurThread->tcbSchedContext == NULL);
 }
 
 void
@@ -411,7 +413,8 @@ schedule(void)
 
     action = (word_t)ksSchedulerAction;
     if (action == (word_t)SchedulerAction_ChooseNewThread) {
-        if (isSchedulable(ksCurThread, getCurThreadSC())) {
+        TRACE("Picked new thread\n");
+        if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
 
@@ -421,24 +424,28 @@ schedule(void)
         chooseThread();
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     } else if (action != (word_t)SchedulerAction_ResumeCurrentThread) {
-        if (isSchedulable(ksCurThread, getCurThreadSC())) {
+        TRACE("Switched to new thread\n");
+        if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
         /* SwitchToThread */
         switchToThread(ksSchedulerAction);
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
-    } else if (ksCurThread->tcbSchedContext != NULL) {
+    } else if (ksCurThread->tcbSchedContext != ksSchedContext) {
+        TRACE("Switched to new sc\n");
         /* we have changed scheduling context (but not thread) */
         switchToThread(ksCurThread);
+    } else {
+        TRACE("Nothing\n");
     }
 
     /* reset for next kernel entry */
-    ksRestoreSC = true;
     assert(ksSchedContext->lastScheduled > 0llu);
 
     /* reprogram the timer for the next deadline or release time */
     if (ksReprogram) {
-        uint64_t nextInterrupt = getNextInterrupt();
+        uint64_t nextInterrupt;
+        nextInterrupt = getNextInterrupt();
 
         /* in 2s */
 #ifndef CONFIG_DEBUG_BUILD
@@ -457,31 +464,43 @@ schedule(void)
         TRACE("Set next IRQ to %llx\n", nextInterrupt);
         ksReprogram = false;
     }
+
+    /* the ksCurThread is implicitly bound to ksSchedContext --
+     * this optimises scheduling context donation */
+    ksCurThread->tcbSchedContext = NULL;
+    ksSchedContext->tcb = NULL;
+
     TRACE_POINT_STOP;
 }
 
 
-
-
-
-#ifdef CONFIG_EDF_CBS
+/* current thread is out of budget, handle appropriately */
 void
-cbsReload(void)
+enforceBudget(void)
 {
 
+    lookupCap_ret_t lu_ret;
+
+    assert(ksSchedContext->cbsBudget <= PLAT_LEEWAY);
+
 #ifdef CONFIG_FAIL_CBS
-    assert(0);
+    fail("budget enforcement triggered");
 #endif /* CONFIG_FAIL_CBS */
-    if (!isSchedulable(ksCurThread, getCurThreadSC())) {
-        /* TODO@alyons really ?? */
+
+    /* if the thread has a temporal exception handler, send a
+     * temporal exception */
+    lu_ret = lookupCap(ksCurThread, ksCurThread->tcbTemporalFaultHandler);
+    if (cap_get_capType(lu_ret.cap) != cap_null_cap) {
+        /* don't reload, send a temporal exception */
+        current_fault = fault_temporal_new(ksSchedContext->data, 0);
+        sendFaultIPC(ksCurThread, false);
         return;
     }
 
-    /* recharge the budget */
-    ksSchedContext->cbsBudget = ksSchedContext->budget;
-
-    /* edf thread -- what happens if */
+    /* otherwise rate limit */
+#ifdef CONFIG_EDF
     if (isEDFThread(ksCurThread)) {
+        ksSchedContext->cbsBudget = ksSchedContext->budget;
         if (sched_context_status_get_cbs(ksSchedContext->status) == seL4_HardCBS) {
             deadlineRemove(ksSchedContext);
             TRACE("Rate limited %x(%x)\n", ksSchedContext, ksCurThread);
@@ -493,27 +512,24 @@ cbsReload(void)
             ksSchedContext->nextDeadline = ksCurrentTime + ksSchedContext->deadline;
             deadlinePostpone();
         }
-    } else {
-        /* fixed priority thread */
-        assert(isRunnable(ksCurThread));
-        if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
-            /* recharge */
-            ksSchedContext->cbsBudget = ksSchedContext->budget;
-            ksSchedContext->nextRelease = ksCurrentTime + ksSchedContext->period;
-            tcbSchedAppend(ksCurThread);
-            TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
-        } else {
-            TRACE("Rate limited FP thread %llx < %llx\n",
-                  ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
-            ksSchedContext->cbsBudget = 0;
-            releaseAdd(ksSchedContext);
-        }
+        return;
     }
-}
+#endif /* CONFIG_EDF */
 
-#else
-#define cbsReload(...)
-#endif /* CONFIG_EDF_CBS */
+    if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
+        /* recharge time has already passed, just apply round robin */
+        ksSchedContext->cbsBudget = ksSchedContext->budget;
+        ksSchedContext->nextRelease = ksCurrentTime + ksSchedContext->period;
+        tcbSchedAppend(ksCurThread);
+        TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
+    } else {
+        TRACE("Rate limited FP thread %llx < %llx\n",
+              ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
+        ksSchedContext->cbsBudget = 0;
+        releaseAdd(ksSchedContext);
+    }
+
+}
 
 /* Release heap operations */
 void
@@ -730,8 +746,10 @@ enqueueJob(sched_context_t *sc, tcb_t *tcb)
             rescheduleRequired();
         } else {
             /* release time has passed, add to deadline heap */
-            TRACE("Releasing EDF task %x, at %llx next release %llx\n", sc, ksCurrentTime, sc->nextRelease);
+            TRACE("Releasing task %x, at %llx next release %llx\n", sc, ksCurrentTime, sc->nextRelease);
             setThreadState(tcb, ThreadState_Running);
+            sc->cbsBudget = sc->budget;
+            sc->nextRelease = ksCurrentTime + sc->period;
 #ifdef CONFIG_EDF
             if (isEDFThread(tcb)) {
                 assert(sc != ksDeadlinePQ.head);
@@ -810,48 +828,6 @@ void releaseJobs(void)
 #endif /* CONFIG_DEBUG */
 }
 
-
-#ifdef CONFIG_EDF_CBS
-void
-updateBudget()
-{
-
-    /* update the budget for a tcb about to be scheduled */
-    uint64_t consumed = 0;
-
-    if (unlikely(ksCurThread == ksIdleThread)) {
-        return;
-    }
-
-    assert(ksSchedContext->lastScheduled > 0);
-    consumed = ksCurrentTime - ksSchedContext->lastScheduled;
-
-    /* unsigned 64bit overflow is undefined, so do a comparison instead */
-    if (consumed > ksSchedContext->cbsBudget) {
-        /* budget depleted */
-        TRACE("%p budget depleted, consumed %llx, lastscheduled: %llx\n", ksCurThread, consumed,
-              ksSchedContext->lastScheduled);
-        ksSchedContext->cbsBudget = 0;
-    } else {
-        ksSchedContext->cbsBudget -= consumed;
-        TRACE("%p budget reduced, consumed %llx, lastscheduled: %llx\n", ksCurThread, consumed,
-              ksSchedContext->lastScheduled);
-    }
-
-    /* update last scheduled time */
-    ksSchedContext->lastScheduled = ksCurrentTime;
-
-    /* now check if we need to enforce cbs */
-    if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
-        cbsReload();
-    }
-
-}
-#else
-#define updateBudget(...)
-#endif
-
-
 inline prio_t
 getHighestPrio(void)
 {
@@ -872,13 +848,12 @@ getHighestPrio(void)
 
 }
 
-void
-chooseThread(void)
+tcb_t *pickThread(void)
 {
+
     word_t prio;
     word_t dom;
-    tcb_t *thread = NULL;
-
+    tcb_t *thread;
 
     if (CONFIG_NUM_DOMAINS > 1) {
         dom = ksCurDomain;
@@ -891,21 +866,15 @@ chooseThread(void)
         /* don't pick edf if there are no runnable edf threads */
         removeFromBitmap(dom, seL4_EDFPrio);
     }
-
 #endif /* CONFIG_EDF */
-
     prio = getHighestPrio();
 
     addToBitmap(dom, seL4_EDFPrio);
 
     if (unlikely(prio == seL4_InvalidPrio)) {
         TRACE("chose idle\n");
-        switchToIdleThread();
-        return;
+        return ksIdleThread;
     }
-
-    /* TODO: if all ready queues are of scheduling contexts.... this
-     * conditional could be removed */
 #ifdef CONFIG_EDF
     if (prio == seL4_EDFPrio) {
         if (ksDeadlinePQ.head == ksSchedContext) {
@@ -913,7 +882,6 @@ chooseThread(void)
         } else {
             thread = ksDeadlinePQ.head->tcb;
         }
-        assert(thread != NULL);
         TRACE("Chose EDF thread %p, budget: %llx\n", thread, ksDeadlinePQ.head->cbsBudget);
     } else {
 #endif /* CONFIG_EDF */
@@ -923,48 +891,90 @@ chooseThread(void)
     }
 #endif /* CONFIG_EDF */
 
-    assert(thread);
-    assert(isRunnable(thread));
-    switchToThread(thread);
+    assert(thread != NULL);
+    assert(isRunnable(thread) || thread == ksIdleThread);
+    return thread;
+}
+
+
+void
+chooseThread(void)
+{
+    tcb_t *thread = pickThread();
+
+    if (unlikely(thread == ksIdleThread)) {
+        switchToIdleThread();
+    } else {
+        switchToThread(thread);
+    }
+
     return;
 }
 
 void
+updateBudget(void)
+{
+
+    uint64_t consumed = 0llu;
+
+    /* bill the previous thread */
+    consumed = ksCurrentTime - ksSchedContext->lastScheduled;
+    if (consumed > ksSchedContext->cbsBudget) {
+        ksSchedContext->cbsBudget = 0;
+    } else {
+        ksSchedContext->cbsBudget -= consumed;
+    }
+    ksSchedContext->lastScheduled = ksCurrentTime;
+}
+
+
+void
 switchToThread(tcb_t *thread)
 {
-    if (thread != ksCurThread) {
-        Arch_switchToThread(thread);
-    }
-    tcbSchedDequeue(thread);
+    assert(thread->tcbSchedContext != NULL);
+    /* we are switching from ksSchedContext to thread->tcbSchedContext */
+    if (thread->tcbSchedContext != ksSchedContext) {
 
-    /* we are switching from ksCurSchedContext to thread->tcbSchedContext */
-    if (thread->tcbSchedContext != NULL) {
-        /* we are switching scheduling contextss. Bill the previous one. */
-        updateBudget();
+        /* we are going to need a new timer interrupt */
         ksReprogram = true;
 
-        /* restore sched context binding on previous thread */
-        if (ksRestoreSC && ksCurThread->tcbSchedContext == NULL) {
-            ksCurThread->tcbSchedContext = ksSchedContext;
-            ksSchedContext->tcb = ksCurThread;
+        if (ksSchedContext->lastScheduled != ksCurrentTime) {
+            /* this case means the thread has already been charged */
+            updateBudget();
+
+            if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
+                tcb_t *woken;
+
+                enforceBudget();
+                /* pick a new thread, the in case enforceBudget() woke a higher prio
+                 * exception handler */
+                woken = pickThread();
+                if (tcb_prio_get_prio(woken->tcbPriority) > tcb_prio_get_prio(thread->tcbPriority)) {
+                    thread = woken;
+                }
+
+                if (thread == ksIdleThread) {
+                    switchToIdleThread();
+                    return;
+                }
+            }
         }
 
         /* switch the scheduling context */
         ksSchedContext = thread->tcbSchedContext;
 
-        /* the ksCurThread is implicitly bound to ksSchedContext --
-         * this optimises scheduling context donation */
-        thread->tcbSchedContext = NULL;
-        ksSchedContext->tcb = NULL;
-
         /* update the billing time for the new scheduling context */
-        ksSchedContext->lastScheduled = getCurrentTime() + 1;
+        ksSchedContext->lastScheduled = ksCurrentTime + 1;
         TRACE("Update: KsCurThread %p, KsSchedContext %p\n", thread, ksSchedContext);
     } else {
-        TRACE("No Switching Scheduling context, it's null %p\n", thread);
+        TRACE("No Switching Scheduling context, %p %p\n", thread->tcbSchedContext, ksSchedContext);
     }
+
+    if (thread != ksCurThread) {
+        Arch_switchToThread(thread);
+    }
+    tcbSchedDequeue(thread);
     ksCurThread = thread;
-    assert(ksCurThread->tcbSchedContext == NULL);
 }
 
 void
@@ -1076,9 +1086,15 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
     } else {
         if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
                 && action == SchedulerAction_ResumeCurrentThread) {
-            ksSchedulerAction = target;
-            /* since this thread will be scheduled straight away, we don't need to donate */
-            assert(donate || target->tcbSchedContext != NULL);
+            if (donate) {
+                assert(target->tcbSchedContext == NULL);
+                target->tcbSchedContext = ksSchedContext;
+                ksSchedContext->tcb = target;
+                ksCurThread->tcbSchedContext = NULL;
+            }
+            if (target->tcbSchedContext != NULL) {
+                ksSchedulerAction = target;
+            }
         } else {
             if (donate) {
                 /* this thread will not run immediately.
@@ -1086,11 +1102,11 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
                 assert(target->tcbSchedContext == NULL);
                 target->tcbSchedContext = ksSchedContext;
                 ksSchedContext->tcb = target;
-                ksRestoreSC = false;
+                ksCurThread->tcbSchedContext = NULL;
             }
-            tcbSchedEnqueue(target);
-            assert(target->tcbSchedContext != NULL);
-
+            if (target->tcbSchedContext != NULL) {
+                tcbSchedEnqueue(target);
+            }
         }
         if (action != SchedulerAction_ResumeCurrentThread
                 && action != SchedulerAction_ChooseNewThread) {
@@ -1137,12 +1153,12 @@ timerTick(void)
 
     /* we will need to reprogram the timer if the interrupt came in early */
     ksReprogram = true;
-#ifdef CONFIG_EDF_CBS
-    updateBudget();
 
-    /* we need to enforce cbs, so tell the kernel to invoke the scheduler */
-    rescheduleRequired();
-#endif /* CONFIG_EDF_CBS */
+    updateBudget();
+    if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
+        enforceBudget();
+        rescheduleRequired();
+    }
 
     if (CONFIG_NUM_DOMAINS > 1) {
         ksDomainTime--;

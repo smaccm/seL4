@@ -56,7 +56,7 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
                 /* Send and start thread running */
                 ipcCancel(tcb);
                 doAsyncTransfer(aepptr, tcb, badge);
-                if (isSchedulable(tcb, tcb->tcbSchedContext)) {
+                if (isSchedulable(tcb)) {
                     attemptSwitchTo(tcb, false);
                 }
             } else {

@@ -397,12 +397,20 @@ block user_exception {
     field faultType 3
 }
 
+block temporal {
+    field data 32
+    field type 1
+    padding 28
+    field faultType 3
+}
+
 tagged_union fault faultType {
     tag null_fault 0
     tag cap_fault 1
     tag vm_fault 2
     tag unknown_syscall 3
     tag user_exception 4
+    tag temporal 5
 }
 
 -- Thread priority
