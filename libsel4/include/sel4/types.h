@@ -26,9 +26,7 @@ typedef enum {
     seL4_VMFault,
     seL4_UnknownSyscall,
     seL4_UserException,
-    seL4_SplitApproval,
-    seL4_RevokeRequest,
-    seL4_RevokeParent,
+    seL4_TemporalFault,
     SEL4_FORCE_LONG_ENUM(seL4_FaultType),
 } seL4_FaultType;
 
