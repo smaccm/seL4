@@ -236,7 +236,6 @@ struct sched_context {
     uint64_t budget;
     uint64_t deadline;
     uint64_t period;
-    uint64_t ratio;
 
     /* TCB that is currently running on this sched context --
      * NULL if the sched context is unbound OR the sched context is bound

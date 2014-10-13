@@ -803,8 +803,8 @@ void releaseJobs(void)
 #ifdef CONFIG_EDF
             if (isEDFThread(thread)) {
 #ifdef CONFIG_EDF_CBS
-                //TODO@alyons is this correct??
-                if (head->budgetRemaining > ((head->nextDeadline - ksCurrentTime) * head->ratio)) {
+                //TODO this is wrong, as we can't incorporate the deadline/period ratio without 64bit division.
+                if (head->budgetRemaining > ((head->nextDeadline - ksCurrentTime))) {
                     head->nextDeadline = ksCurrentTime + head->deadline;
                 }
 #endif /* CONFIG_EDF_CBS */
