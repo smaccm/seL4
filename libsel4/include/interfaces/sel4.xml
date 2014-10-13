@@ -179,6 +179,12 @@
             <param dir="in" name="executionRequirement" type="uint64_t" />
             <param dir="in" name="flags" type="seL4_SchedFlags_t" />
         </method>
+        <method id="SchedControlExtend" name="Extend">
+            <param dir="in" name="dest" type="seL4_SchedContext" />
+            <param dir="in" name="period" type="uint64_t" />
+            <param dir="in" name="deadline" type="uint64_t" />
+            <param dir="in" name="executionRequirement" type="uint64_t" />
+        </method>
     </interface>
 	<interface name="seL4_DomainSet">
 		<method id="DomainSetSet" name="Set">

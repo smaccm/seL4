@@ -157,27 +157,69 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
 
     destSc = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(targetCap));
 
-    /* Can only split into an empty sched_context cap */
-    if (unlikely(destSc->tcb && isRunnable(destSc->tcb))) {
-        userError("Cannot alter sched_context parameters of a sched_context \
-                    object that is bound to an unsuspended tcb.");
-        current_syscall_error.type = seL4_IllegalOperation;
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeSchedControl_Configure(destSc, type, p, d, e, trigger, data);
+}
+
+exception_t 
+decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *buffer)
+{
+    uint64_t e, p, d;
+    cap_t targetCap;
+    sched_context_t *destSc;
+
+    /* Ensure message length valid */
+    if (length < 6 || extra_caps.excaprefs[0] == NULL) {
+        userError("SchedControl Configure: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
+    /* Fetch arguments */
+    p = (((uint64_t) getSyscallArg(1, buffer)) << 32llu) + getSyscallArg(0, buffer);
+    d = (((uint64_t) getSyscallArg(3, buffer)) << 32llu) + getSyscallArg(2, buffer);
+    e = (((uint64_t) getSyscallArg(5, buffer)) << 32llu) + getSyscallArg(4, buffer);
+
+    targetCap = extra_caps.excaprefs[0]->cap;
+
+    
+    /* TODO@alyons this is undefined behaviour :( */
+    if ((p * ksTicksPerUs) < p) {
+        userError("SchedControl_Extend: Integer overflow, p too big -- %llx * %llx = %llx\n",
+                  p, ksTicksPerUs, p * ksTicksPerUs);
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (unlikely(e > p)) {
+        userError("SchedControl_Extend: Execution requirement cannot be greater than period.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (unlikely(cap_get_capType(targetCap) != cap_sched_context_cap)) {
+        userError("SchedControl_Extend: destination cap is not a sched_context cap.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    destSc = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(targetCap));
+
     setThreadState(ksCurThread, ThreadState_Restart);
-    return invokeSchedControl(destSc, type, p, d, e, r, trigger, data);
+    return invokeSchedControl_Extend(destSc, p, d, e);
 }
+
 
 exception_t
 decodeSchedControlInvocation(word_t label, unsigned int length,
                              extra_caps_t extraCaps, word_t *buffer)
 {
 
-
     switch (label) {
     case SchedControlConfigure:
         return decodeSchedControl_Configure(length, extraCaps, buffer);
+    case SchedControlExtend:
+        return decodeSchedControl_Extend(length, extraCaps, buffer);
     default:
         userError("SchedControl invocation: Illegal operation attempted.");
         current_syscall_error.type = seL4_IllegalOperation;
