@@ -25,3 +25,11 @@ block message_info {
     field msgExtraCaps 2
     field msgLength 7
 }
+
+block seL4_SchedFlags {
+    field trigger  1
+    field cbs      1
+    field data     28
+    padding  2 
+}
+

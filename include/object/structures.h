@@ -229,7 +229,7 @@ compile_assert(tcb_size_sane,
 
 /* size: 96 (list) 100 (heap) bytes - packed to 128 */
 struct sched_context {
-    /* These are the CBS parameters.
+    /* These are the reservation parameters.
      * Budget gets recharged every period and
      * must be consumed by deadline.
      */
@@ -258,10 +258,10 @@ struct sched_context {
     struct sched_context *prev, *next;
 #endif /* CONFIG_EDF_LIST */
 
-    /* priority for the current EDF heap (the current absolute deadline), 8 bytes */
+    /* priority for the current priority queue (the current absolute deadline), 8 bytes */
     uint64_t priority;
     /* this is the currently remaining budget for CBS, loaded from the sched_context object, 8 bytes */
-    uint64_t cbsBudget;
+    uint64_t budgetRemaining;
     /* timestamp at which this tcb was last scheduled, 8 bytes */
     uint64_t lastScheduled;
 

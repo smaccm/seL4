@@ -32,7 +32,7 @@ tcbSchedEnqueue(tcb_t *tcb)
 {
 
     assert(tcb->tcbSchedContext != NULL);
-    assert(tcb->tcbSchedContext->cbsBudget > PLAT_LEEWAY);
+    assert(tcb->tcbSchedContext->budgetRemaining > PLAT_LEEWAY);
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
         UNUSED dom_t dom;

@@ -364,7 +364,7 @@ create_sched_context(tcb_t *tcb)
     mul = 1000000llu;
 
     sc->budget = mul * ksTicksPerUs;
-    sc->cbsBudget = mul * ksTicksPerUs;
+    sc->budgetRemaining = mul * ksTicksPerUs;
     sc->period = mul * ksTicksPerUs;
     sc->deadline = mul * ksTicksPerUs;
 

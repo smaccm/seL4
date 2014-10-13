@@ -173,13 +173,13 @@ restart(tcb_t *target)
 #ifdef CONFIG_EDF_CBS
             if (sc->nextRelease < ksCurrentTime) {
                 /* recharge time has passed, recharge */
-                sc->cbsBudget = sc->budget;
+                sc->budgetRemaining = sc->budget;
                 sc->nextRelease = ksCurrentTime + sc->period;
 #ifdef CONFIG_EDF
                 sc->nextDeadline = ksCurrentTime + sc->deadline;
 #endif /* CONFIG_EDF */
                 releaseJob(sc);
-            } else if (sc->cbsBudget > 0) {
+            } else if (sc->budgetRemaining > 0) {
                 /* still has budget, release time has not passed, just resume */
                 releaseJob(sc);
             } else {
@@ -374,12 +374,12 @@ getNextInterrupt(void)
     uint64_t nextInterrupt = UINT64_MAX;
 
     if (ksCurThread != ksIdleThread) {
-        TRACE("deadline irq at %llx, budget %llx\n", ksSchedContext->cbsBudget + ksCurrentTime,
-              ksSchedContext->cbsBudget);
-        nextInterrupt = ksSchedContext->cbsBudget + ksCurrentTime;
+        TRACE("deadline irq at %llx, budget %llx\n", ksSchedContext->budgetRemaining + ksCurrentTime,
+              ksSchedContext->budgetRemaining);
+        nextInterrupt = ksSchedContext->budgetRemaining + ksCurrentTime;
     }
 
-    assert(ksSchedContext->cbsBudget > PLAT_LEEWAY);
+    assert(ksSchedContext->budgetRemaining > PLAT_LEEWAY);
     assert(nextInterrupt > ksCurrentTime);
     if (ksReleasePQ.head != NULL && ksReleasePQ.head->nextRelease < nextInterrupt) {
         TRACE("Release irq\n");
@@ -481,7 +481,7 @@ enforceBudget(void)
 
     lookupCap_ret_t lu_ret;
 
-    assert(ksSchedContext->cbsBudget <= PLAT_LEEWAY);
+    assert(ksSchedContext->budgetRemaining <= PLAT_LEEWAY);
 
 #ifdef CONFIG_FAIL_CBS
     fail("budget enforcement triggered");
@@ -500,7 +500,7 @@ enforceBudget(void)
     /* otherwise rate limit */
 #ifdef CONFIG_EDF
     if (isEDFThread(ksCurThread)) {
-        ksSchedContext->cbsBudget = ksSchedContext->budget;
+        ksSchedContext->budgetRemaining = ksSchedContext->budget;
         if (sched_context_status_get_cbs(ksSchedContext->status) == seL4_HardCBS) {
             deadlineRemove(ksSchedContext);
             TRACE("Rate limited %x(%x)\n", ksSchedContext, ksCurThread);
@@ -518,14 +518,14 @@ enforceBudget(void)
 
     if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
         /* recharge time has already passed, just apply round robin */
-        ksSchedContext->cbsBudget = ksSchedContext->budget;
+        ksSchedContext->budgetRemaining = ksSchedContext->budget;
         ksSchedContext->nextRelease = ksCurrentTime + ksSchedContext->period;
         tcbSchedAppend(ksCurThread);
         TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
     } else {
         TRACE("Rate limited FP thread %llx < %llx\n",
               ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
-        ksSchedContext->cbsBudget = 0;
+        ksSchedContext->budgetRemaining = 0;
         releaseAdd(ksSchedContext);
     }
 
@@ -669,7 +669,7 @@ completeCurrentJob(void)
     /* update parameters */
     ksSchedContext->lastScheduled = ksCurrentTime;
     /* remaining budget is forfeit (job is finished) */
-    ksSchedContext->cbsBudget = 0;
+    ksSchedContext->budgetRemaining = 0;
     TRACE("%p Job complete at %llx,next: %llx, dl: %llx\n", ksCurThread, ksCurrentTime, ksSchedContext->nextRelease, ksSchedContext->nextDeadline);
 
     if (isTimeTriggered(ksSchedContext)) {
@@ -707,7 +707,7 @@ releaseRecurringJob(sched_context_t *sc)
 
 #ifdef CONFIG_EDF_CBS
     /* recharge the budget */
-    sc->cbsBudget = sc->budget;
+    sc->budgetRemaining = sc->budget;
 #endif /* CONFIG_EDF_CBS */
 
     assert(sc != ksDeadlinePQ.head);
@@ -748,7 +748,7 @@ enqueueJob(sched_context_t *sc, tcb_t *tcb)
             /* release time has passed, add to deadline heap */
             TRACE("Releasing task %x, at %llx next release %llx\n", sc, ksCurrentTime, sc->nextRelease);
             setThreadState(tcb, ThreadState_Running);
-            sc->cbsBudget = sc->budget;
+            sc->budgetRemaining = sc->budget;
             sc->nextRelease = ksCurrentTime + sc->period;
 #ifdef CONFIG_EDF
             if (isEDFThread(tcb)) {
@@ -789,14 +789,14 @@ void releaseJobs(void)
 
         setThreadState(thread, ThreadState_Running);
         /* recharge the budget */
-        head->cbsBudget = head->budget;
+        head->budgetRemaining = head->budget;
         head->nextRelease = ksCurrentTime + head->period;
         //TODO@alyons need to check that it is blocked on the bound endpoint!
         if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
             TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
             sendAsyncIPC(thread->boundAsyncEndpoint, 0);
         } else {
-            TRACE("Releasing CBS job %x, budget %llx deadline %llx now %llx\n", thread, head->cbsBudget,
+            TRACE("Releasing CBS job %x, budget %llx deadline %llx now %llx\n", thread, head->budgetRemaining,
                   head->nextDeadline, ksCurrentTime);
             releaseBehead();
 
@@ -804,7 +804,7 @@ void releaseJobs(void)
             if (isEDFThread(thread)) {
 #ifdef CONFIG_EDF_CBS
                 //TODO@alyons is this correct??
-                if (head->cbsBudget > ((head->nextDeadline - ksCurrentTime) * head->ratio)) {
+                if (head->budgetRemaining > ((head->nextDeadline - ksCurrentTime) * head->ratio)) {
                     head->nextDeadline = ksCurrentTime + head->deadline;
                 }
 #endif /* CONFIG_EDF_CBS */
@@ -882,7 +882,7 @@ tcb_t *pickThread(void)
         } else {
             thread = ksDeadlinePQ.head->tcb;
         }
-        TRACE("Chose EDF thread %p, budget: %llx\n", thread, ksDeadlinePQ.head->cbsBudget);
+        TRACE("Chose EDF thread %p, budget: %llx\n", thread, ksDeadlinePQ.head->budgetRemaining);
     } else {
 #endif /* CONFIG_EDF */
         thread = ksReadyQueues[ready_queues_index(dom, prio)].head;
@@ -919,10 +919,10 @@ updateBudget(void)
 
     /* bill the previous thread */
     consumed = ksCurrentTime - ksSchedContext->lastScheduled;
-    if (consumed > ksSchedContext->cbsBudget) {
-        ksSchedContext->cbsBudget = 0;
+    if (consumed > ksSchedContext->budgetRemaining) {
+        ksSchedContext->budgetRemaining = 0;
     } else {
-        ksSchedContext->cbsBudget -= consumed;
+        ksSchedContext->budgetRemaining -= consumed;
     }
     ksSchedContext->lastScheduled = ksCurrentTime;
 }
@@ -942,7 +942,7 @@ switchToThread(tcb_t *thread)
             /* this case means the thread has already been charged */
             updateBudget();
 
-            if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
+            if (ksSchedContext->budgetRemaining <= PLAT_LEEWAY) {
                 tcb_t *woken;
 
                 enforceBudget();
@@ -1155,7 +1155,7 @@ timerTick(void)
     ksReprogram = true;
 
     updateBudget();
-    if (ksSchedContext->cbsBudget <= PLAT_LEEWAY) {
+    if (ksSchedContext->budgetRemaining <= PLAT_LEEWAY) {
         enforceBudget();
         rescheduleRequired();
     }

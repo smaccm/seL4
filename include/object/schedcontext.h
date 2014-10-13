@@ -41,10 +41,14 @@ typedef struct sc_prio_queue sc_prio_queue_t;
 exception_t decodeSchedControlInvocation(word_t label, unsigned int length,
                                          extra_caps_t extra_caps, word_t *buffer);
 exception_t decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_t *buffer);
+exception_t decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *buffer);
 
-exception_t invokeSchedControl(sched_context_t *sched_context, uint32_t type, uint64_t p, uint64_t d,
-                               uint64_t e, uint64_t r, word_t trigger, uint32_t data);
+exception_t invokeSchedControl_Configure(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
+                               uint64_t e, word_t trigger, uint32_t data);
+
+exception_t invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d, uint64_t e);
 /*
+ *
  * Remove an arbitrary memory of a sched context priority queue
  */
 void edfRemove(sc_prio_queue_t *heap, sched_context_t *toRemove);

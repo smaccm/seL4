@@ -19,15 +19,14 @@
 #include <object/schedcontext.h>
 
 exception_t
-invokeSchedControl(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
-                   uint64_t e, uint64_t r, word_t trigger, uint32_t data)
+invokeSchedControl_Configure(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
+                   uint64_t e, word_t trigger, uint32_t data)
 {
 
     /* convert to ticks */
     sched_context->budget = e * ksTicksPerUs;
     sched_context->period = p * ksTicksPerUs;
     sched_context->deadline = d * ksTicksPerUs;
-    sched_context->ratio = r;
     sched_context->data = data;
 
     sched_context_status_ptr_set_trigger(&sched_context->status, trigger);
@@ -36,18 +35,77 @@ invokeSchedControl(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uin
     return EXCEPTION_NONE;
 }
 
+exception_t 
+invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d, uint64_t e) 
+{
+
+    /* convert to ticks */
+    e = e * ksTicksPerUs;
+    p = p * ksTicksPerUs;
+    d = d * ksTicksPerUs;
+
+    /* if the sched context currently has active budget, extend it by the difference between
+     * the old budget (sched_context->budget) and the new budget (e) 
+     */
+    if (!sched_context_status_get_inReleaseHeap(sched_context->status)) {
+        /* update budget */
+        if (likely(e >= sched_context->budget)) {
+            sched_context->budgetRemaining += (e - sched_context->budget);
+        } else {
+            sched_context->budgetRemaining -= (sched_context->budget - e);
+        }
+
+        /* update period */
+        if (unlikely(p >= sched_context->period)) {
+            sched_context->nextRelease += (p - sched_context->period);
+        } else {
+            sched_context->nextRelease -= (sched_context->period - p);
+        }
+    }
+
+#ifdef CONFIG_EDF
+    /* update deadline */
+    if (sched_context_status_get_inDeadlineHeap(sched_context->status) && 
+        d != sched_context->deadline) {
+
+        deadlineRemove(sched_context);
+        
+        if (likely(d > sched_context->deadline)) {
+            sched_context->nextDeadline += (d - sched_context->deadline);
+        } else {
+            sched_context->nextDeadline -= (sched_context->deadline - d);
+        }
+
+        deadlineAdd(sched_context);
+    }
+#endif /* CONFIG_EDF */
+
+    sched_context->budget = e;
+    sched_context->period = p;
+    sched_context->deadline = d;
+
+    return EXCEPTION_NONE;
+}
+
+static seL4_SchedFlags_t 
+schedFlagsFromWord(uint32_t word) {
+    seL4_SchedFlags_t flags;
+    flags.words[0] = word;
+    return flags;
+}
 
 exception_t
 decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_t *buffer)
 {
-    uint64_t e, p, d, r;
+    uint64_t e, p, d;
     uint32_t type, data;
     word_t trigger;
     cap_t targetCap;
     sched_context_t *destSc;
+    seL4_SchedFlags_t flags;
 
     /* Ensure message length valid */
-    if (length < 11 || extra_caps.excaprefs[0] == NULL) {
+    if (length < 7 || extra_caps.excaprefs[0] == NULL) {
         userError("SchedControl Configure: Truncated message.");
         current_syscall_error.type = seL4_TruncatedMessage;
         return EXCEPTION_SYSCALL_ERROR;
@@ -58,13 +116,14 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     d = (((uint64_t) getSyscallArg(3, buffer)) << 32llu) + getSyscallArg(2, buffer);
     e = (((uint64_t) getSyscallArg(5, buffer)) << 32llu) + getSyscallArg(4, buffer);
 
-    r = (((uint64_t) getSyscallArg(7, buffer)) << 32llu) + getSyscallArg(6, buffer);
-    type = getSyscallArg(8, buffer);
-    trigger = getSyscallArg(9, buffer);
+    flags = schedFlagsFromWord(getSyscallArg(6, buffer));
     targetCap = extra_caps.excaprefs[0]->cap;
-    data = getSyscallArg(10, buffer);
 
-
+    type = seL4_SchedFlags_get_cbs(flags);
+    trigger = seL4_SchedFlags_get_trigger(flags);
+    data = seL4_SchedFlags_get_data(flags);
+    
+    /* TODO@alyons this is undefined behaviour :( */
     if ((p * ksTicksPerUs) < p) {
         userError("Integer overflow, p too big -- %llx * %llx = %llx\n",
                   p, ksTicksPerUs, p * ksTicksPerUs);
