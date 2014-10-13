@@ -20,7 +20,7 @@
 
 exception_t
 invokeSchedControl_Configure(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
-                   uint64_t e, word_t trigger, uint32_t data)
+                             uint64_t e, word_t trigger, uint32_t data)
 {
 
     /* convert to ticks */
@@ -35,8 +35,8 @@ invokeSchedControl_Configure(sched_context_t *sched_context, seL4_CBS cbs, uint6
     return EXCEPTION_NONE;
 }
 
-exception_t 
-invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d, uint64_t e) 
+exception_t
+invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d, uint64_t e)
 {
 
     /* convert to ticks */
@@ -45,7 +45,7 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
     d = d * ksTicksPerUs;
 
     /* if the sched context currently has active budget, extend it by the difference between
-     * the old budget (sched_context->budget) and the new budget (e) 
+     * the old budget (sched_context->budget) and the new budget (e)
      */
     if (!sched_context_status_get_inReleaseHeap(sched_context->status)) {
         /* update budget */
@@ -65,11 +65,11 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
 
 #ifdef CONFIG_EDF
     /* update deadline */
-    if (sched_context_status_get_inDeadlineHeap(sched_context->status) && 
-        d != sched_context->deadline) {
+    if (sched_context_status_get_inDeadlineHeap(sched_context->status) &&
+            d != sched_context->deadline) {
 
         deadlineRemove(sched_context);
-        
+
         if (likely(d > sched_context->deadline)) {
             sched_context->nextDeadline += (d - sched_context->deadline);
         } else {
@@ -87,8 +87,9 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
     return EXCEPTION_NONE;
 }
 
-static seL4_SchedFlags_t 
-schedFlagsFromWord(uint32_t word) {
+static seL4_SchedFlags_t
+schedFlagsFromWord(uint32_t word)
+{
     seL4_SchedFlags_t flags;
     flags.words[0] = word;
     return flags;
@@ -122,7 +123,7 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     type = seL4_SchedFlags_get_cbs(flags);
     trigger = seL4_SchedFlags_get_trigger(flags);
     data = seL4_SchedFlags_get_data(flags);
-    
+
     /* TODO@alyons this is undefined behaviour :( */
     if ((p * ksTicksPerUs) < p) {
         userError("Integer overflow, p too big -- %llx * %llx = %llx\n",
@@ -161,7 +162,7 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     return invokeSchedControl_Configure(destSc, type, p, d, e, trigger, data);
 }
 
-exception_t 
+exception_t
 decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *buffer)
 {
     uint64_t e, p, d;
@@ -182,7 +183,7 @@ decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *
 
     targetCap = extra_caps.excaprefs[0]->cap;
 
-    
+
     /* TODO@alyons this is undefined behaviour :( */
     if ((p * ksTicksPerUs) < p) {
         userError("SchedControl_Extend: Integer overflow, p too big -- %llx * %llx = %llx\n",

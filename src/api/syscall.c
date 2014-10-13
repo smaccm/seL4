@@ -549,8 +549,8 @@ handleWait(bool_t isBlocking)
 
 static void
 handleYield(void)
-{ 
-    /* TODO @alyons what should this really do? */ 
+{
+    /* TODO @alyons what should this really do? */
     tcbSchedDequeue(ksCurThread);
     tcbSchedAppend(ksCurThread);
     rescheduleRequired();
