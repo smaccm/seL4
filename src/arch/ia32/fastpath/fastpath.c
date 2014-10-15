@@ -326,6 +326,10 @@ fastpath_call(word_t cptr, word_t msgInfo)
         slowpath(SysCall);
     }
 
+    /* Ensure dest has a sufficient criticality */
+    if (unlikely(dest->tcbCriticality) < ksCriticality) {
+        slowpath(SysCall);
+    }
     /* Ensure the destination has a higher/equal priority to us. */
     if (unlikely(tcb_prio_get_prio(dest->tcbPriority) <
                  tcb_prio_get_prio(ksCurThread->tcbPriority))) {
@@ -474,6 +478,11 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
 
     /* Ensure that the destination has a valid MMU. */
     if (unlikely(! isValidVTableRoot_fp (newVTable))) {
+        slowpath(SysReplyWait);
+    }
+
+    /* Ensure dest has a sufficient criticality */
+    if (unlikely(caller->tcbCriticality) < ksCriticality) {
         slowpath(SysReplyWait);
     }
 

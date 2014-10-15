@@ -367,6 +367,7 @@ create_sched_context(tcb_t *tcb)
     sc->budgetRemaining = mul * ksTicksPerUs;
     sc->period = mul * ksTicksPerUs;
     sc->deadline = mul * ksTicksPerUs;
+    sc->home = tcb;
 
     assert(sc->budget > 0);
     assert(sc->budget > mul);
@@ -387,6 +388,8 @@ create_idle_thread(void)
     }
     memzero((void *)pptr, 1 << TCB_BLOCK_SIZE_BITS);
     ksIdleThread = TCB_PTR(pptr + TCB_OFFSET);
+    /* the idle thread should always be able to run */
+    ksIdleThread->tcbCriticality = UINT32_MAX;
     configureIdleThread(ksIdleThread);
 
     sched_context = create_sched_context(ksIdleThread);
@@ -458,6 +461,7 @@ create_initial_thread(
         return false;
     }
     tcb->tcbSchedContext = ksSchedContext;
+    tcb->tcbCriticality = 0;
 
     /* initialise current thread pointer */
     switchToThread(tcb); /* initialises ksCurThread */
@@ -472,6 +476,8 @@ create_initial_thread(
 
     ksCurThread->tcbSchedContext = NULL;
     ksSchedContext->tcb = NULL;
+    ksCriticality = 0;
+
     return true;
 }
 

@@ -414,10 +414,10 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
         return invokeTCB_Suspend(
                    TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
-    case TCBResume: 
+    case TCBResume:
         setThreadState(ksCurThread, ThreadState_Restart);
         return invokeTCB_Resume(
-               TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
+                   TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
     case TCBConfigure:
         return decodeTCBConfigure(cap, length, slot, extraCaps, buffer);
@@ -605,8 +605,9 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     cptr_t faultEP, temporalFEP;
     prio_t prio, maxPrio;
     word_t cRootData, vRootData, bufferAddr;
+    uint32_t criticality;
 
-    if (length < 7 || rootCaps.excaprefs[0] == NULL
+    if (length < 8 || rootCaps.excaprefs[0] == NULL
             || rootCaps.excaprefs[1] == NULL
             || rootCaps.excaprefs[2] == NULL
        ) {
@@ -619,6 +620,7 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
     prio       = getSyscallArg(1, buffer);
     scCap = lookupSlot(ksCurThread, getSyscallArg(2, buffer)).slot->cap;
     temporalFEP = getSyscallArg(6, buffer);
+    criticality = getSyscallArg(7, buffer);
 
     /* sched context cap should either be null or a valid sc cap */
     if (likely(cap_get_capType(scCap) == cap_sched_context_cap)) {
@@ -730,6 +732,7 @@ decodeTCBConfigure(cap_t cap, unsigned int length, cte_t* slot,
                bufferAddr, bufferCap,
                bufferSlot,
                sched_context,
+               criticality,
                thread_control_update_all);
 }
 
@@ -748,7 +751,7 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
                  cap_null_cap_new(), 0,
                  cap_null_cap_new(), 0,
                  0, cap_null_cap_new(),
-                 0, sched_context,
+                 0, sched_context, 0,
                  thread_control_update_sc);
 
     if (status == EXCEPTION_NONE) {
@@ -877,8 +880,7 @@ decodeSetMaxPriority(cap_t cap, unsigned int length, word_t *buffer)
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                0, cap_null_cap_new(),
-               NULL,
-               NULL,
+               NULL, NULL, 0,
                thread_control_update_priority);
 
 }
@@ -917,8 +919,7 @@ decodeSetPriority(cap_t cap, unsigned int length, word_t *buffer)
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                0, cap_null_cap_new(),
-               NULL,
-               NULL,
+               NULL, NULL, 0,
                thread_control_update_priority);
 }
 
@@ -964,8 +965,7 @@ decodeSetIPCBuffer(cap_t cap, unsigned int length, cte_t* slot,
                cap_null_cap_new(), NULL,
                cap_null_cap_new(), NULL,
                cptr_bufferPtr, bufferCap,
-               bufferSlot,
-               NULL,
+               bufferSlot, NULL, 0,
                thread_control_update_ipc_buffer);
 }
 
@@ -1046,8 +1046,7 @@ decodeSetSpace(cap_t cap, unsigned int length, cte_t* slot,
                TCB_PRIO_NULL,
                cRootCap, cRootSlot,
                vRootCap, vRootSlot,
-               0, cap_null_cap_new(), NULL,
-               NULL,
+               0, cap_null_cap_new(), NULL, NULL, 0,
                thread_control_update_space);
 }
 
@@ -1171,7 +1170,7 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
                         cap_t vRoot_newCap, cte_t *vRoot_srcSlot,
                         word_t bufferAddr, cap_t bufferCap,
                         cte_t *bufferSrcSlot,
-                        sched_context_t *sched_context,
+                        sched_context_t *sched_context, uint32_t criticality,
                         thread_control_flag_t updateFlags)
 {
     exception_t e;
@@ -1197,6 +1196,10 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
     }
 
     setupReplyMaster(target);
+
+    if (updateFlags & thread_control_update_all) {
+        target->tcbCriticality = criticality;
+    }
 
     if (updateFlags & thread_control_update_priority) {
         setPriority(target, priority);

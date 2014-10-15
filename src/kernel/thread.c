@@ -483,21 +483,13 @@ void
 enforceBudget(void)
 {
 
-    lookupCap_ret_t lu_ret;
-
     assert(ksSchedContext->budgetRemaining <= PLAT_LEEWAY);
 
 #ifdef CONFIG_FAIL_CBS
     fail("budget enforcement triggered");
 #endif /* CONFIG_FAIL_CBS */
 
-    /* if the thread has a temporal exception handler, send a
-     * temporal exception */
-    lu_ret = lookupCap(ksCurThread, ksCurThread->tcbTemporalFaultHandler);
-    if (cap_get_capType(lu_ret.cap) != cap_null_cap) {
-        /* don't reload, send a temporal exception */
-        current_fault = fault_temporal_new(ksSchedContext->data, 0);
-        sendFaultIPC(ksCurThread, false);
+    if (raiseTemporalException(ksCurThread)) {
         return;
     }
 
@@ -536,6 +528,15 @@ enforceBudget(void)
 }
 
 /* Release heap operations */
+void
+releasePostpone(void)
+{
+    sched_context_t *head = ksReleasePQ.head;
+    releaseBehead();
+    head->nextRelease += head->period;
+    releaseAdd(head);
+}
+
 void
 releaseHeadChanged(void)
 {
@@ -783,44 +784,43 @@ void releaseJobs(void)
 
         //assert(ksCurrentTime < head->nextRelease + PLAT_LEEWAY);
 
-        tcb_t *thread;
-        if (head == ksSchedContext) {
-            thread = ksCurThread;
-        } else {
-            thread = head->tcb;
-        }
+        tcb_t *thread = head->tcb;
         assert(thread != NULL);
 
-        setThreadState(thread, ThreadState_Running);
-        /* recharge the budget */
-        head->budgetRemaining = head->budget;
-        head->nextRelease = ksCurrentTime + head->period;
-        //TODO@alyons need to check that it is blocked on the bound endpoint!
-        if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
-            TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
-            sendAsyncIPC(thread->boundAsyncEndpoint, 0);
+        if (thread->tcbCriticality < ksCriticality) {
+            releasePostpone();
         } else {
-            TRACE("Releasing CBS job %x, budget %llx deadline %llx now %llx\n", thread, head->budgetRemaining,
-                  head->nextDeadline, ksCurrentTime);
-            releaseBehead();
+            setThreadState(thread, ThreadState_Running);
+            /* recharge the budget */
+            head->budgetRemaining = head->budget;
+            head->nextRelease = ksCurrentTime + head->period;
+
+            if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
+                TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
+                sendAsyncIPC(thread->boundAsyncEndpoint, 0);
+            } else {
+                TRACE("Releasing CBS job %x, budget %llx deadline %llx now %llx\n", thread, head->budgetRemaining,
+                      head->nextDeadline, ksCurrentTime);
+                releaseBehead();
 
 #ifdef CONFIG_EDF
-            if (isEDFThread(thread)) {
+                if (isEDFThread(thread)) {
 #ifdef CONFIG_EDF_CBS
-                //TODO this is wrong, as we can't incorporate the deadline/period ratio without 64bit division.
-                if (head->budgetRemaining > ((head->nextDeadline - ksCurrentTime))) {
-                    head->nextDeadline = ksCurrentTime + head->deadline;
-                }
+                    //TODO this is wrong, as we can't incorporate the deadline/period ratio without 64bit division.
+                    if (head->budgetRemaining > ((head->nextDeadline - ksCurrentTime))) {
+                        head->nextDeadline = ksCurrentTime + head->deadline;
+                    }
 #endif /* CONFIG_EDF_CBS */
-                assert(head != ksDeadlinePQ.head);
-                deadlineAdd(head);
-            } else {
+                    assert(head != ksDeadlinePQ.head);
+                    deadlineAdd(head);
+                } else {
 #endif /* CONFIG_EDF */
-                setThreadState(thread, ThreadState_Running);
-                tcbSchedAppend(thread);
+                    setThreadState(thread, ThreadState_Running);
+                    tcbSchedAppend(thread);
 #ifdef CONFIG_EDF
-            }
+                }
 #endif /* CONFIG_EDF */
+            }
         }
         head = ksReleasePQ.head;
     }
@@ -852,7 +852,27 @@ getHighestPrio(void)
 
 }
 
-tcb_t *pickThread(void)
+bool_t
+raiseTemporalException(tcb_t *tcb)
+{
+    /* if the thread has a temporal exception handler, send a
+     * temporal exception */
+
+    lookupCap_ret_t lu_ret;
+    bool_t sent = false;
+
+    lu_ret = lookupCap(tcb, tcb->tcbTemporalFaultHandler);
+    if (cap_get_capType(lu_ret.cap) != cap_null_cap) {
+        current_fault = fault_temporal_new(tcb->tcbSchedContext->data, 0);
+        sendFaultIPC(tcb, false);
+        sent = true;
+    }
+
+    return sent;
+}
+
+tcb_t *
+getHighestPrioThread(void)
 {
 
     word_t prio;
@@ -900,6 +920,37 @@ tcb_t *pickThread(void)
     return thread;
 }
 
+tcb_t *
+pickThread(void)
+{
+    tcb_t *thread = NULL;
+    tcb_t *home;
+
+    while (thread == NULL) {
+
+        thread = getHighestPrioThread();
+        home = thread->tcbSchedContext->home;
+
+        if (unlikely(home != thread && home->tcbCriticality < ksCriticality)) {
+            /* this thread isn't eligible to run but its blocking a resource,
+             * attempt to send a temporal fault. */
+            if (raiseTemporalException(thread)) {
+                thread = NULL;
+            }
+        } else if (unlikely(thread->tcbCriticality < ksCriticality)) {
+            /* postpone */
+            tcbSchedDequeue(thread);
+            thread->tcbSchedContext->nextRelease = ksCurrentTime + thread->tcbSchedContext->period;
+            releaseAdd(thread->tcbSchedContext);
+            thread = NULL;
+        }
+    }
+
+    assert(thread->tcbCriticality >= ksCriticality);
+    assert(thread != NULL);
+    return thread;
+}
+
 
 void
 chooseThread(void)
@@ -936,6 +987,7 @@ void
 switchToThread(tcb_t *thread)
 {
     assert(thread->tcbSchedContext != NULL);
+    assert(thread->tcbCriticality >= ksCriticality);
     /* we are switching from ksSchedContext to thread->tcbSchedContext */
     if (thread->tcbSchedContext != ksSchedContext) {
 
@@ -1088,8 +1140,9 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
             tcbSchedEnqueue(target);
         }
     } else {
-        if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
-                && action == SchedulerAction_ResumeCurrentThread) {
+        if (target->tcbCriticality >= ksCriticality &&
+                ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
+                 && action == SchedulerAction_ResumeCurrentThread)) {
             if (donate) {
                 assert(target->tcbSchedContext == NULL);
                 target->tcbSchedContext = ksSchedContext;

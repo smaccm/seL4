@@ -263,6 +263,11 @@ fastpath_call(word_t cptr, word_t msgInfo)
     /* Get HW ASID */
     stored_hw_asid = cap_pd[PD_ASID_SLOT];
 
+    /* Ensure dest has a sufficient criticality */
+    if (unlikely(dest->tcbCriticality) < ksCriticality) {
+        slowpath(SysCall);
+    }
+
     /* Ensure the destination has a higher/equal priority to us. */
     if (unlikely(tcb_prio_get_prio(dest->tcbPriority) <
                  tcb_prio_get_prio(ksCurThread->tcbPriority))) {
@@ -420,6 +425,11 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     /* Ensure the original caller can be scheduled directly. */
     if (unlikely(tcb_prio_get_prio(caller->tcbPriority) <
                  tcb_prio_get_prio(ksCurThread->tcbPriority))) {
+        slowpath(SysReplyWait);
+    }
+
+    /* Ensure caller has a sufficient criticality */
+    if (unlikely(caller->tcbCriticality) < ksCriticality) {
         slowpath(SysReplyWait);
     }
 

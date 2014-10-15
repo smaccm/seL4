@@ -90,12 +90,14 @@ void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
                      word_t *receiverIPCBuffer);
 void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
+tcb_t *getHighestPrioThread(void);
 tcb_t *pickThread(void);
 void chooseThread(void);
 void releaseJob(sched_context_t *toRelease);
 void completeCurrentJob(void);
 void releaseRecurringJob(sched_context_t *sc);
 uint64_t getNextInterrupt(void);
+bool_t raiseTemporalException(tcb_t *tcb);
 
 /* deadline heap ops */
 void deadlineAdd(sched_context_t *sc);
@@ -109,6 +111,7 @@ void releaseBehead(void);
 void releaseAdd(sched_context_t *sc);
 void releaseRemove(sched_context_t *sc);
 void releaseHeadChanged(void);
+void releasePostpone(void);
 
 void enqueueJob(sched_context_t *sc, tcb_t *tcb);
 void releaseJobs(void);

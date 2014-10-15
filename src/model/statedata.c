@@ -27,6 +27,7 @@ sc_prio_queue_t ksReleasePQ;
 uint64_t ksCurrentTime;
 bool_t ksReprogram = false;
 sched_context_t *ksSchedContext;
+uint32_t ksCriticality;
 
 /* Pointer to the head of the scheduler queue for each priority */
 tcb_queue_t ksReadyQueues[NUM_READY_QUEUES];

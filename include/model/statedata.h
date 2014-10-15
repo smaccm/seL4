@@ -29,6 +29,7 @@ extern uint64_t ksCurrentTime VISIBLE;
 extern bool_t ksReprogram VISIBLE;
 extern uint32_t ksTicksPerUs;
 extern sched_context_t *ksSchedContext;
+extern uint32_t ksCriticality;
 #ifdef CONFIG_BENCHMARK
 extern tcb_t *suspended;
 #endif

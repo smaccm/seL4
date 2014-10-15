@@ -85,7 +85,7 @@ exception_t invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
                                     cap_t vRoot_newCap, cte_t *vRoot_srcSlot,
                                     word_t bufferAddr, cap_t bufferCap,
                                     cte_t *bufferSrcSlot,
-                                    sched_context_t *sched_context,
+                                    sched_context_t *sched_context, uint32_t criticality,
                                     thread_control_flag_t updateFlags);
 exception_t invokeTCB_CopyRegisters(tcb_t *dest, tcb_t *src,
                                     bool_t suspendSource, bool_t resumeTarget,

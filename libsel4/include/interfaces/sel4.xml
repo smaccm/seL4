@@ -52,7 +52,8 @@
 			<param dir="in" name="vspace_root_data" type="seL4_CapData_t"/>
 			<param dir="in" name="buffer" type="seL4_Word"/>
 			<param dir="in" name="bufferFrame" type="seL4_CPtr"/>
-			<param dir="in" name="temporal_fault_ep" type="seL4_Word"/>
+            <param dir="in" name="temporal_fault_ep" type="seL4_Word"/>
+            <param dir="in" name="criticality" type="seL4_Word" />
 		</method>
 		<method id="TCBSetPriority" name="SetPriority">
 			<param dir="in" name="priority" type="uint8_t"/>
