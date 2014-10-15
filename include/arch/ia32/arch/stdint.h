@@ -22,6 +22,7 @@ typedef signed int int32_t;
 
 typedef signed long long int64_t;
 
-#define UINT64_MAX (18446744073709551615ULL)
+#define UINT64_MAX (0xFFFFFFFFFFFFFFFFULL)
+#define UINT32_MAX (0xFFFFFFFFU)
 
 #endif
