@@ -40,7 +40,7 @@ typedef struct {
     uint64_t deadline;
     uint64_t budget;
     seL4_SchedFlags_t flags;
-} seL4_SchedParams;
+} seL4_SchedParams_t;
 
 /* message_info_t defined in api/types.bf */
 
