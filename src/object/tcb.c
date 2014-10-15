@@ -414,24 +414,9 @@ decodeTCBInvocation(word_t label, unsigned int length, cap_t cap,
         return invokeTCB_Suspend(
                    TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
-    case TCBResume: {
-        tcb_t *tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
-        if (tcb->tcbSchedContext == NULL) {
-            //TODO should resume take a scheduling context?
-            userError("seL4_TCBResume: cannot resume a thread with no sched context");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-
-        //TODO@alyons this should not fail, just not run the thread
-        if (tcb->tcbSchedContext->budget == 0 || tcb->tcbSchedContext->period == 0) {
-            userError("seL4_TCBResume: thread has 0 budget in scheduling context");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-    }
-    setThreadState(ksCurThread, ThreadState_Restart);
-    return invokeTCB_Resume(
+    case TCBResume: 
+        setThreadState(ksCurThread, ThreadState_Restart);
+        return invokeTCB_Resume(
                TCB_PTR(cap_thread_cap_get_capTCBPtr(cap)));
 
     case TCBConfigure:
@@ -597,22 +582,6 @@ decodeWriteRegisters(cap_t cap, unsigned int length, word_t *buffer)
         userError("TCB WriteRegisters: Attempted to write our own registers.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    /* the user is attempting to restart the thread */
-    if (flags & BIT(WriteRegisters_resume)) {
-        /* no scheduling context */
-        if (thread->tcbSchedContext == NULL) {
-            userError("TCB WriteRegisters: Attempted to resume thread without scheduling context.");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-            /* scheduling context with no budget */
-        } else if (thread->tcbSchedContext->budget == 0 || thread->tcbSchedContext->period == 0) {
-            userError("TCB WriteRegisters: Attempted to resume a thread with no budget.");
-            current_syscall_error.type = seL4_IllegalOperation;
-            return EXCEPTION_SYSCALL_ERROR;
-        }
-        assert(thread->tcbSchedContext == NULL || thread->tcbSchedContext->tcb == thread);
     }
 
     setThreadState(ksCurThread, ThreadState_Restart);

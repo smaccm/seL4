@@ -163,6 +163,10 @@ restart(tcb_t *target)
 {
     sched_context_t *sc = target->tcbSchedContext;
 
+    if (sc == NULL || (sc->budget == 0 && sc->period == 0)) {
+        return;
+    }
+
     if (isBlocked(target)) {
         ipcCancel(target);
         assert(sc != NULL);
@@ -1023,10 +1027,10 @@ setPriority(tcb_t *tptr, tcb_prio_t prio)
 
     tptr->tcbPriority = prio;
 
-    if (isRunnable(tptr)) {
-        assert(tptr == ksCurThread || tptr->tcbSchedContext != NULL);
+    if (isSchedulable(tptr)) {
         tcbSchedEnqueue(tptr);
     }
+
     if (tptr == ksCurThread) {
         rescheduleRequired();
     }
