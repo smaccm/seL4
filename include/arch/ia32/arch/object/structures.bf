@@ -443,8 +443,10 @@ tagged_union fault faultType {
 
 -- Thread priority
 block tcb_prio {
-    field maxPrio 16
-    field prio    16
+    field maxPrio 8
+    field prio    8
+    field maxCriticality 8
+    field criticality 8
 }
 
 -- Thread state: size = 8 bytes

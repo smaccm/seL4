@@ -264,7 +264,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
     stored_hw_asid = cap_pd[PD_ASID_SLOT];
 
     /* Ensure dest has a sufficient criticality */
-    if (unlikely(dest->tcbCriticality) < ksCriticality) {
+    if (unlikely(tcb_prio_get_criticality(dest->tcbPriority)) < ksCriticality) {
         slowpath(SysCall);
     }
 
@@ -429,7 +429,7 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure caller has a sufficient criticality */
-    if (unlikely(caller->tcbCriticality) < ksCriticality) {
+    if (unlikely(tcb_prio_get_criticality(caller->tcbPriority)) < ksCriticality) {
         slowpath(SysReplyWait);
     }
 

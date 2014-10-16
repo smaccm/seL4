@@ -174,7 +174,7 @@ typedef uint32_t tcb_cnode_index_t;
 
 typedef struct sched_context sched_context_t;
 
-/* TCB: size 100 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+/* TCB: size 96 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
@@ -196,9 +196,6 @@ struct tcb {
 
     /* Priority + Max priority 2 bytes (packed to 4) */
     tcb_prio_t tcbPriority;
-
-    /* criticality of this tcb */
-    uint32_t tcbCriticality;
 
     /* Timeslice remaining, 4 bytes */
     word_t tcbTimeSlice;

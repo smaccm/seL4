@@ -43,8 +43,10 @@
 		</method>
 		<method id="TCBConfigure" name="Configure">
 			<param dir="in" name="fault_ep" type="seL4_Word"/>
+            <param dir="in" name="criticality" type="uint8_t" />
+            <param dir="in" name="maxCriticality" type="uint8_t" />
 			<param dir="in" name="priority" type="uint8_t"/>
-			<param dir="in" name="maxPriority" type="uint8_t"/>
+            <param dir="in" name="maxPriority" type="uint8_t"/>
 			<param dir="in" name="sched_context" type="seL4_Word"/>
 			<param dir="in" name="cspace_root" type="seL4_CNode"/>
 			<param dir="in" name="cspace_root_data" type="seL4_CapData_t"/>
@@ -53,7 +55,6 @@
 			<param dir="in" name="buffer" type="seL4_Word"/>
 			<param dir="in" name="bufferFrame" type="seL4_CPtr"/>
             <param dir="in" name="temporal_fault_ep" type="seL4_Word"/>
-            <param dir="in" name="criticality" type="seL4_Word" />
 		</method>
 		<method id="TCBSetPriority" name="SetPriority">
 			<param dir="in" name="priority" type="uint8_t"/>

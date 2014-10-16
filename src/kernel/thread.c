@@ -787,7 +787,7 @@ void releaseJobs(void)
         tcb_t *thread = head->tcb;
         assert(thread != NULL);
 
-        if (thread->tcbCriticality < ksCriticality) {
+        if (tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality) {
             releasePostpone();
         } else {
             setThreadState(thread, ThreadState_Running);
@@ -931,13 +931,13 @@ pickThread(void)
         thread = getHighestPrioThread();
         home = thread->tcbSchedContext->home;
 
-        if (unlikely(home != thread && home->tcbCriticality < ksCriticality)) {
+        if (unlikely(home != thread && tcb_prio_get_criticality(home->tcbPriority) < ksCriticality)) {
             /* this thread isn't eligible to run but its blocking a resource,
              * attempt to send a temporal fault. */
             if (raiseTemporalException(thread)) {
                 thread = NULL;
             }
-        } else if (unlikely(thread->tcbCriticality < ksCriticality)) {
+        } else if (unlikely(tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality)) {
             /* postpone */
             tcbSchedDequeue(thread);
             thread->tcbSchedContext->nextRelease = ksCurrentTime + thread->tcbSchedContext->period;
@@ -946,7 +946,7 @@ pickThread(void)
         }
     }
 
-    assert(thread->tcbCriticality >= ksCriticality);
+    assert(tcb_prio_get_criticality(thread->tcbPriority) >= ksCriticality);
     assert(thread != NULL);
     return thread;
 }
@@ -987,7 +987,7 @@ void
 switchToThread(tcb_t *thread)
 {
     assert(thread->tcbSchedContext != NULL);
-    assert(thread->tcbCriticality >= ksCriticality);
+    assert(tcb_prio_get_criticality(thread->tcbPriority) >= ksCriticality);
     /* we are switching from ksSchedContext to thread->tcbSchedContext */
     if (thread->tcbSchedContext != ksSchedContext) {
 
@@ -1140,7 +1140,7 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
             tcbSchedEnqueue(target);
         }
     } else {
-        if (target->tcbCriticality >= ksCriticality &&
+        if (tcb_prio_get_criticality(target->tcbPriority) >= ksCriticality &&
                 ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
                  && action == SchedulerAction_ResumeCurrentThread)) {
             if (donate) {

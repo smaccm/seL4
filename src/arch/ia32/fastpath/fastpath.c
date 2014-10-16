@@ -327,7 +327,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure dest has a sufficient criticality */
-    if (unlikely(dest->tcbCriticality) < ksCriticality) {
+    if (unlikely(tcb_prio_get_criticality(dest->tcbPriority) < ksCriticality)) {
         slowpath(SysCall);
     }
     /* Ensure the destination has a higher/equal priority to us. */
@@ -482,7 +482,7 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
     }
 
     /* Ensure dest has a sufficient criticality */
-    if (unlikely(caller->tcbCriticality) < ksCriticality) {
+    if (unlikely(tcb_prio_get_criticality(caller->tcbPriority) < ksCriticality)) {
         slowpath(SysReplyWait);
     }
 

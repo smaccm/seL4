@@ -388,8 +388,9 @@ create_idle_thread(void)
     }
     memzero((void *)pptr, 1 << TCB_BLOCK_SIZE_BITS);
     ksIdleThread = TCB_PTR(pptr + TCB_OFFSET);
+
     /* the idle thread should always be able to run */
-    ksIdleThread->tcbCriticality = UINT32_MAX;
+    ksIdleThread->tcbPriority = tcb_prio_new(0, 0, 0, 0xFFu);
     configureIdleThread(ksIdleThread);
 
     sched_context = create_sched_context(ksIdleThread);
@@ -447,7 +448,7 @@ create_initial_thread(
     setNextPC(tcb, ui_v_entry);
 
     /* initialise TCB */
-    tcb->tcbPriority = tcb_prio_new(seL4_MaxPrio, seL4_MaxPrio);
+    tcb->tcbPriority = tcb_prio_new(seL4_MaxPrio, seL4_MaxPrio, seL4_MaxPrio, 0);
     setupReplyMaster(tcb);
     setThreadState(tcb, ThreadState_Running);
     ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
@@ -461,7 +462,6 @@ create_initial_thread(
         return false;
     }
     tcb->tcbSchedContext = ksSchedContext;
-    tcb->tcbCriticality = 0;
 
     /* initialise current thread pointer */
     switchToThread(tcb); /* initialises ksCurThread */
