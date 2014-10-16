@@ -87,6 +87,20 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
     return EXCEPTION_NONE;
 }
 
+exception_t
+invokeSchedControl_SetCriticality(uint32_t criticality)
+{
+    ksCriticality = criticality;
+
+    if (tcb_prio_get_criticality(ksCurThread->tcbPriority) < ksCriticality) {
+        releaseAdd(ksCurThread->tcbSchedContext);
+        rescheduleRequired();
+    }
+
+    return EXCEPTION_NONE;
+}
+
+
 static seL4_SchedFlags_t
 schedFlagsFromWord(uint32_t word)
 {
@@ -210,6 +224,27 @@ decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *
     return invokeSchedControl_Extend(destSc, p, d, e);
 }
 
+exception_t
+decodeSchedControl_SetCriticality(unsigned int length, word_t *buffer)
+{
+    uint32_t criticality;
+
+    if (length < 1) {
+        userError("SchedControl_SetCriticality: truncated message (expected 1 argument)");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    criticality = getSyscallArg(0, buffer);
+    if (criticality > 0xFFu) {
+        userError("Criticality %u too high, max %u\n", criticality, 0xFFu);
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return invokeSchedControl_SetCriticality(criticality);
+}
 
 exception_t
 decodeSchedControlInvocation(word_t label, unsigned int length,
@@ -221,6 +256,8 @@ decodeSchedControlInvocation(word_t label, unsigned int length,
         return decodeSchedControl_Configure(length, extraCaps, buffer);
     case SchedControlExtend:
         return decodeSchedControl_Extend(length, extraCaps, buffer);
+    case SchedControlSetCriticality:
+        return decodeSchedControl_SetCriticality(length, buffer);
     default:
         userError("SchedControl invocation: Illegal operation attempted.");
         current_syscall_error.type = seL4_IllegalOperation;

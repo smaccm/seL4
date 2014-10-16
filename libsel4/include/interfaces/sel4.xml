@@ -187,6 +187,9 @@
             <param dir="in" name="deadline" type="uint64_t" />
             <param dir="in" name="executionRequirement" type="uint64_t" />
         </method>
+        <method id="SchedControlSetCriticality" name="SetCriticality" >
+            <param dir="in" name="criticality" type="uint32_t"/>
+        </method>
     </interface>
 	<interface name="seL4_DomainSet">
 		<method id="DomainSetSet" name="Set">

@@ -42,11 +42,13 @@ exception_t decodeSchedControlInvocation(word_t label, unsigned int length,
                                          extra_caps_t extra_caps, word_t *buffer);
 exception_t decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_t *buffer);
 exception_t decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *buffer);
+exception_t decodeSchedControl_SetCriticality(unsigned int length, word_t *buffer);
 
 exception_t invokeSchedControl_Configure(sched_context_t *sched_context, seL4_CBS cbs, uint64_t p, uint64_t d,
                                          uint64_t e, word_t trigger, uint32_t data);
 
 exception_t invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d, uint64_t e);
+exception_t invokeSchedControl_SetCriticality(uint32_t criticality);
 /*
  *
  * Remove an arbitrary memory of a sched context priority queue
