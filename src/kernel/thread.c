@@ -175,7 +175,9 @@ restart(tcb_t *target)
 
         if (isTimeTriggered(sc)) {
 #ifdef CONFIG_EDF_CBS
-            if (sc->nextRelease < ksCurrentTime) {
+            if (tcb_prio_get_criticality(target->tcbPriority) < ksCriticality) {
+                releaseAdd(sc);
+            } else if (sc->nextRelease < ksCurrentTime) {
                 /* recharge time has passed, recharge */
                 sc->budgetRemaining = sc->budget;
                 sc->nextRelease = ksCurrentTime + sc->period;
