@@ -415,6 +415,7 @@ create_initial_thread(
     pptr_t pptr;
     cap_t  cap;
     tcb_t* tcb;
+    deriveCap_ret_t dc_ret;
 
     /* allocate TCB */
     pptr = alloc_region(TCB_BLOCK_SIZE_BITS);
@@ -426,6 +427,13 @@ create_initial_thread(
     tcb = TCB_PTR(pptr + TCB_OFFSET);
 
     Arch_initContext(&tcb->tcbArch.tcbContext);
+
+    /* derive a copy of the IPC buffer cap for inserting */
+    dc_ret = deriveCap(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_IPCBUF), ipcbuf_cap);
+    if (dc_ret.status != EXCEPTION_NONE) {
+        printf("Failed to derive copy of IPC Buffer\n");
+        return false;
+    }
 
     /* initialise TCB (corresponds directly to abstract specification) */
     cteInsert(
@@ -439,7 +447,7 @@ create_initial_thread(
         SLOT_PTR(pptr, tcbVTable)
     );
     cteInsert(
-        ipcbuf_cap,
+        dc_ret.cap,
         SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IT_IPCBUF),
         SLOT_PTR(pptr, tcbBuffer)
     );
