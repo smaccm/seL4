@@ -173,29 +173,27 @@ restart(tcb_t *target)
         assert(sc->tcb != NULL);
         setThreadState(target, ThreadState_Restart);
 
-        if (isTimeTriggered(sc)) {
 #ifdef CONFIG_EDF_CBS
-            if (tcb_prio_get_criticality(target->tcbPriority) < ksCriticality) {
-                releaseAdd(sc);
-            } else if (sc->nextRelease < ksCurrentTime) {
-                /* recharge time has passed, recharge */
-                sc->budgetRemaining = sc->budget;
-                sc->nextRelease = ksCurrentTime + sc->period;
+        if (tcb_prio_get_criticality(target->tcbPriority) < ksCriticality) {
+            releaseAdd(sc);
+        } else if (sc->nextRelease < ksCurrentTime) {
+            /* recharge time has passed, recharge */
+            sc->budgetRemaining = sc->budget;
+            sc->nextRelease = ksCurrentTime + sc->period;
 #ifdef CONFIG_EDF
-                sc->nextDeadline = ksCurrentTime + sc->deadline;
+            sc->nextDeadline = ksCurrentTime + sc->deadline;
 #endif /* CONFIG_EDF */
-                releaseJob(sc);
-            } else if (sc->budgetRemaining > 0) {
-                /* still has budget, release time has not passed, just resume */
-                releaseJob(sc);
-            } else {
-                /* release time hasn't passed, no budget left */
-                releaseAdd(sc);
-            }
-#else
             releaseJob(sc);
-#endif
+        } else if (sc->budgetRemaining > 0) {
+            /* still has budget, release time has not passed, just resume */
+            releaseJob(sc);
+        } else {
+            /* release time hasn't passed, no budget left */
+            releaseAdd(sc);
         }
+#else
+        releaseJob(sc);
+#endif
     }
     /* event triggered jobs will be throttled when the job comes in */
 }

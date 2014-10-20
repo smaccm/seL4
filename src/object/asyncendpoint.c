@@ -35,13 +35,11 @@ doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge)
 
     setRegister(tcb, badgeRegister, badge);
 
+    setThreadState(tcb, ThreadState_Running);
     if (sc != NULL && (tcb_t *) (async_endpoint_ptr_get_aepBoundTCB(aepptr)) == tcb) {
         enqueueJob(sc, tcb);
-    } else {
-        setThreadState(tcb, ThreadState_Running);
     }
 
-    setRegister(tcb, badgeRegister, badge);
 }
 
 void
@@ -89,7 +87,7 @@ sendAsyncIPC(async_endpoint_t *aepptr, word_t badge)
 
         doAsyncTransfer(aepptr, dest, badge);
 
-        if (isRunnable(dest)) {
+        if (isSchedulable(dest)) {
             switchIfRequiredTo(dest, false);
         }
         break;
