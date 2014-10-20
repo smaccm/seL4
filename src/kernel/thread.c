@@ -789,10 +789,11 @@ void releaseJobs(void)
         tcb_t *thread = head->tcb;
         assert(thread != NULL);
 
+        rescheduleRequired();
+
         if (tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality) {
             releasePostpone();
         } else {
-            setThreadState(thread, ThreadState_Running);
             /* recharge the budget */
             head->budgetRemaining = head->budget;
             head->nextRelease = ksCurrentTime + head->period;
@@ -815,6 +816,7 @@ void releaseJobs(void)
 #endif /* CONFIG_EDF_CBS */
                     assert(head != ksDeadlinePQ.head);
                     deadlineAdd(head);
+                    setThreadState(thread, ThreadState_Running);
                 } else {
 #endif /* CONFIG_EDF */
                     setThreadState(thread, ThreadState_Running);
