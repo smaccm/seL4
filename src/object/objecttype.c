@@ -725,7 +725,7 @@ decodeInvocation(word_t label, unsigned int length,
 
         setThreadState(ksCurThread, ThreadState_Restart);
         return performInvocation_Reply(
-                   TCB_PTR(cap_reply_cap_get_capTCBPtr(cap)), slot);
+                   TCB_PTR(cap_reply_cap_get_capTCBPtr(cap)), slot, cap);
 
     case cap_thread_cap:
         return decodeTCBInvocation(label, length, cap,
@@ -781,12 +781,12 @@ performInvocation_AsyncEndpoint(async_endpoint_t *aep, word_t badge)
 }
 
 exception_t
-performInvocation_Reply(tcb_t *thread, cte_t *slot)
+performInvocation_Reply(tcb_t *thread, cte_t *slot, cap_t cap)
 {
     /* this is only called by Send on a reply cap, which
      * means we don't donate. SendWait and ReplyWait use
      * a different code path. Verification will probably
      * hate me for this. */
-    doReplyTransfer(ksCurThread, thread, slot, false);
+    doReplyTransfer(ksCurThread, thread, slot, false, cap);
     return EXCEPTION_NONE;
 }

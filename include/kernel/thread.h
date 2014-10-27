@@ -82,7 +82,7 @@ void restart(tcb_t *target);
 void doIPCTransfer(tcb_t *sender, endpoint_t *endpoint,
                    word_t badge, bool_t grant, tcb_t *receiver,
                    bool_t diminish);
-void doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate);
+void doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate, cap_t cap);
 void doNormalTransfer(tcb_t *sender, word_t *sendBuffer, endpoint_t *endpoint,
                       word_t badge, bool_t canGrant, tcb_t *receiver,
                       word_t *receiveBuffer, bool_t diminish);
@@ -117,6 +117,7 @@ void enqueueJob(sched_context_t *sc, tcb_t *tcb);
 void releaseJobs(void);
 void enforceBudget(void);
 void updateBudget(void);
+void resumeSchedContext(sched_context_t *sc);
 
 uint32_t getHighestPrio(void);
 

@@ -296,7 +296,7 @@ handleReply(bool_t replyWait)
          * "handleReply: caller must not be the current thread" */
         assert(caller != ksCurThread);
         donationOccured = replyWait && (caller->tcbSchedContext == NULL);
-        doReplyTransfer(ksCurThread, caller, callerSlot, donationOccured);
+        doReplyTransfer(ksCurThread, caller, callerSlot, donationOccured, callerCap);
         return donationOccured;
     }
 
@@ -413,7 +413,7 @@ handleSendWait(void)
 
         caller = TCB_PTR(cap_reply_cap_get_capTCBPtr(dest_lu_ret.cap));
         donationRequired = (caller->tcbSchedContext == NULL);
-        doReplyTransfer(ksCurThread, caller, dest_lu_ret.slot, caller->tcbSchedContext == NULL);
+        doReplyTransfer(ksCurThread, caller, dest_lu_ret.slot, caller->tcbSchedContext == NULL, dest_lu_ret.cap);
     }
     break;
     default: {

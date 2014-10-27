@@ -30,9 +30,10 @@
 void
 tcbSchedEnqueue(tcb_t *tcb)
 {
-
     assert(tcb->tcbSchedContext != NULL);
     assert(tcb->tcbSchedContext->budgetRemaining > PLAT_LEEWAY);
+    assert(!sched_context_status_get_inReleaseHeap(tcb->tcbSchedContext->status));
+
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {
         tcb_queue_t queue;
         UNUSED dom_t dom;
@@ -300,7 +301,7 @@ setExtraBadge(word_t *bufferPtr, word_t badge,
 }
 
 void
-setupCallerCap(tcb_t *sender, tcb_t *receiver)
+setupCallerCap(tcb_t *sender, tcb_t *receiver, sched_context_t *donated)
 {
     cte_t *replySlot, *callerSlot;
     cap_t masterCap UNUSED, callerCap UNUSED;
@@ -316,7 +317,7 @@ setupCallerCap(tcb_t *sender, tcb_t *receiver)
     callerCap = callerSlot->cap;
     /* Haskell error: "Caller cap must not already exist" */
     assert(cap_get_capType(callerCap) == cap_null_cap);
-    cteInsert(cap_reply_cap_new(false, TCB_REF(sender)),
+    cteInsert(cap_reply_cap_new(false, TCB_REF(sender), SC_REF(donated)),
               replySlot, callerSlot);
 }
 
@@ -750,8 +751,6 @@ invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context)
 {
 
     exception_t status;
-    /* TODO@alyons support changing scheduling params */
-    assert(tcb->tcbSchedContext == NULL);
 
     setThreadState(ksCurThread, ThreadState_Restart);
     status = invokeTCB_ThreadControl(
@@ -838,20 +837,13 @@ decodeSetSchedContext(cap_t cap, extra_caps_t rootCaps)
     sched_context = SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap));
     tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
 
-    /* tcb can't already have a sched context */
-    if (tcb->tcbSchedContext != NULL) {
-        userError("TCB SetSchedContext: tcb already bound to a sched context\n");
+    if (sched_context->tcb != NULL) {
+        userError("TCB SetSchedContext: sched_context is already bound to a tcb.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-    if (sched_context->period == 0) {
-        userError("TCB SetSchedContext: sched_context cap does not have filled parameters.");
-        current_syscall_error.type = seL4_IllegalOperation;
-        return EXCEPTION_SYSCALL_ERROR;
-    }
-
-    return invokeTCB_SetSchedContext(tcb, SCHED_CONTEXT_PTR(cap_sched_context_cap_get_capPtr(scCap)));
+    return invokeTCB_SetSchedContext(tcb, sched_context);
 }
 
 

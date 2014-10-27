@@ -52,7 +52,7 @@ exception_t performInvocation_Endpoint(endpoint_t *ep, word_t badge,
                                        bool_t call);
 exception_t performInvocation_AsyncEndpoint(async_endpoint_t *aep,
                                             word_t badge);
-exception_t performInvocation_Reply(tcb_t *thread, cte_t *slot);
+exception_t performInvocation_Reply(tcb_t *thread, cte_t *slot, cap_t cap);
 word_t getObjectSize(word_t t, word_t userObjSize);
 
 #endif

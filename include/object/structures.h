@@ -75,6 +75,9 @@ typedef uint32_t async_endpoint_state_t;
 /* Generate a cte_t pointer from a tcb_t pointer */
 #define TCB_PTR_CTE_PTR(p,i) (((cte_t *)((unsigned int)(p)&~MASK(TCB_BLOCK_SIZE_BITS)))+(i))
 
+#define SC_PTR(r) ((sched_context_t *)(r))
+#define SC_REF(p) ((unsigned int)(p))
+
 #define ZombieType_ZombieTCB      BIT(5)
 #define ZombieType_ZombieCNode(n) ((n) & MASK(5))
 
@@ -194,7 +197,7 @@ struct tcb {
     /* Domain, 1 byte (packed to 4) */
     uint32_t tcbDomain;
 
-    /* Priority + Max priority 2 bytes (packed to 4) */
+    /* Priority + max priority, criticality + max criticality 4 bytes */
     tcb_prio_t tcbPriority;
 
     /* Timeslice remaining, 4 bytes */

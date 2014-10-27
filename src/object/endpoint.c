@@ -90,7 +90,7 @@ sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {
             if (canGrant && !diminish) {
-                setupCallerCap(thread, dest);
+                setupCallerCap(thread, dest, donationOccured ? dest->tcbSchedContext : NULL);
             } else {
                 setThreadState(thread, ThreadState_Inactive);
             }
@@ -106,17 +106,23 @@ sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
 void
 receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
 {
-    endpoint_t *epptr;
-    bool_t diminish;
-    async_endpoint_t *aepptr;
-
+    bool_t diminish = !cap_endpoint_cap_get_capCanSend(cap);
+    endpoint_t *epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(cap));
     /* Haskell error "receiveIPC: invalid cap" */
     assert(cap_get_capType(cap) == cap_endpoint_cap);
+    assert(epptr != NULL);
+    epReceiveIPC(thread, epptr, donationRequired, diminish);
+}
 
-    epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(cap));
-    diminish = !cap_endpoint_cap_get_capCanSend(cap);
+
+void
+epReceiveIPC(tcb_t *thread, endpoint_t *epptr, bool_t donationRequired, bool_t diminish)
+{
+    async_endpoint_t *aepptr;
 
     /* Check for anything waiting in the async endpoint*/
+    assert(thread != NULL);
+    assert(epptr != NULL);
     aepptr = thread->boundAsyncEndpoint;
     if (!donationRequired && aepptr && async_endpoint_ptr_get_state(aepptr) == AEPState_Active) {
         /* if a donation is required then we don't have a sc to run on */
@@ -185,13 +191,13 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
                     /* This flag means the receiver requires a scheduling context
                      * in order to run. */
                     assert(sender->tcbSchedContext != NULL);
-                    ksCurThread->tcbSchedContext = sender->tcbSchedContext;
-                    ksCurThread->tcbSchedContext->tcb = ksCurThread;
+                    thread->tcbSchedContext = sender->tcbSchedContext;
+                    thread->tcbSchedContext->tcb = ksCurThread;
                     sender->tcbSchedContext = NULL;
                 }
 
                 if (canGrant && !diminish) {
-                    setupCallerCap(sender, thread);
+                    setupCallerCap(sender, thread, donationRequired ? ksCurThread->tcbSchedContext : NULL);
                 } else {
                     setThreadState(sender, ThreadState_Inactive);
                 }

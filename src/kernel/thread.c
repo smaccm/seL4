@@ -156,46 +156,44 @@ releaseJob(sched_context_t *target)
     rescheduleRequired();
 }
 
+void
+resumeSchedContext(sched_context_t *sc)
+{
+
+    if (unlikely(sc == NULL || (sc->budget == 0 && sc->period == 0))) {
+        return;
+    }
+
+    if (tcb_prio_get_criticality(sc->tcb->tcbPriority) < ksCriticality) {
+        releaseAdd(sc);
+    } else if (sc->nextRelease < ksCurrentTime) {
+        /* recharge time has passed, recharge */
+        sc->budgetRemaining = sc->budget;
+        sc->nextRelease = ksCurrentTime + sc->period;
+#ifdef CONFIG_EDF
+        sc->nextDeadline = ksCurrentTime + sc->deadline;
+#endif /* CONFIG_EDF */
+        releaseJob(sc);
+    } else if (sc->budgetRemaining > PLAT_LEEWAY) {
+        /* still has budget, release time has not passed, just resume */
+        releaseJob(sc);
+    } else {
+        /* release time hasn't passed, no budget left */
+        releaseAdd(sc);
+    }
+
+}
 
 
 void
 restart(tcb_t *target)
 {
-    sched_context_t *sc = target->tcbSchedContext;
-
-    if (sc == NULL || (sc->budget == 0 && sc->period == 0)) {
-        return;
-    }
-
     if (isBlocked(target)) {
         ipcCancel(target);
-        assert(sc != NULL);
-        assert(sc->tcb != NULL);
         setThreadState(target, ThreadState_Restart);
-
-#ifdef CONFIG_EDF_CBS
-        if (tcb_prio_get_criticality(target->tcbPriority) < ksCriticality) {
-            releaseAdd(sc);
-        } else if (sc->nextRelease < ksCurrentTime) {
-            /* recharge time has passed, recharge */
-            sc->budgetRemaining = sc->budget;
-            sc->nextRelease = ksCurrentTime + sc->period;
-#ifdef CONFIG_EDF
-            sc->nextDeadline = ksCurrentTime + sc->deadline;
-#endif /* CONFIG_EDF */
-            releaseJob(sc);
-        } else if (sc->budgetRemaining > 0) {
-            /* still has budget, release time has not passed, just resume */
-            releaseJob(sc);
-        } else {
-            /* release time hasn't passed, no budget left */
-            releaseAdd(sc);
-        }
-#else
-        releaseJob(sc);
-#endif
+        resumeSchedContext(target->tcbSchedContext);
     }
-    /* event triggered jobs will be throttled when the job comes in */
+
 }
 
 void
@@ -216,15 +214,41 @@ doIPCTransfer(tcb_t *sender, endpoint_t *endpoint, word_t badge,
 }
 
 void
-doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate)
+doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate, cap_t cap)
 {
+
     assert(thread_state_get_tsType(receiver->tcbState) ==
            ThreadState_BlockedOnReply);
+
+    /* this case occurs when someone else replies on behalf of the original called thread */
+    if (!donate && cap_reply_cap_get_schedcontext(cap)) {
+        sched_context_t *sc = SC_PTR(cap_reply_cap_get_schedcontext(cap));
+        tcb_t *callee = sc->tcb;
+
+        /* restore the scheduling context */
+        receiver->tcbSchedContext = sc;
+        sc->tcb = receiver;
+        if (callee) {
+            rescheduleRequired();
+            callee->tcbSchedContext = NULL;
+        }
+
+        if (receiver->tcbSchedContext->budgetRemaining < PLAT_LEEWAY) {
+            if (raiseTemporalException(receiver)) {
+                cteDeleteOne(slot);
+                return;
+            } else {
+                resumeSchedContext(receiver->tcbSchedContext);
+            }
+        }
+    }
 
     if (likely(fault_get_faultType(receiver->tcbFault) == fault_null_fault)) {
         doIPCTransfer(sender, NULL, 0, true, receiver, false);
         cteDeleteOne(slot);
-        if (donate || receiver->tcbSchedContext != NULL) {
+        if (donate ||
+                (receiver->tcbSchedContext != NULL
+                 && !sched_context_status_get_inReleaseHeap(receiver->tcbSchedContext->status))) {
             attemptSwitchTo(receiver, donate);
         }
         setThreadState(receiver, ThreadState_Running);
@@ -236,11 +260,16 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate)
         fault_null_fault_ptr_new(&receiver->tcbFault);
         if (restart) {
             setThreadState(receiver, ThreadState_Restart);
-            attemptSwitchTo(receiver, donate);
+            if (donate ||
+                    (receiver->tcbSchedContext != NULL
+                     && !sched_context_status_get_inReleaseHeap(receiver->tcbSchedContext->status))) {
+                attemptSwitchTo(receiver, donate);
+            }
         } else {
             setThreadState(receiver, ThreadState_Inactive);
         }
     }
+
 }
 
 void
@@ -380,7 +409,9 @@ getNextInterrupt(void)
     if (ksCurThread != ksIdleThread) {
         TRACE("deadline irq at %llx, budget %llx\n", ksSchedContext->budgetRemaining + ksCurrentTime,
               ksSchedContext->budgetRemaining);
+        /* TODO@alyons avoid overflow here ???*/
         nextInterrupt = ksSchedContext->budgetRemaining + ksCurrentTime;
+        assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
     assert(ksSchedContext->budgetRemaining > PLAT_LEEWAY);
@@ -388,6 +419,7 @@ getNextInterrupt(void)
     if (ksReleasePQ.head != NULL && ksReleasePQ.head->nextRelease < nextInterrupt) {
         TRACE("Release irq\n");
         nextInterrupt = ksReleasePQ.head->nextRelease;
+        assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
     assert(nextInterrupt > ksCurrentTime);
@@ -1127,46 +1159,37 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
 {
     prio_t curPrio, targetPrio;
     tcb_t *action;
+    dom_t curDom, targetDom;
 
     curPrio = tcb_prio_get_prio(ksCurThread->tcbPriority);
     targetPrio = tcb_prio_get_prio(target->tcbPriority);
 
     action = ksSchedulerAction;
 
-    if (CONFIG_NUM_DOMAINS > 1) {
-        dom_t curDom = ksCurDomain;
-        dom_t targetDom = target->tcbDomain;
+    curDom = ksCurDomain;
+    targetDom = target->tcbDomain;
 
-        if (targetDom != curDom) {
-            assert(target->tcbSchedContext != NULL);
+    if (CONFIG_NUM_DOMAINS > 1 && curDom != targetDom) {
+        assert(target->tcbSchedContext != NULL);
+        /* TODO@alyons this is totally broken with the RT kernel */
+        tcbSchedEnqueue(target);
+    } else {
+        /* scheduling context donation */
+        if (donate) {
+            assert(target->tcbSchedContext == NULL);
+            target->tcbSchedContext = ksSchedContext;
+            ksSchedContext->tcb = target;
+            ksCurThread->tcbSchedContext = NULL;
+        }
+
+        if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
+                && ksSchedulerAction == SchedulerAction_ResumeCurrentThread
+                && tcb_prio_get_criticality(target->tcbPriority) >= ksCriticality) {
+            ksSchedulerAction = target;
+        } else {
             tcbSchedEnqueue(target);
         }
-    } else {
-        if (tcb_prio_get_criticality(target->tcbPriority) >= ksCriticality &&
-                ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
-                 && action == SchedulerAction_ResumeCurrentThread)) {
-            if (donate) {
-                assert(target->tcbSchedContext == NULL);
-                target->tcbSchedContext = ksSchedContext;
-                ksSchedContext->tcb = target;
-                ksCurThread->tcbSchedContext = NULL;
-            }
-            if (target->tcbSchedContext != NULL) {
-                ksSchedulerAction = target;
-            }
-        } else {
-            if (donate) {
-                /* this thread will not run immediately.
-                 * do scheduling context transfer */
-                assert(target->tcbSchedContext == NULL);
-                target->tcbSchedContext = ksSchedContext;
-                ksSchedContext->tcb = target;
-                ksCurThread->tcbSchedContext = NULL;
-            }
-            if (target->tcbSchedContext != NULL) {
-                tcbSchedEnqueue(target);
-            }
-        }
+
         if (action != SchedulerAction_ResumeCurrentThread
                 && action != SchedulerAction_ChooseNewThread) {
             rescheduleRequired();

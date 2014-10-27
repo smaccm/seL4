@@ -17,6 +17,7 @@
 bool_t sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
                bool_t canGrant, tcb_t *thread, endpoint_t *epptr);
 void receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired);
+void epReceiveIPC(tcb_t *thread, endpoint_t *ep, bool_t donationRequired, bool_t diminish);
 void ipcCancel(tcb_t *tptr);
 void epCancelAll(endpoint_t *epptr);
 void epCancelBadgedSends(endpoint_t *epptr, word_t badge);
