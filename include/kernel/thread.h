@@ -111,7 +111,7 @@ void releaseBehead(void);
 void releaseAdd(sched_context_t *sc);
 void releaseRemove(sched_context_t *sc);
 void releaseHeadChanged(void);
-void releasePostpone(void);
+void postpone(sched_context_t *sc);
 
 void enqueueJob(sched_context_t *sc, tcb_t *tcb);
 void releaseJobs(void);

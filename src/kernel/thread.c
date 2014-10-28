@@ -559,16 +559,17 @@ enforceBudget(void)
 
 }
 
-/* Release heap operations */
 void
-releasePostpone(void)
+postpone(sched_context_t *sc)
 {
-    sched_context_t *head = ksReleasePQ.head;
-    releaseBehead();
-    head->nextRelease += head->period;
-    releaseAdd(head);
+    assert(sc != NULL);
+    assert(!sched_context_status_get_inReleaseHeap(sc->status));
+
+    sc->nextRelease = ksCurrentTime + sc->period;
+    releaseAdd(sc);
 }
 
+/* Release heap operations */
 void
 releaseHeadChanged(void)
 {
@@ -822,7 +823,8 @@ void releaseJobs(void)
         rescheduleRequired();
 
         if (tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality) {
-            releasePostpone();
+            releaseBehead();
+            postpone(head);
         } else {
             /* recharge the budget */
             head->budgetRemaining = head->budget;
@@ -974,8 +976,7 @@ pickThread(void)
         } else if (unlikely(tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality)) {
             /* postpone */
             tcbSchedDequeue(thread);
-            thread->tcbSchedContext->nextRelease = ksCurrentTime + thread->tcbSchedContext->period;
-            releaseAdd(thread->tcbSchedContext);
+            postpone(thread->tcbSchedContext);
             thread = NULL;
         }
     }

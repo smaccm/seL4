@@ -124,10 +124,24 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
         /* if a donation is required then we don't have a sc to run on */
         completeAsyncIPC(aepptr, thread);
     } else {
+        tcb_queue_t queue;
+        tcb_t *sender;
+
+        /* cull any threads in the ipc queue that are not the correct criticality */
+        queue = ep_ptr_get_queue(epptr);
+        while (unlikely(queue.head && tcb_prio_get_criticality(queue.head->tcbPriority) < ksCriticality)) {
+            sender = queue.head;
+            /* invariant: anyone sending in an IPC queue MUST have a scheduling context */
+            assert(sender->tcbSchedContext != NULL);
+            /* this thread will restart its IPC request when the criticality is lowered again */
+            setThreadState(sender, ThreadState_Running);
+            queue = tcbEPDequeue(sender, queue);
+            postpone(sender->tcbSchedContext);
+        }
+
         switch (endpoint_ptr_get_state(epptr)) {
         case EPState_Idle:
         case EPState_Recv: {
-            tcb_queue_t queue;
 
             /* Set thread state to BlockedOnReceive */
             thread_state_ptr_set_tsType(&thread->tcbState,
@@ -148,8 +162,6 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
         }
 
         case EPState_Send: {
-            tcb_queue_t queue;
-            tcb_t *sender;
             word_t badge;
             bool_t canGrant;
             bool_t do_call;
