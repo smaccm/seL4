@@ -1197,11 +1197,6 @@ invokeTCB_ThreadControl(tcb_t *target, cte_t* slot,
         if (sched_context != NULL) {
             sched_context->tcb = target;
             sched_context->home = target;
-            /* TODO@alyons what if we are changing scheduling contexts?? */
-        } else {
-            if (isRunnable(target)) {
-                suspend(target);
-            }
         }
     }
 
