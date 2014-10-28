@@ -106,19 +106,15 @@ sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
 void
 receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
 {
-    bool_t diminish = !cap_endpoint_cap_get_capCanSend(cap);
-    endpoint_t *epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(cap));
+    endpoint_t *epptr;
+    bool_t diminish;
+    async_endpoint_t *aepptr;
+
     /* Haskell error "receiveIPC: invalid cap" */
     assert(cap_get_capType(cap) == cap_endpoint_cap);
-    assert(epptr != NULL);
-    epReceiveIPC(thread, epptr, donationRequired, diminish);
-}
 
-
-void
-epReceiveIPC(tcb_t *thread, endpoint_t *epptr, bool_t donationRequired, bool_t diminish)
-{
-    async_endpoint_t *aepptr;
+    epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(cap));
+    diminish = !cap_endpoint_cap_get_capCanSend(cap);
 
     /* Check for anything waiting in the async endpoint*/
     assert(thread != NULL);
