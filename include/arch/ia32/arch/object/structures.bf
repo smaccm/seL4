@@ -73,11 +73,13 @@ block async_endpoint_cap {
     field capType 4
 }
 
-block reply_cap {
-    padding 31
-    field capReplyMaster 1
+block reply_cap(capReplyMaster, capTCBPtr, capType, schedcontext) {
+    /* if a scheduling context was transferred over this reply
+       cap, this is the pointer to it */
+    field schedcontext 32
 
-    field_high capTCBPtr 28
+    field_high capTCBPtr 27
+    field capReplyMaster 1
     field capType 4
 }
 
