@@ -550,6 +550,7 @@ fastpath_reply_wait(word_t cptr, word_t msgInfo)
         0, 1, 1);
     callerSlot->cap = cap_null_cap_new();
     callerSlot->cteMDBNode = nullMDBNode;
+    ksSchedContext->replySlot = NULL;
 
     /* I know there's no fault, so straight to the transfer. */
 

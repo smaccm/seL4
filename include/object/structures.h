@@ -230,7 +230,7 @@ compile_assert(tcb_size_sane,
                (1 << TCB_SIZE_BITS) + sizeof(tcb_t) <= (1 << TCB_BLOCK_SIZE_BITS))
 
 
-/* size: 96 (list) 100 (heap) bytes - packed to 128 */
+/* size: 100 (list) 104 (heap) bytes - packed to 128 */
 struct sched_context {
     /* These are the reservation parameters.
      * Budget gets recharged every period and
@@ -251,6 +251,9 @@ struct sched_context {
 
     /* data word to be passed to exception handler */
     uint32_t data;
+
+    /* if this sched context is stored in a reply cap, this is the slot the reply cap is in*/
+    cte_t *replySlot;
 
 #ifdef CONFIG_EDF_HEAP
     /* Left, right and parent pointers for the current EDF heap, 12 bytes */

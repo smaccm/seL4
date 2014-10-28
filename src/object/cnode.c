@@ -506,6 +506,13 @@ cteMove(cap_t newCap, cte_t *srcSlot, cte_t *destSlot)
     destSlot->cteMDBNode = mdb;
     srcSlot->cteMDBNode = nullMDBNode;
 
+    if (cap_get_capType(newCap) == cap_reply_cap) {
+        sched_context_t *sc = SC_PTR(cap_reply_cap_get_schedcontext(newCap));
+        if (sc) {
+            sc->replySlot = destSlot;
+        }
+    }
+
     prev_ptr = mdb_node_get_mdbPrev(mdb);
     if (prev_ptr)
         mdb_node_ptr_set_mdbNext(

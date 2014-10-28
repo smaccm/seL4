@@ -134,7 +134,15 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         fc_ret.irq = irqInvalid;
         return fc_ret;
 
-    case cap_reply_cap:
+    case cap_reply_cap: {
+        sched_context_t *sc = SC_PTR(cap_reply_cap_get_schedcontext(cap));
+        if (sc) {
+            sc->replySlot = NULL;
+        }
+        fc_ret.remainder = cap_null_cap_new();
+        fc_ret.irq = irqInvalid;
+        return fc_ret;
+    }
     case cap_null_cap:
     case cap_domain_cap:
         fc_ret.remainder = cap_null_cap_new();
@@ -246,6 +254,9 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
                 sc->home = NULL;
             }
 
+            if (sc->replySlot) {
+                cap_reply_cap_ptr_set_schedcontext(&sc->replySlot->cap, 0);
+            }
             return fc_ret;
         }
         break;
