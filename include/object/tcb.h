@@ -96,7 +96,6 @@ exception_t invokeTCB_WriteRegisters(tcb_t *dest, bool_t resumeTarget,
                                      unsigned int n, word_t arch, word_t *buffer);
 exception_t invokeTCB_AEPControl(tcb_t *tcb, async_endpoint_t *aepptr);
 exception_t invokeTCB_SetSchedContext(tcb_t *tcb, sched_context_t *sched_context);
-exception_t invokeTCB_EPControl(tcb_t *tcb, endpoint_t *epptr);
 exception_t invokeTCB_ClearSchedContext(tcb_t *tcb);
 cptr_t PURE getExtraCPtr(word_t *bufferPtr, unsigned int i);
 void setExtraBadge(word_t *bufferPtr, word_t badge, unsigned int i);
