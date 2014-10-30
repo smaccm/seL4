@@ -376,13 +376,8 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority)
     targetPrio = target->tcbPriority;
     action = ksSchedulerAction;
 
-    if (CONFIG_NUM_DOMAINS > 1) {
-        dom_t curDom = ksCurDomain;
-        dom_t targetDom = target->tcbDomain;
-
-        if (targetDom != curDom) {
-            tcbSchedEnqueue(target);
-        }
+    if (CONFIG_NUM_DOMAINS > 1 && ksCurDomain != target->tcbDomain) {
+        tcbSchedEnqueue(target);
     } else {
         if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
                 && action == SchedulerAction_ResumeCurrentThread) {
