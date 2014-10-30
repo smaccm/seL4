@@ -1160,17 +1160,13 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
 {
     prio_t curPrio, targetPrio;
     tcb_t *action;
-    dom_t curDom, targetDom;
 
     curPrio = tcb_prio_get_prio(ksCurThread->tcbPriority);
     targetPrio = tcb_prio_get_prio(target->tcbPriority);
 
     action = ksSchedulerAction;
 
-    curDom = ksCurDomain;
-    targetDom = target->tcbDomain;
-
-    if (CONFIG_NUM_DOMAINS > 1 && curDom != targetDom) {
+    if (CONFIG_NUM_DOMAINS > 1 && ksCurDomain != target->tcbDomain) {
         assert(target->tcbSchedContext != NULL);
         /* TODO@alyons this is totally broken with the RT kernel */
         tcbSchedEnqueue(target);
