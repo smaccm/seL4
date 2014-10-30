@@ -177,7 +177,7 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
 
             tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
             cte_ptr = TCB_PTR_CTE_PTR(tcb, tcbCTable);
-            sc = getSchedContext(tcb);
+            sc = tcb->tcbSchedContext;
 
             if (sc != NULL) {
                 if (sc->home == tcb || sc->home == NULL) {

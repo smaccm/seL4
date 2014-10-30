@@ -31,7 +31,7 @@ void
 doAsyncTransfer(async_endpoint_t *aepptr, tcb_t *tcb, word_t badge)
 {
 
-    sched_context_t *sc = getSchedContext(tcb);
+    sched_context_t *sc = tcb->tcbSchedContext;
 
     setRegister(tcb, badgeRegister, badge);
 

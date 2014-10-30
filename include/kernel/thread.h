@@ -61,20 +61,6 @@ removeFromBitmap(word_t dom, word_t prio)
     }
 }
 
-static inline sched_context_t *
-getSchedContext(const tcb_t *tcb)
-{
-    if (tcb->tcbSchedContext != NULL) {
-        return tcb->tcbSchedContext;
-    } else if (tcb == ksCurThread) {
-        return ksSchedContext;
-    } else {
-        return NULL;
-    }
-
-}
-
-
 void configureIdleThread(tcb_t *tcb);
 void activateThread(void) VISIBLE;
 void suspend(tcb_t *target);
