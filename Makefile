@@ -77,9 +77,16 @@ ifeq ($V, 2)
 	quiet =
 	Q =
 else
+ifeq ($V, 3)
+	BUILD_VERBOSE = 1
+	MAKE_SILENT =
+	quiet =
+	Q =
+else
 	MAKE_SILENT = -s
 	quiet = quiet_
 	Q = @
+endif
 endif
 endif
 
@@ -343,7 +350,7 @@ endif
 ifndef NK_CFLAGS
 ifeq (${ARCH}, arm)
 CFLAGS += -mtune=${CPU} -marm -march=${ARMV}
-ASFLAGS += -mcpu=${CPU} -march=${ARMV}
+ASFLAGS += -Wa,-mcpu=${CPU} -Wa,-march=${ARMV}
 DEFINES += -D$(shell echo ${ARMV}|tr [:lower:] [:upper:]|tr - _)
 ifeq (${CPU},cortex-a8)
 DEFINES += -DARM_CORTEX_A8
@@ -356,7 +363,7 @@ endif
 
 ifeq (${ARCH}, ia32)
 CFLAGS += -m32 -mno-mmx -mno-sse
-ASFLAGS += --32
+ASFLAGS += -Wa,--32
 endif
 endif
 
@@ -465,7 +472,7 @@ kernel_all.c: sources_list_updated ${C_SOURCES_WITH_PARSE} ${DOMAIN_CONFIG_FILE}
 
 kernel.o: kernel_final.s
 	@echo " [AS] $@"
-	$(Q)${AS} ${ASFLAGS} -o $@ $<
+	$(Q)${CC} ${ASFLAGS} -o $@ -c $<
 
 kernel_final.s: kernel_final.c
 	@echo " [CC] $@"
@@ -480,7 +487,7 @@ LINKER_SCRIPT = src/plat/${PLAT}/linker.lds
 
 kernel.elf: ${OBJECTS} ${LINKER_SCRIPT}
 	@echo " [LD] $@"
-	$(Q)${CHANGED} $@ ${LD} ${LDFLAGS} -T ${SOURCE_ROOT}/${LINKER_SCRIPT} \
+	$(Q)${CHANGED} $@ ${CC} ${LDFLAGS} -Wl,-T -Wl,${SOURCE_ROOT}/${LINKER_SCRIPT} \
 		-o $@ ${OBJECTS}
 
 ############################################################
@@ -493,7 +500,7 @@ kernel.elf: ${OBJECTS} ${LINKER_SCRIPT}
 
 %.o: %.s | ${DIRECTORIES}
 	@echo " [AS] $@"
-	$(Q)${AS} ${ASFLAGS} $< -o $@
+	$(Q)${CC} ${ASFLAGS} -c $< -o $@
 
 
 ###################

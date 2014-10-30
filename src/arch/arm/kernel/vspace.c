@@ -331,8 +331,6 @@ copyGlobalMappings(pde_t *newPD)
     }
 }
 
-#define intSize (wordBits / 8)
-
 word_t * PURE
 lookupIPCBuffer(bool_t isReceiver, tcb_t *thread)
 {
@@ -735,9 +733,6 @@ isValidVTableRoot(cap_t cap)
     return cap_get_capType(cap) == cap_page_directory_cap &&
            cap_page_directory_cap_get_capPDIsMapped(cap);
 }
-
-#define wSize (capTransferDataSize + msgMaxLength + msgMaxExtraCaps + 2)
-#define bSize (wSize * intSize)
 
 exception_t
 checkValidIPCBuffer(vptr_t vptr, cap_t cap)
@@ -1677,11 +1672,13 @@ decodeARMFrameInvocation(word_t label, unsigned int length,
     }
 }
 
+static const resolve_ret_t default_resolve_ret_t;
+
 static resolve_ret_t
 resolveVAddr(pde_t *pd, vptr_t vaddr)
 {
     pde_t *pde = lookupPDSlot(pd, vaddr);
-    resolve_ret_t ret;
+    resolve_ret_t ret = default_resolve_ret_t;
 
     ret.valid = true;
 
