@@ -86,8 +86,7 @@ void handleReservedIRQ(irq_t irq);
 
 uint64_t getCurrentTime(void);
 
-/* @return the period of the timer in ns */
-uint32_t initTimer(void);
+void initTimer(void);
 
 /*
  * @param deadline absolute deadline

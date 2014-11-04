@@ -278,7 +278,7 @@ getCurrentTime(void)
     return (((uint64_t) upper) << 32) + (uint64_t) lower;
 }
 
-BOOT_CODE uint32_t
+BOOT_CODE void
 initTimer(void)
 {
     globalTimer = (volatile struct globalTimerMap *) ARM_MP_GLOBAL_TIMER_PPTR;
@@ -293,8 +293,6 @@ initTimer(void)
 
     /* BEWARE  this timer will overflow once 1GHz / 2 overflows.
      * Good enough for a prototype */
-    /* this timer runs at 500Mhz, return KHz */
-    return 500000;
 }
 
 
