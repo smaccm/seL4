@@ -137,11 +137,31 @@ volatile struct mct_map* mct = (volatile struct mct_map*)EXYNOS_MCT_PPTR;
 /**
    DONT_TRANSLATE
  */
-void
-resetTimer(void)
+int
+setDeadline(uint64_t deadline)
 {
-    MCR(CNTV_TVAL, TIMER_TICKS);
-    MCR(CNTV_CTL, (1 << 0));
+    MCRR(CNTV_CVAL, deadline);
+    return 0;
+}
+
+/**
+   DONT_TRANSLATE
+ */
+uint64_t
+getCurrentTime(void)
+{
+    uint64_t time;
+    MRRC(CNTVCT, time);
+    return time;
+}
+
+/**
+   DONT_TRANSLATE
+ */
+void
+ackDeadlineIRQ(void)
+{
+    MCRR(CNTV_CVAL, UINT64_MAX);
 }
 
 /**
@@ -159,11 +179,12 @@ initTimer(void)
     while (mct->global.wstat != GWSTAT_TCON);
     mct->global.wstat = GWSTAT_TCON;
 
-    /* Setup compare regsiter to trigger in about 10000 years from now */
+    /* Setup compare register to trigger in about 10000 years from now */
     MCRR(CNTV_CVAL, 0xffffffffffffffff);
-
-    /* Reset the count down timer */
-    resetTimer();
+    /* enable the timer */
+    MCR(CNTV_CTL, (1 << 0));
+    /* allow user mode to read the timer (CNTPCT) */
+    MCR(CNTKCTL, 1);
 }
 
 #else /* ARM_CORTEX_A15 */

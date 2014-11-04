@@ -27,6 +27,8 @@
 #define PPTR_TOP          0xfff00000
 #define PADDR_TOP         (PPTR_TOP - BASE_OFFSET)
 
+#define PLAT_LEEWAY (ksTicksPerUs * 2)
+#define IA32_EXTRA 0
 
 #ifndef __ASSEMBLER__
 
@@ -78,9 +80,13 @@ bool_t CONST isReservedIRQ(irq_t irq);
 void handleReservedIRQ(irq_t irq);
 
 /** MODIFIES: [*] */
-void resetTimer(void);
+int setDeadline(uint64_t deadline);
 /** MODIFIES: [*] */
 void initTimer(void);
+/** MODIFIES: [*] */
+uint64_t getCurrentTime(void);
+/** MODIFIES: [*] */
+void ackDeadlineIRQ(void);
 
 /** MODIFIES: [*] */
 void initL2Cache(void);
