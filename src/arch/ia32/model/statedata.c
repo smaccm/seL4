@@ -71,3 +71,4 @@ uint16_t ia32KSdebugPort;
 #endif
 
 uint32_t ksTicksPerUs;
+

@@ -21,6 +21,8 @@
 #include <plat/machine/intel-vtd.h>
 #endif
 
+#define HPET_ADDR 0xFED00000
+
 /* Device discovery. For the pc99 platform we assume a pci bus and the presence of the
  * standard bios regions */
 void platAddDevices(void)
@@ -37,6 +39,8 @@ void platAddDevices(void)
     insert_dev_p_reg( (p_region_t) {
         BIOS_PADDR_VIDEO_RAM_TEXT_MODE_START, BIOS_PADDR_VIDEO_RAM_TEXT_MODE_START + 0x1000
     } );
+    /* add the hpet. This is also a hack. */
+    insert_dev_p_reg((p_region_t) { HPET_ADDR, HPET_ADDR + 0x1000 });
 }
 
 /* ============================== interrupts/IRQs ============================== */

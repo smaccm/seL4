@@ -404,7 +404,7 @@ getNextInterrupt(void)
 {
 
 #ifdef CONFIG_EDF_CBS
-    uint64_t nextInterrupt = UINT64_MAX;
+    uint64_t nextInterrupt = UINT64_MAX - IA32_EXTRA;
 
     if (ksCurThread != ksIdleThread) {
         TRACE("deadline irq at %llx, budget %llx\n", ksSchedContext->budgetRemaining + ksCurrentTime,

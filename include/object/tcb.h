@@ -102,4 +102,20 @@ void setExtraBadge(word_t *bufferPtr, word_t badge, unsigned int i);
 
 exception_t lookupExtraCaps(tcb_t* thread, word_t *bufferPtr, message_info_t info);
 
+static inline unsigned int
+setMR(tcb_t *receiver, word_t* receiveIPCBuffer,
+      unsigned int offset, word_t reg)
+{
+    if (offset >= n_msgRegisters) {
+        if (receiveIPCBuffer) {
+            receiveIPCBuffer[offset + 1] = reg;
+            return offset + 1;
+        } else {
+            return n_msgRegisters;
+        }
+    } else {
+        setRegister(receiver, msgRegisters[offset], reg);
+        return offset + 1;
+    }
+}
 #endif

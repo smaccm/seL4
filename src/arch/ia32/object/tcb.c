@@ -136,6 +136,11 @@ unsigned int setMRs_fault(tcb_t *sender, tcb_t* receiver, word_t *receiveIPCBuff
         }
     }
 
+    case fault_temporal: {
+        setMR(receiver, receiveIPCBuffer, 0, fault_temporal_get_type(sender->tcbFault));
+        return setMR(receiver, receiveIPCBuffer, 1, fault_temporal_get_data(sender->tcbFault));
+    }
+
     default:
         fail("Invalid fault");
     }
