@@ -419,6 +419,12 @@ getNextInterrupt(void)
     if (ksReleasePQ.head != NULL && ksReleasePQ.head->nextRelease < nextInterrupt) {
         TRACE("Release irq\n");
         nextInterrupt = ksReleasePQ.head->nextRelease;
+#ifdef CONFIG_DEBUG_BUILD
+        if (!(nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime) {
+            printf("Next interrupt %llx - PLATEEWAY + IA32_EXTRA %llx <= ksCurrentTime %llx\n",
+                   nextInterrupt, nextInterrupt - PLAT_LEEWAY + IA32_EXTRA, ksCurrentTime);
+        }
+#endif /* CONFIG_DEBUG_BUILD */
         assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
