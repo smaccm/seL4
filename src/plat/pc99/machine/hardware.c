@@ -40,7 +40,9 @@ void platAddDevices(void)
         BIOS_PADDR_VIDEO_RAM_TEXT_MODE_START, BIOS_PADDR_VIDEO_RAM_TEXT_MODE_START + 0x1000
     } );
     /* add the hpet. This is also a hack. */
-    insert_dev_p_reg((p_region_t) { HPET_ADDR, HPET_ADDR + 0x1000 });
+    insert_dev_p_reg((p_region_t) {
+        HPET_ADDR, HPET_ADDR + 0x1000
+    });
 }
 
 /* ============================== interrupts/IRQs ============================== */

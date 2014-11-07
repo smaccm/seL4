@@ -138,7 +138,7 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
             queue = tcbEPDequeue(sender, queue);
             postpone(sender->tcbSchedContext);
         }
-        
+
         if (queue.head == NULL) {
             endpoint_ptr_set_state(epptr, EPState_Idle);
         }
