@@ -428,6 +428,11 @@ getNextInterrupt(void)
         assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
+#ifdef CONFIG_DEBUG_BUILD
+    if (nextInterrupt <= ksCurrentTime) {
+        printf("Next interrupt %llx, ksCurrentTime %llx\n", nextInterrupt, ksCurrentTime);
+    }
+#endif
     assert(nextInterrupt > ksCurrentTime);
     return nextInterrupt - PLAT_LEEWAY + IA32_EXTRA;
 #else
