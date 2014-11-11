@@ -105,12 +105,6 @@ handleUnknownSyscall(word_t w)
 
 #ifdef CONFIG_BENCHMARK
     if (w == SysBenchmarkResetLog) {
-        /* benchmark hack: resume all threads in the edf scheduling priority */
-        for (tcb_t *tcb = ksReadyQueues[seL4_EDFPrio].head; tcb != NULL; tcb = tcb->tcbSchedNext) {
-            assert(tcb != NULL);
-            restart(tcb);
-        }
-        /* reset the log */
         ksLogIndex = 0;
         return EXCEPTION_NONE;
     } else if (w == SysBenchmarkDumpLog) {

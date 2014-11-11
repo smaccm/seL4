@@ -81,7 +81,6 @@ tcb_t *pickThread(void);
 void chooseThread(void);
 void releaseJob(sched_context_t *toRelease);
 void completeCurrentJob(void);
-void releaseRecurringJob(sched_context_t *sc);
 uint64_t getNextInterrupt(void);
 bool_t raiseTemporalException(tcb_t *tcb);
 

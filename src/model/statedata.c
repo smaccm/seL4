@@ -15,10 +15,6 @@
 #include <object/structures.h>
 #include <object/tcb.h>
 
-#ifdef CONFIG_BENCHMARK
-tcb_t *suspended;
-#endif
-
 /* The head of the EDF deadline queue */
 #ifdef CONFIG_EDF
 sc_prio_queue_t ksDeadlinePQ;
@@ -35,12 +31,6 @@ word_t ksReadyQueuesL1Bitmap[CONFIG_NUM_DOMAINS];
 word_t ksReadyQueuesL2Bitmap[CONFIG_NUM_DOMAINS][(CONFIG_NUM_PRIORITIES / wordBits) + 1];
 compile_assert(ksReadyQueuesL1BitmapBigEnough, (CONFIG_NUM_PRIORITIES / wordBits) <= wordBits);
 
-#ifdef CONFIG_BENCHMARK
-/* one thread can wait on the apic timer (unused in edf impl) */
-tcb_t *ksWaitingThread = NULL;
-#endif /* CONFIG_BENCHMARK */
-
-/* Current thread TCB pointer */
 tcb_t *ksCurThread;
 
 /* Idle thread TCB pointer */

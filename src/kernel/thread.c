@@ -727,92 +727,15 @@ completeCurrentJob(void)
 
 }
 
-
-
-
-/* release an EDF task that has already been in the release queue -> does
- * not apply to new tasks */
-void
-releaseRecurringJob(sched_context_t *sc)
-{
-
-    /* update dynamic parameters */
-#ifdef CONFIG_EDF_CBS
-    /* Note: if the thread is Running, this is not being 'released'
-     * but being 'resumed' after being taken out of the deadline heap
-     * by HardCBS. Do not change the release time so the next task
-     * can be released if this one finishes */
-    if (thread_state_get_tsType(sc->tcb->tcbState) == ThreadState_Running) {
-        sc->nextDeadline += sc->period;
-    } else {
-#endif /* CONFIG_EDF_CBS */
-        sc->nextRelease += sc->period;
-        sc->nextDeadline += sc->deadline;
-#ifdef CONFIG_EDF_CBS
-    }
-#endif /* CONFIG_EDF_CBS */
-
-    sc->priority = sc->nextDeadline;
-
-#ifdef CONFIG_EDF_CBS
-    /* recharge the budget */
-    sc->budgetRemaining = sc->budget;
-#endif /* CONFIG_EDF_CBS */
-
-    assert(sc != ksDeadlinePQ.head);
-    deadlineAdd(sc);
-}
-
-/* release an EDF task that was not eligible to run
- * this only applies to event-triggered EDF tasks */
 void
 enqueueJob(sched_context_t *sc, tcb_t *tcb)
 {
 
     if (sched_context_status_get_inReleaseHeap(sc->status)) {
-        assert(sc == ksReleasePQ.head);
-        TRACE("Releasing EDF job at %llx\n", ksCurrentTime);
-        releaseBehead();
-        setThreadState(tcb, ThreadState_Running);
-#ifdef CONFIG_EDF
-        if (isEDFThread(tcb)) {
-            assert(sc != ksDeadlinePQ.head);
-            deadlineAdd(sc);
-        } else {
-#endif /* CONFIG_EDF */
-            tcbSchedAppend(tcb);
-            rescheduleRequired();
-#ifdef CONFIG_EDF
-        }
-#endif /* CONFIG_EDF */
-    } else {
-
-        /* not eligible to be put into deadline heap yet, will be time triggered when ready */
-        if (ksCurrentTime < sc->nextRelease) {
-            TRACE("Added to release heap: %llx, next release %llx\n", ksCurrentTime, sc->nextRelease);
-            tcbSchedDequeue(ksCurThread);
-            releaseAdd(sc);
-            rescheduleRequired();
-        } else {
-            /* release time has passed, add to deadline heap */
-            TRACE("Releasing task %x, at %llx next release %llx\n", sc, ksCurrentTime, sc->nextRelease);
-            setThreadState(tcb, ThreadState_Running);
-            sc->budgetRemaining = sc->budget;
-            sc->nextRelease = ksCurrentTime + sc->period;
-#ifdef CONFIG_EDF
-            if (isEDFThread(tcb)) {
-                assert(sc != ksDeadlinePQ.head);
-                deadlineAdd(sc);
-            } else {
-#endif /* CONFIG_EDF */
-                tcbSchedAppend(tcb);
-                rescheduleRequired();
-#ifdef CONFIG_EDF
-            }
-#endif /* CONFIG_EDF */
-
-        }
+        return;
     }
+
+    resumeSchedContext(sc);
 }
 
 /* release pending jobs */

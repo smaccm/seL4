@@ -30,18 +30,11 @@ extern bool_t ksReprogram VISIBLE;
 extern uint32_t ksTicksPerUs;
 extern sched_context_t *ksSchedContext;
 extern uint32_t ksCriticality;
-#ifdef CONFIG_BENCHMARK
-extern tcb_t *suspended;
-#endif
 extern tcb_t *ksSchedulerAction VISIBLE;
-extern bool_t ksRestoreSC VISIBLE;
 extern word_t ksWorkUnitsCompleted;
 extern irq_state_t intStateIRQTable[] VISIBLE;
 extern cte_t *intStateIRQNode VISIBLE;
 
-#ifdef CONFIG_BENCHMARK
-extern tcb_t *ksWaitingThread;
-#endif /* CONFIG_BENCHMARK */
 extern const dschedule_t ksDomSchedule[];
 extern const unsigned int ksDomScheduleLength;
 extern uint32_t ksDomScheduleIdx;

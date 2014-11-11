@@ -19,12 +19,6 @@ getRestartPC(tcb_t *thread)
 }
 
 void
-setRestartPC(tcb_t *thread, word_t v)
-{
-    return setRegister(thread, FaultInstruction, v);
-}
-
-void
 setNextPC(tcb_t *thread, word_t v)
 {
     setRegister(thread, LR_svc, v);

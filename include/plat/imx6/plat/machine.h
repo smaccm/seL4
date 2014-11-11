@@ -179,11 +179,7 @@ enum IRQConstants {
     maxIRQ = 159
 } platform_interrupt_t;
 
-#ifdef CONFIG_EDF
 #define KERNEL_TIMER_IRQ INTERRUPT_GLOBAL_TIMER
-#else
-#define KERNEL_TIMER_IRQ INTERRUPT_PRIV_TIMER
-#endif
 
 enum irqNumbers {
     irqInvalid = (irq_t) - 1

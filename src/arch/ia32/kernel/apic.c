@@ -167,23 +167,6 @@ apic_init(uint32_t apic_khz, bool_t mask_legacy_irqs)
     );
 
     /* initialise timer */
-#ifndef CONFIG_EDF
-
-    /* initialise the apic timer */
-    apic_write_reg(
-        APIC_LVT_TIMER,
-        apic_lvt_new(
-            1,        /* timer_mode      */
-            0,        /* masked          */
-            0,        /* trigger_mode    */
-            0,        /* remote_irr      */
-            0,        /* pin_polarity    */
-            0,        /* delivery_status */
-            0,        /* delivery_mode   */
-            int_timer /* vector          */
-        ).words[0]
-    );
-#else
     /* check that the platform supports tsc deadline mode */
     printf("Checking APIC for tsc-deadline mode support\n");
     asm volatile (
@@ -217,7 +200,6 @@ apic_init(uint32_t apic_khz, bool_t mask_legacy_irqs)
             int_timer /* vector          */
         ).words[0]
     );
-#endif
 
     printf("APIC: ID=0x%x\n", apic_read_reg(APIC_ID) >> 24);
     printf("APIC: SVR=0x%x\n", apic_read_reg(APIC_SVR));
