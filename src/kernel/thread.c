@@ -141,6 +141,16 @@ suspend(tcb_t *target)
 
 }
 
+static void
+recharge(sched_context_t *sc)
+{
+    sc->budgetRemaining = sc->budget;
+    sc->nextRelease = ksCurrentTime + sc->period;
+#ifdef CONFIG_EDF
+    sc->nextDeadline = ksCurrentTime + sc->deadline;
+#endif /* CONFIG_EDF */
+}
+
 void
 resumeSchedContext(sched_context_t *sc)
 {
@@ -155,11 +165,7 @@ resumeSchedContext(sched_context_t *sc)
 
         if (sc->nextRelease < ksCurrentTime) {
             /* recharge time has passed, recharge */
-            sc->budgetRemaining = sc->budget;
-            sc->nextRelease = ksCurrentTime + sc->period;
-#ifdef CONFIG_EDF
-            sc->nextDeadline = ksCurrentTime + sc->deadline;
-#endif /* CONFIG_EDF */
+            recharge(sc);
         }
 
         if (sc->budgetRemaining > PLAT_LEEWAY) {
@@ -554,8 +560,7 @@ enforceBudget(void)
 
     if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
         /* recharge time has already passed, just apply round robin */
-        ksSchedContext->budgetRemaining = ksSchedContext->budget;
-        ksSchedContext->nextRelease = ksCurrentTime + ksSchedContext->period;
+        recharge(ksSchedContext);
         tcbSchedAppend(ksCurThread);
         TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
     } else {
@@ -758,8 +763,7 @@ void releaseJobs(void)
             postpone(head);
         } else {
             /* recharge the budget */
-            head->budgetRemaining = head->budget;
-            head->nextRelease = ksCurrentTime + head->period;
+            recharge(head);
 
             if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
                 TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
