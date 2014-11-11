@@ -142,21 +142,6 @@ suspend(tcb_t *target)
 }
 
 void
-releaseJob(sched_context_t *target)
-{
-    assert(target->tcb != NULL);
-
-#ifdef CONFIG_EDF
-    if (isEDFThread(target->tcb)) {
-        deadlineAdd(target);
-        return;
-    }
-#endif
-    tcbSchedEnqueue(target->tcb);
-    rescheduleRequired();
-}
-
-void
 resumeSchedContext(sched_context_t *sc)
 {
 
@@ -166,22 +151,29 @@ resumeSchedContext(sched_context_t *sc)
 
     if (tcb_prio_get_criticality(sc->tcb->tcbPriority) < ksCriticality) {
         releaseAdd(sc);
-    } else if (sc->nextRelease < ksCurrentTime) {
-        /* recharge time has passed, recharge */
-        sc->budgetRemaining = sc->budget;
-        sc->nextRelease = ksCurrentTime + sc->period;
-#ifdef CONFIG_EDF
-        sc->nextDeadline = ksCurrentTime + sc->deadline;
-#endif /* CONFIG_EDF */
-        releaseJob(sc);
-    } else if (sc->budgetRemaining > PLAT_LEEWAY) {
-        /* still has budget, release time has not passed, just resume */
-        releaseJob(sc);
-    } else {
-        /* release time hasn't passed, no budget left */
-        releaseAdd(sc);
-    }
+    } else  {
 
+        if (sc->nextRelease < ksCurrentTime) {
+            /* recharge time has passed, recharge */
+            sc->budgetRemaining = sc->budget;
+            sc->nextRelease = ksCurrentTime + sc->period;
+#ifdef CONFIG_EDF
+            sc->nextDeadline = ksCurrentTime + sc->deadline;
+#endif /* CONFIG_EDF */
+        }
+
+        if (sc->budgetRemaining > PLAT_LEEWAY) {
+            /* still has budget, release time has not passed, just resume */
+            if (isEDFThread(sc->tcb)) {
+                deadlineAdd(sc);
+            } else {
+                switchIfRequiredTo(sc->tcb, false);
+            }
+        } else {
+            /* release time hasn't passed, no budget left */
+            releaseAdd(sc);
+        }
+    }
 }
 
 
