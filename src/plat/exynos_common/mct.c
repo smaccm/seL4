@@ -205,6 +205,8 @@ resetTimer(void)
 BOOT_CODE void
 initTimer(void)
 {
+    ksTicksPerUs = 24u;
+
     /* Clear write status */
     mct->global.wstat = mct->global.wstat;
     mct->global.cnt_wstat = mct->global.cnt_wstat;

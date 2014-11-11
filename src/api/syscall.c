@@ -14,6 +14,7 @@
 #include <api/syscall.h>
 #include <api/failures.h>
 #include <api/faults.h>
+#include <arch/api/sendwait.h>
 #include <kernel/cspace.h>
 #include <kernel/faulthandler.h>
 #include <kernel/thread.h>
@@ -318,15 +319,7 @@ handleSendWait(void)
     /* we receive a donation if the send resulted in us losing our current scheduling context */
     bool_t donationRequired;
 
-#ifdef CONFIG_ARCH_IA32
-    word_t *buffer = lookupIPCBuffer(true, ksCurThread);
-    srcCPtr = getSyscallArg(seL4_MsgMaxLength - 1, buffer);
-#elif CONFIG_ARCH_ARM
-    srcCPtr = getRegister(ksCurThread, R8);
-#else
-#error "not implemented"
-#endif
-
+    srcCPtr = arch_getSendWaitSrc();
     destCPtr = getRegister(ksCurThread, capRegister);
     dest_lu_ret = lookupCapAndSlot(ksCurThread, destCPtr);
     src_lu_ret = lookupCap(ksCurThread, srcCPtr);

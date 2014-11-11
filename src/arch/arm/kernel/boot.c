@@ -316,6 +316,7 @@ init_plat(void)
 {
     initIRQController();
     initTimer();
+    assert(ksTicksPerUs != 0);
     initL2Cache();
 }
 

@@ -281,6 +281,8 @@ getCurrentTime(void)
 BOOT_CODE void
 initTimer(void)
 {
+    ksTicksPerUs = 498u;
+
     globalTimer = (volatile struct globalTimerMap *) ARM_MP_GLOBAL_TIMER_PPTR;
     /* disable the timer */
     globalTimer->control = 0;
