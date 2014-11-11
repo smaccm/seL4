@@ -947,6 +947,7 @@ updateBudget(void)
     uint64_t consumed = 0llu;
 
     /* bill the previous thread */
+    assert(ksCurrentTime > ksSchedContext->lastScheduled);
     consumed = ksCurrentTime - ksSchedContext->lastScheduled;
     if (consumed > ksSchedContext->budgetRemaining) {
         ksSchedContext->budgetRemaining = 0;
