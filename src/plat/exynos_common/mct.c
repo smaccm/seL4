@@ -170,6 +170,9 @@ ackDeadlineIRQ(void)
 BOOT_CODE void
 initTimer(void)
 {
+    /* timer frequency */
+    ksTicksPerUs = 24u;
+
     /* Clear write status */
     mct->global.wstat = mct->global.wstat;
     mct->global.cnt_wstat = mct->global.cnt_wstat;
@@ -205,7 +208,6 @@ resetTimer(void)
 BOOT_CODE void
 initTimer(void)
 {
-    ksTicksPerUs = 24u;
 
     /* Clear write status */
     mct->global.wstat = mct->global.wstat;
