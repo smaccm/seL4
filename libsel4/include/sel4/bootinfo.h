@@ -32,8 +32,8 @@ enum {
     seL4_CapInitThreadIPCBuffer = 10, /* initial thread's IPC buffer frame cap */
     seL4_CapDomain              = 11,  /* global domain controller cap */
 #ifdef CONFIG_EDF
-    seL4_CapSchedControl        = 12, /* Initial cap to scheduling control */
-    seL4_CapInitThreadSchedContext = 13
+    seL4_CapSchedControl        = 12, /* global scheduling control cap */
+    seL4_CapInitThreadSchedContext = 13 /* Initial thread's scheduling context cap */
 #endif
 };
 /* types */
