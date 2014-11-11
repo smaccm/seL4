@@ -214,25 +214,34 @@ doIPCTransfer(tcb_t *sender, endpoint_t *endpoint, word_t badge,
 }
 
 void
-doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate, cap_t cap)
+doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, cap_t cap)
 {
+    sched_context_t *reply_sc;
+    bool_t donate;
+    tcb_t *callee;
+
+    reply_sc = SC_PTR(cap_reply_cap_get_schedcontext(cap));
+    donate = (reply_sc == sender->tcbSchedContext);
 
     assert(thread_state_get_tsType(receiver->tcbState) ==
            ThreadState_BlockedOnReply);
 
-    /* this case occurs when someone else replies on behalf of the original called thread */
-    if (!donate && cap_reply_cap_get_schedcontext(cap)) {
-        sched_context_t *sc = SC_PTR(cap_reply_cap_get_schedcontext(cap));
-        tcb_t *callee = sc->tcb;
+    /* this case occurs when someone else replies on behalf of the original called thread,
+     * at which point the sched context in the sc should be returned */
+    if (!donate && reply_sc != NULL) {
+        callee = reply_sc->tcb;
 
         /* restore the scheduling context */
-        receiver->tcbSchedContext = sc;
-        sc->tcb = receiver;
+        receiver->tcbSchedContext = reply_sc;
+        reply_sc->tcb = receiver;
         if (callee) {
             rescheduleRequired();
             callee->tcbSchedContext = NULL;
         }
 
+        /* since the scheduling context was effectively paused,
+         * we need to check if there is enough budget before scheduling it
+         */
         if (receiver->tcbSchedContext->budgetRemaining < PLAT_LEEWAY) {
             if (raiseTemporalException(receiver)) {
                 cteDeleteOne(slot);
@@ -246,12 +255,10 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate, cap_
     if (likely(fault_get_faultType(receiver->tcbFault) == fault_null_fault)) {
         doIPCTransfer(sender, NULL, 0, true, receiver, false);
         cteDeleteOne(slot);
-        if (donate ||
-                (receiver->tcbSchedContext != NULL
-                 && !sched_context_status_get_inReleaseHeap(receiver->tcbSchedContext->status))) {
+        setThreadState(receiver, ThreadState_Running);
+        if (donate || isSchedulable(receiver)) {
             attemptSwitchTo(receiver, donate);
         }
-        setThreadState(receiver, ThreadState_Running);
     } else {
         bool_t restart;
 
@@ -260,9 +267,7 @@ doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, bool_t donate, cap_
         fault_null_fault_ptr_new(&receiver->tcbFault);
         if (restart) {
             setThreadState(receiver, ThreadState_Restart);
-            if (donate ||
-                    (receiver->tcbSchedContext != NULL
-                     && !sched_context_status_get_inReleaseHeap(receiver->tcbSchedContext->status))) {
+            if (donate || isSchedulable(receiver)) {
                 attemptSwitchTo(receiver, donate);
             }
         } else {
@@ -1119,6 +1124,9 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
             ksSchedulerAction = target;
         } else {
             tcbSchedEnqueue(target);
+            if (donate) {
+                rescheduleRequired();
+            }
         }
 
         if (action != SchedulerAction_ResumeCurrentThread

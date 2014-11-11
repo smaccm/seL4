@@ -794,10 +794,6 @@ performInvocation_AsyncEndpoint(async_endpoint_t *aep, word_t badge)
 exception_t
 performInvocation_Reply(tcb_t *thread, cte_t *slot, cap_t cap)
 {
-    /* this is only called by Send on a reply cap, which
-     * means we don't donate. SendWait and ReplyWait use
-     * a different code path. Verification will probably
-     * hate me for this. */
-    doReplyTransfer(ksCurThread, thread, slot, false, cap);
+    doReplyTransfer(ksCurThread, thread, slot, cap);
     return EXCEPTION_NONE;
 }

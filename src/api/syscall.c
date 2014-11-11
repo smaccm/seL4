@@ -281,7 +281,6 @@ handleReply(bool_t replyWait)
     switch (cap_get_capType(callerCap)) {
     case cap_reply_cap: {
         tcb_t *caller;
-        bool_t donationOccured;
 
         if (cap_reply_cap_get_capReplyMaster(callerCap)) {
             break;
@@ -290,9 +289,8 @@ handleReply(bool_t replyWait)
         /* Haskell error:
          * "handleReply: caller must not be the current thread" */
         assert(caller != ksCurThread);
-        donationOccured = replyWait && (caller->tcbSchedContext == NULL);
-        doReplyTransfer(ksCurThread, caller, callerSlot, donationOccured, callerCap);
-        return donationOccured;
+        doReplyTransfer(ksCurThread, caller, callerSlot, callerCap);
+        return true;
     }
 
     case cap_null_cap:
@@ -400,7 +398,7 @@ handleSendWait(void)
 
         caller = TCB_PTR(cap_reply_cap_get_capTCBPtr(dest_lu_ret.cap));
         donationRequired = (caller->tcbSchedContext == NULL);
-        doReplyTransfer(ksCurThread, caller, dest_lu_ret.slot, caller->tcbSchedContext == NULL, dest_lu_ret.cap);
+        doReplyTransfer(ksCurThread, caller, dest_lu_ret.slot, dest_lu_ret.cap);
     }
     break;
     default: {
