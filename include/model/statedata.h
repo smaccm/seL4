@@ -25,6 +25,7 @@ extern tcb_t *ksCurThread VISIBLE;
 extern tcb_t *ksIdleThread VISIBLE;
 extern sc_prio_queue_t ksDeadlinePQ VISIBLE;
 extern sc_prio_queue_t ksReleasePQ VISIBLE;
+extern tcb_queue_t ksCriticalityQueues[] VISIBLE;
 extern uint64_t ksCurrentTime VISIBLE;
 extern bool_t ksReprogram VISIBLE;
 extern uint32_t ksTicksPerUs;

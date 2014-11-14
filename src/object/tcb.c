@@ -128,6 +128,59 @@ tcbSchedDequeue(tcb_t *tcb)
     }
 }
 
+/* Add a TCB to a criticality queue */
+void
+tcbCritEnqueue(tcb_t *tcb)
+{
+    if (!thread_state_get_inCriticalityQueue(tcb->tcbState)) {
+        tcb_queue_t queue;
+        uint32_t criticality = tcb_prio_get_criticality(tcb->tcbPriority);
+
+        queue = ksCriticalityQueues[criticality];
+
+        if (!queue.end) { /* Empty list */
+            queue.end = tcb;
+        } else {
+            queue.head->tcbCritPrev = tcb;
+        }
+        tcb->tcbCritPrev = NULL;
+        tcb->tcbCritNext = queue.head;
+        queue.head = tcb;
+
+        ksCriticalityQueues[criticality] = queue;
+
+        thread_state_ptr_set_inCriticalityQueue(&tcb->tcbState, true);
+    }
+}
+
+/* Remove TCB from a criticality queue */
+void
+tcbCritDequeue(tcb_t *tcb)
+{
+    if (thread_state_get_inCriticalityQueue(tcb->tcbState)) {
+        tcb_queue_t queue;
+        uint32_t criticality = tcb_prio_get_criticality(tcb->tcbPriority);
+
+        queue = ksCriticalityQueues[criticality];
+
+        if (tcb->tcbCritPrev) {
+            tcb->tcbCritPrev->tcbCritNext = tcb->tcbCritNext;
+        } else {
+            queue.head = tcb->tcbCritNext;
+        }
+
+        if (tcb->tcbCritNext) {
+            tcb->tcbCritNext->tcbCritPrev = tcb->tcbCritPrev;
+        } else {
+            queue.end = tcb->tcbCritPrev;
+        }
+
+        ksCriticalityQueues[criticality] = queue;
+
+        thread_state_ptr_set_inCriticalityQueue(&tcb->tcbState, false);
+    }
+}
+
 /* reorder a tcb in an ipc endpoint queue */
 tcb_queue_t
 tcbEPReorder(tcb_t *tcb, tcb_queue_t queue, prio_t oldPrio)

@@ -307,6 +307,12 @@ menu "seL4 System Parameters"
             usually not allowed, enabling this setting will permit this
             operation.
 
+    config MAX_CRITICALITY
+        int "Highest criticality level in the system"
+        default 1
+        range 0 5
+        help
+           Set the maximum criticality level available in the system.
 
     config BENCHMARK
         bool "Enable benchmarking"

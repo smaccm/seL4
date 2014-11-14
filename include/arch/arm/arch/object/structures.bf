@@ -426,12 +426,11 @@ block tcb_prio {
 -- Thread state: size = 8 bytes
 block thread_state(blockingIPCBadge, blockingIPCCanGrant, blockingIPCIsCall,
                    tcbQueued, blockingIPCDiminishCaps, blockingIPCEndpoint,
-                   inSchedContextQueue,
-                   tsType) {
+                   inCriticalityQueue, tsType) {
     field blockingIPCBadge 28
     field blockingIPCCanGrant 1
     field blockingIPCIsCall 1
-    field inSchedContextQueue 1
+    field inCriticalityQueue 1
     field blockingIPCDiminishCaps 1
     
     -- this is fastpath-specific. it is useful to be able to write

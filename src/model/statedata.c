@@ -27,9 +27,13 @@ uint32_t ksCriticality;
 
 /* Pointer to the head of the scheduler queue for each priority */
 tcb_queue_t ksReadyQueues[NUM_READY_QUEUES];
+/* two level bit map to track highest priority */
 word_t ksReadyQueuesL1Bitmap[CONFIG_NUM_DOMAINS];
 word_t ksReadyQueuesL2Bitmap[CONFIG_NUM_DOMAINS][(CONFIG_NUM_PRIORITIES / wordBits) + 1];
 compile_assert(ksReadyQueuesL1BitmapBigEnough, (CONFIG_NUM_PRIORITIES / wordBits) <= wordBits);
+
+/* Pointer to the head of the criticality queue for each criticality */
+tcb_queue_t ksCriticalityQueues[CONFIG_MAX_CRITICALITY + 1];
 
 tcb_t *ksCurThread;
 

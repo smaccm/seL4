@@ -77,7 +77,6 @@ void doFaultTransfer(word_t badge, tcb_t *sender, tcb_t *receiver,
 void doPollFailedTransfer(tcb_t *thread);
 void schedule(void);
 tcb_t *getHighestPrioThread(void);
-tcb_t *pickThread(void);
 void chooseThread(void);
 void completeCurrentJob(void);
 uint64_t getNextInterrupt(void);
@@ -94,7 +93,6 @@ void deadlineHeadChanged(void);
 void releaseBehead(void);
 void releaseAdd(sched_context_t *sc);
 void releaseRemove(sched_context_t *sc);
-void releaseHeadChanged(void);
 void postpone(sched_context_t *sc);
 
 void enqueueJob(sched_context_t *sc, tcb_t *tcb);
@@ -102,8 +100,6 @@ void releaseJobs(void);
 void enforceBudget(void);
 void updateBudget(void);
 void resumeSchedContext(sched_context_t *sc);
-
-uint32_t getHighestPrio(void);
 
 void switchToThread(tcb_t *thread) VISIBLE;
 void switchToIdleThread(void);
@@ -115,5 +111,6 @@ void switchIfRequiredTo(tcb_t *tptr, bool_t donate);
 void setThreadState(tcb_t *tptr, _thread_state_t ts) VISIBLE;
 void timerTick(void);
 void rescheduleRequired(void);
+void enforceCriticality(tcb_t *tcb);
 
 #endif

@@ -134,6 +134,7 @@ suspend(tcb_t *target)
     ipcCancel(target);
     setThreadState(target, ThreadState_Inactive);
     tcbSchedDequeue(target);
+    tcbCritDequeue(target);
 
     if (target->tcbSchedContext) {
         sched_context_purge(target->tcbSchedContext);
@@ -190,6 +191,7 @@ restart(tcb_t *target)
         ipcCancel(target);
         setThreadState(target, ThreadState_Restart);
         resumeSchedContext(target->tcbSchedContext);
+        tcbCritEnqueue(target);
     }
 
 }
@@ -764,6 +766,7 @@ void releaseJobs(void)
         } else {
             /* recharge the budget */
             recharge(head);
+            tcbCritEnqueue(head->tcb);
 
             if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
                 TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
@@ -891,41 +894,10 @@ getHighestPrioThread(void)
     return thread;
 }
 
-tcb_t *
-pickThread(void)
-{
-    tcb_t *thread = NULL;
-    tcb_t *home;
-
-    while (thread == NULL) {
-
-        thread = getHighestPrioThread();
-        home = thread->tcbSchedContext->home;
-
-        if (unlikely(home != thread && tcb_prio_get_criticality(home->tcbPriority) < ksCriticality)) {
-            /* this thread isn't eligible to run but its blocking a resource,
-             * attempt to send a temporal fault. */
-            if (raiseTemporalException(thread)) {
-                thread = NULL;
-            }
-        } else if (unlikely(tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality)) {
-            /* postpone */
-            tcbSchedDequeue(thread);
-            postpone(thread->tcbSchedContext);
-            thread = NULL;
-        }
-    }
-
-    assert(tcb_prio_get_criticality(thread->tcbPriority) >= ksCriticality);
-    assert(thread != NULL);
-    return thread;
-}
-
-
 void
 chooseThread(void)
 {
-    tcb_t *thread = pickThread();
+    tcb_t *thread = getHighestPrioThread();
 
     if (unlikely(thread == ksIdleThread)) {
         switchToIdleThread();
@@ -959,6 +931,7 @@ switchToThread(tcb_t *thread)
 {
     assert(thread->tcbSchedContext != NULL);
     assert(tcb_prio_get_criticality(thread->tcbPriority) >= ksCriticality);
+
     /* we are switching from ksSchedContext to thread->tcbSchedContext */
     if (thread->tcbSchedContext != ksSchedContext) {
 
@@ -966,24 +939,16 @@ switchToThread(tcb_t *thread)
         ksReprogram = true;
 
         if (ksSchedContext->lastScheduled != ksCurrentTime) {
-            /* this case means the thread has already been charged */
+            /* this case means the thread has not already been charged */
             updateBudget();
 
             if (ksSchedContext->budgetRemaining <= PLAT_LEEWAY) {
-                tcb_t *woken;
-
                 enforceBudget();
-                /* pick a new thread, the in case enforceBudget() woke a higher prio
-                 * exception handler */
-                woken = pickThread();
-                if (tcb_prio_get_prio(woken->tcbPriority) > tcb_prio_get_prio(thread->tcbPriority)) {
-                    thread = woken;
-                }
-
-                if (thread == ksIdleThread) {
-                    switchToIdleThread();
-                    return;
-                }
+                /* pick a new thread, as enforceBudget() may have woken a higher prio
+                 * exception handler (otherwise highest prio thread will just
+                 * return the thread we already had) */
+                thread = getHighestPrioThread();
+                assert(thread != ksIdleThread);
             }
         }
 
@@ -993,8 +958,6 @@ switchToThread(tcb_t *thread)
         /* update the billing time for the new scheduling context */
         ksSchedContext->lastScheduled = ksCurrentTime + 1;
         TRACE("Update: KsCurThread %p, KsSchedContext %p\n", thread, ksSchedContext);
-    } else {
-        TRACE("No Switching Scheduling context, %p %p\n", thread->tcbSchedContext, ksSchedContext);
     }
 
     if (thread != ksCurThread) {
@@ -1032,63 +995,72 @@ setDomain(tcb_t *tptr, dom_t dom)
 }
 
 void
-setPriority(tcb_t *tptr, tcb_prio_t prio)
+setPriority(tcb_t *tptr, tcb_prio_t newPrio)
 {
     thread_state_t *state = &tptr->tcbState;
     tcb_queue_t queue;
     prio_t oldPrio;
+    bool_t critChange;
+    bool_t prioChange;
 
     oldPrio = tcb_prio_get_prio(tptr->tcbPriority);
-    if (tcb_prio_get_prio(prio) == oldPrio) {
-        /* just changing max prio, nothing to see here */
-        tptr->tcbPriority = prio;
-        return;
-    }
+    critChange = tcb_prio_get_criticality(newPrio) != tcb_prio_get_criticality(tptr->tcbPriority);
+    prioChange = oldPrio != tcb_prio_get_prio(newPrio);
 
-    /* otherwise we are changing priority, lots to do */
+    tcbCritDequeue(tptr);
     tcbSchedDequeue(tptr);
 
-    tptr->tcbPriority = prio;
+    tptr->tcbPriority = newPrio;
 
     if (isSchedulable(tptr)) {
-        tcbSchedEnqueue(tptr);
-    }
 
-    if (tptr == ksCurThread) {
-        rescheduleRequired();
-    }
+        tcbCritEnqueue(tptr);
+        if (tptr != ksCurThread) {
+            tcbSchedEnqueue(tptr);
+            if (tcb_prio_get_prio(newPrio) > tcb_prio_get_prio(ksCurThread->tcbPriority)) {
+                attemptSwitchTo(tptr, false);
+            }
+        } else {
+            rescheduleRequired();
+        }
 
-    /* need to reorder ipc endpoint queue that thread may be in */
-    switch (thread_state_ptr_get_tsType(state)) {
-    case ThreadState_BlockedOnSend:
-    case ThreadState_BlockedOnReceive: {
-        /* thread is in a sync endpoint queue */
-        endpoint_t *epptr = EP_PTR(thread_state_ptr_get_blockingIPCEndpoint(state));
+        if (critChange && tcb_prio_get_criticality(newPrio) < ksCriticality) {
+            enforceCriticality(tptr);
+        }
+    } else if (prioChange) {
 
-        assert(endpoint_ptr_get_state(epptr) != EPState_Idle);
+        /* if the priority has changed we might need to reorder the ipc endpoint queue
+        * that thread may be in */
+        switch (thread_state_ptr_get_tsType(state)) {
+        case ThreadState_BlockedOnSend:
+        case ThreadState_BlockedOnReceive: {
+            /* thread is in a sync endpoint queue */
+            endpoint_t *epptr = EP_PTR(thread_state_ptr_get_blockingIPCEndpoint(state));
 
-        queue = ep_ptr_get_queue(epptr);
-        queue = tcbEPReorder(tptr, queue, oldPrio);
-        ep_ptr_set_queue(epptr, queue);
-    }
-    break;
-    case ThreadState_BlockedOnAsyncEvent: {
-        /* thread is in an async endpoint queue */
-        async_endpoint_t *aepptr = AEP_PTR(thread_state_ptr_get_blockingIPCEndpoint(state));
+            assert(endpoint_ptr_get_state(epptr) != EPState_Idle);
 
-        assert(async_endpoint_ptr_get_state(aepptr) == AEPState_Waiting);
-
-        queue = aep_ptr_get_queue(aepptr);
-        queue = tcbEPReorder(tptr, queue, oldPrio);
-        aep_ptr_set_queue(aepptr, queue);
-    }
-    break;
-    default:
-        /* nothing to do */
+            queue = ep_ptr_get_queue(epptr);
+            queue = tcbEPReorder(tptr, queue, oldPrio);
+            ep_ptr_set_queue(epptr, queue);
+        }
         break;
+        case ThreadState_BlockedOnAsyncEvent: {
+            /* thread is in an async endpoint queue */
+            async_endpoint_t *aepptr = AEP_PTR(thread_state_ptr_get_blockingIPCEndpoint(state));
+
+            assert(async_endpoint_ptr_get_state(aepptr) == AEPState_Waiting);
+
+            queue = aep_ptr_get_queue(aepptr);
+            queue = tcbEPReorder(tptr, queue, oldPrio);
+            aep_ptr_set_queue(aepptr, queue);
+        }
+        break;
+        default:
+            /* nothing to do */
+            break;
+        }
     }
 
-    return;
 }
 
 static void
@@ -1115,9 +1087,10 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
             ksCurThread->tcbSchedContext = NULL;
         }
 
-        if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
-                && ksSchedulerAction == SchedulerAction_ResumeCurrentThread
-                && tcb_prio_get_criticality(target->tcbPriority) >= ksCriticality) {
+        if (unlikely(tcb_prio_get_criticality(target->tcbPriority) < ksCriticality)) {
+            postpone(target->tcbSchedContext);
+        } else if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
+                   && ksSchedulerAction == SchedulerAction_ResumeCurrentThread) {
             ksSchedulerAction = target;
         } else {
             tcbSchedEnqueue(target);
@@ -1196,6 +1169,30 @@ rescheduleRequired(void)
     ksSchedulerAction = SchedulerAction_ChooseNewThread;
 }
 
+void
+enforceCriticality(tcb_t *tcb)
+{
+    assert(tcb_prio_get_criticality(tcb->tcbPriority) < ksCriticality);
 
+    if (isSchedulable(tcb)) {
+        tcbSchedDequeue(tcb);
+        postpone(tcb->tcbSchedContext);
+        tcbCritDequeue(tcb);
+    } else if (tcb->tcbHomeSchedContext) {
+        /* this thread isn't eligible to run but its blocking a resource,
+         * attempt to send a temporal fault (otherwise
+         * the resource just stays blocked). */
+        tcb_t *other = tcb->tcbHomeSchedContext->tcb;
+        if (other != tcb &&
+                tcb_prio_get_criticality(other->tcbPriority) >=
+                tcb_prio_get_criticality(tcb->tcbPriority)) {
+
+            if (raiseTemporalException(other)) {
+                tcbSchedDequeue(other);
+            }
+        }
+    }
+    /* todo COULD potentially remove from endpoint queues... check this */
+}
 
 

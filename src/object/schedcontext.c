@@ -87,13 +87,32 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
     return EXCEPTION_NONE;
 }
 
+
 exception_t
 invokeSchedControl_SetCriticality(uint32_t criticality)
 {
+
+    /* if we are changing criticality up, forcibly postpone
+     * any threads of low criticality. Otherwise threads will
+     * come back online slowly via releaseJobs(). */
+    uint32_t prevCriticality = ksCriticality;
     ksCriticality = criticality;
 
+    for (int i = prevCriticality; i < criticality; i++) {
+        tcb_t *current = ksCriticalityQueues[i].head;
+        tcb_t *next;
+
+        while (current != NULL) {
+            assert(tcb_prio_get_criticality(current->tcbPriority) == i);
+
+            next = current->tcbCritNext;
+            enforceCriticality(current);
+            current = next;
+        }
+    }
+
+    /* we will need to reschedule if the current thread's criticality is too low */
     if (tcb_prio_get_criticality(ksCurThread->tcbPriority) < ksCriticality) {
-        releaseAdd(ksCurThread->tcbSchedContext);
         rescheduleRequired();
     }
 
@@ -236,7 +255,7 @@ decodeSchedControl_SetCriticality(unsigned int length, word_t *buffer)
     }
 
     criticality = getSyscallArg(0, buffer);
-    if (criticality > 0xFFu) {
+    if (criticality > CONFIG_MAX_CRITICALITY) {
         userError("Criticality %u too high, max %u\n", criticality, 0xFFu);
         current_syscall_error.type = seL4_InvalidArgument;
         return EXCEPTION_SYSCALL_ERROR;

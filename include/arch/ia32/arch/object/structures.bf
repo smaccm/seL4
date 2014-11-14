@@ -463,7 +463,7 @@ block tcb_prio {
 
 block thread_state {
     field blockingIPCBadge 28
-    field inSchedContextQueue 1
+    field inCriticalityQueue 1
     field blockingIPCCanGrant 1
     field blockingIPCIsCall 1
     field tcbQueued 1

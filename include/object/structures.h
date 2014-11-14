@@ -177,7 +177,7 @@ typedef uint32_t tcb_cnode_index_t;
 
 typedef struct sched_context sched_context_t;
 
-/* TCB: size 96 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+/* TCB: size 104 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
 struct tcb {
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
@@ -212,16 +212,17 @@ struct tcb {
     /* userland virtual address of thread IPC buffer, 4 bytes */
     word_t tcbIPCBuffer;
 
-    /* Previous and next pointers for endpoint & scheduler queues, 16 bytes */
+    /* Previous and next pointers for endpoint, scheduler and criticality queues, 24 bytes */
     struct tcb* tcbSchedNext;
     struct tcb* tcbSchedPrev;
     struct tcb* tcbEPNext;
     struct tcb* tcbEPPrev;
+    struct tcb* tcbCritNext;
+    struct tcb* tcbCritPrev;
     /* sched_context object that this tcb is running on, 4 bytes */
     sched_context_t *tcbSchedContext;
     /* sched context object that this tcb is bound to, 4 bytes */
     sched_context_t *tcbHomeSchedContext;
-
 };
 typedef struct tcb tcb_t;
 
