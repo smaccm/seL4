@@ -40,5 +40,8 @@
             <syscall name="BenchmarkDumpLog"  />
             <syscall name="BenchmarkLogSize"  />
         </config>
+        <config name="CONFIG_MEASURE_TIMER">
+            <syscall name="MeasureTimer" />
+        </config>
     </debug>
 </syscalls>

@@ -699,6 +699,18 @@ seL4_BenchmarkLogSize(void)
 
 #endif /* CONFIG_BENCHMARK */
 
+#ifdef CONFIG_MEASURE_TIMER
+static inline void
+seL4_MeasureTimer(void)
+{
+    register seL4_Word scno asm("r7") = seL4_SysMeasureTimer;
+    asm volatile ("swi %[swi_num]"
+                  : /* no outputs */
+                  : [swi_num] "i" __SWINUM(seL4_SysMeasureTimer), "r"(scno));
+
+}
+#endif
+
 #undef __SWINUM
 
 #endif

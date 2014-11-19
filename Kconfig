@@ -259,6 +259,21 @@ menu "seL4 System Parameters"
             Use TRACE_POINT_START and TRACE_POINT_STOP macros for recording data.
             NOTE this is only tested on the sabre and will not work on platforms with < 512mb memory.
             This is not fully implemented for x86.
+    
+    config MEASURE_TIMER
+        depends on BENCHMARK
+        bool "Adds a syscall for measuring setDeadline overhead"
+        default n
+
+    config MEASURE_TIMER_RUNS
+        depends on MEASURE_TIMER
+        int "Number of times to run setDeadline in a single MeasureTimer call"
+        default 1
+
+    config MEASURE_TIMER_LOOP_OVERHEAD
+        depends on MEASURE_TIMER
+        bool "Measure loop overhead"
+        default n
 
     config AEP_BINDING
         bool

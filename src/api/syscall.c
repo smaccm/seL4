@@ -152,6 +152,20 @@ handleUnknownSyscall(word_t w)
         return EXCEPTION_NONE;
     }
 #endif /* CONFIG_BENCHMARK */
+#ifdef CONFIG_MEASURE_TIMER
+    if (w == SysMeasureTimer) {
+        TRACE_POINT_START;
+        for (int i = 0; i < CONFIG_MEASURE_TIMER_RUNS; i++) {
+#ifdef CONFIG_MEASURE_TIMER_LOOP_OVERHEAD
+            asm volatile("" ::: "memory");
+#else
+            setDeadline(ksCurrentTime + (100000000llu * i));
+#endif /* CONFIG_MEASURE_TIMER_LOOP_OVERHEAD */
+        }
+        TRACE_POINT_STOP;
+        return EXCEPTION_NONE;
+    }
+#endif /* CONFIG_MEASURE_TIMER */
 
     current_fault = fault_unknown_syscall_new(w);
     handleFault(ksCurThread);

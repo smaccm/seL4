@@ -220,11 +220,13 @@ int
 setDeadline(uint64_t deadline)
 {
 
+#ifdef CONFIG_DEBUG_BUILD
     uint64_t currentTime;
     if (deadline < ksCurrentTime) {
         printf("Deadline %llx, ksCurrentTime %llx\n", deadline, ksCurrentTime);
         assert(deadline > ksCurrentTime);
     }
+#endif /* CONFIG_DEBUG_BUILD */
 
     /* write to the lower bits */
     globalTimer->comparatorLower = (uint32_t) deadline;
@@ -236,6 +238,7 @@ setDeadline(uint64_t deadline)
     /* turn on the interrupt */
     globalTimer->control |= (1 << IRQ_ENABLE);
 
+#ifdef CONFIG_DEBUG_BUILD
     /* to avoid a race, we check if our deadline has already passed */
     currentTime = getCurrentTime();
 
@@ -245,6 +248,7 @@ setDeadline(uint64_t deadline)
         globalTimer->control &= ~(1 << IRQ_ENABLE);
         return 1;
     }
+#endif /* CONFIG_DEBUG_BUILD */
     /* if the interrupt did fire we will catch it on kernel exit, so return success */
     return 0;
 }

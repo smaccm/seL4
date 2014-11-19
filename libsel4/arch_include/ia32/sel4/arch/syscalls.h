@@ -715,4 +715,24 @@ seL4_BenchmarkLogSize(void)
 }
 
 #endif /* CONFIG_BENCHMARK */
+
+#ifdef CONFIG_MEASURE_TIMER
+static inline void
+seL4_MeasureTimer(void)
+{
+    asm volatile (
+        "pushl %%ebp        \n"
+        "movl %%esp, %%ecx  \n"
+        "leal 1f, %%edx     \n"
+        "1:                 \n"
+        "sysenter           \n"
+        "popl %%ebp         \n"
+        :
+        : "a" (seL4_SysMeasureTimer)
+        : "%ecx", "%edx", "%edi", "memory"
+    );
+
+
+}
+#endif /* CONFIG_MEASURE_TIMER */
 #endif
