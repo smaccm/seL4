@@ -615,8 +615,9 @@ releaseRemove(sched_context_t *sc)
 void
 deadlineHeadChanged(void)
 {
-    ksReprogram = true;
-    rescheduleRequired();
+    if (tcb_prio_get_prio(ksCurThread->tcbPriority) <= seL4_EDFPrio) {
+        rescheduleRequired();
+    }
 }
 
 void
