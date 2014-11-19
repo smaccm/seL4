@@ -428,8 +428,6 @@ schedule(void)
 {
     word_t action;
 
-
-    TRACE_POINT_START;
     if (ksReprogram) {
         /* wake up any jobs that need it. */
         releaseJobs();
@@ -437,7 +435,6 @@ schedule(void)
 
     action = (word_t)ksSchedulerAction;
     if (action == (word_t)SchedulerAction_ChooseNewThread) {
-        TRACE("Picked new thread\n");
         if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
@@ -448,7 +445,6 @@ schedule(void)
         chooseThread();
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     } else if (action != (word_t)SchedulerAction_ResumeCurrentThread) {
-        TRACE("Switched to new thread\n");
         if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
@@ -456,11 +452,8 @@ schedule(void)
         switchToThread(ksSchedulerAction);
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     } else if (ksCurThread->tcbSchedContext != ksSchedContext) {
-        TRACE("Switched to new sc\n");
         /* we have changed scheduling context (but not thread) */
         switchToThread(ksCurThread);
-    } else {
-        TRACE("Nothing\n");
     }
 
     /* reset for next kernel entry */
@@ -493,10 +486,6 @@ schedule(void)
      * this optimises scheduling context donation */
     ksCurThread->tcbSchedContext = NULL;
     ksSchedContext->tcb = NULL;
-
-#ifdef CONFIG_PRIO_SCHEDULER_BENCHMARK
-    TRACE_POINT_STOP;
-#endif
 }
 
 static inline PURE bool_t
