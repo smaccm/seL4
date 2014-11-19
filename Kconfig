@@ -329,11 +329,6 @@ menu "seL4 System Parameters"
         help
            Set the maximum criticality level available in the system.
 
-    config BENCHMARK
-        bool "Enable benchmarking"
-        default y
-        help
-            Enables EDF instrumentation points for benchmarking
 endmenu
 
 menu "Build Options"
