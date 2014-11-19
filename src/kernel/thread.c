@@ -754,10 +754,8 @@ void releaseJobs(void)
 #endif /* CONFIG_EDF_CBS */
                     assert(head != ksDeadlinePQ.head);
                     deadlineAdd(head);
-                    setThreadState(thread, ThreadState_Running);
                 } else {
 #endif /* CONFIG_EDF */
-                    setThreadState(thread, ThreadState_Running);
                     tcbSchedAppend(thread);
 #ifdef CONFIG_EDF
                 }
