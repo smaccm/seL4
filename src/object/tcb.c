@@ -31,7 +31,7 @@ void
 tcbSchedEnqueue(tcb_t *tcb)
 {
     assert(tcb->tcbSchedContext != NULL);
-    assert(tcb->tcbSchedContext->budgetRemaining > PLAT_LEEWAY);
+    assert(tcb->tcbSchedContext->budgetRemaining >= PLAT_LEEWAY);
     assert(!sched_context_status_get_inReleaseHeap(tcb->tcbSchedContext->status));
 
     if (!thread_state_get_tcbQueued(tcb->tcbState)) {

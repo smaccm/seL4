@@ -61,6 +61,36 @@ removeFromBitmap(word_t dom, word_t prio)
     }
 }
 
+static inline bool_t PURE
+isRunnable(const tcb_t *thread)
+{
+    switch (thread_state_get_tsType(thread->tcbState)) {
+    case ThreadState_Running:
+    case ThreadState_Restart:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+static inline bool_t
+isSchedulable(const tcb_t *thread)
+{
+    /* a thread can only be scheduled if its runnable
+     * and has a valid scheduling context
+     * that is not currently in the release queue */
+    if (unlikely(!isRunnable(thread))) {
+        return false;
+    } else if (unlikely(thread->tcbSchedContext == NULL)) {
+        return false;
+    } else if (unlikely(sched_context_status_get_inReleaseHeap(thread->tcbSchedContext->status))) {
+        return false;
+    }
+
+    return true;
+}
+
 void configureIdleThread(tcb_t *tcb);
 void activateThread(void) VISIBLE;
 void suspend(tcb_t *target);

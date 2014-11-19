@@ -64,41 +64,21 @@ isBlocked(const tcb_t *thread)
     }
 }
 
-static inline bool_t PURE
-isRunnable(const tcb_t *thread)
-{
-    switch (thread_state_get_tsType(thread->tcbState)) {
-    case ThreadState_Running:
-    case ThreadState_Restart:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-static inline bool_t
-isSchedulable(const tcb_t *thread)
-{
-    /* a thread can only be scheduled if its runnable
-     * and has a valid scheduling context
-     * that is not currently in the release queue */
-    if (unlikely(!isRunnable(thread))) {
-        return false;
-    } else if (unlikely(thread->tcbSchedContext == NULL)) {
-        return false;
-    } else if (unlikely(sched_context_status_get_inReleaseHeap(thread->tcbSchedContext->status))) {
-        return false;
-    }
-
-    return true;
-}
-
 BOOT_CODE void
 configureIdleThread(tcb_t *tcb)
 {
     Arch_configureIdleThread(tcb);
     setThreadState(tcb, ThreadState_IdleThreadState);
+}
+
+static inline void
+recharge(sched_context_t *sc)
+{
+    sc->budgetRemaining = sc->budget;
+    sc->nextRelease = ksCurrentTime + sc->period;
+#ifdef CONFIG_EDF
+    sc->nextDeadline = ksCurrentTime + sc->deadline;
+#endif /* CONFIG_EDF */
 }
 
 void
@@ -142,15 +122,7 @@ suspend(tcb_t *target)
 
 }
 
-static void
-recharge(sched_context_t *sc)
-{
-    sc->budgetRemaining = sc->budget;
-    sc->nextRelease = ksCurrentTime + sc->period;
-#ifdef CONFIG_EDF
-    sc->nextDeadline = ksCurrentTime + sc->deadline;
-#endif /* CONFIG_EDF */
-}
+
 
 void
 resumeSchedContext(sched_context_t *sc)
@@ -164,7 +136,7 @@ resumeSchedContext(sched_context_t *sc)
         releaseAdd(sc);
     } else  {
 
-        if (sc->nextRelease < ksCurrentTime) {
+        if (readyToRelease(sc)) {
             /* recharge time has passed, recharge */
             recharge(sc);
         }
@@ -216,41 +188,46 @@ doIPCTransfer(tcb_t *sender, endpoint_t *endpoint, word_t badge,
 void
 doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot, cap_t cap)
 {
+
+    tcb_t * callee;
     sched_context_t *reply_sc;
     bool_t donate;
-    tcb_t *callee;
 
     reply_sc = SC_PTR(cap_reply_cap_get_schedcontext(cap));
     donate = (reply_sc == sender->tcbSchedContext);
 
-    assert(thread_state_get_tsType(receiver->tcbState) ==
-           ThreadState_BlockedOnReply);
-
-    /* this case occurs when someone else replies on behalf of the original called thread,
-     * at which point the sched context in the sc should be returned */
     if (!donate && reply_sc != NULL) {
+        /* this case occurs when someone else replies on behalf of the original called thread,
+         * at which point the sched context in the sc should be returned */
         callee = reply_sc->tcb;
-
-        /* restore the scheduling context */
         receiver->tcbSchedContext = reply_sc;
         reply_sc->tcb = receiver;
+
         if (callee) {
             rescheduleRequired();
             callee->tcbSchedContext = NULL;
         }
 
+        /* TODO@alyons should this only happen in response to a temporal fault? */
         /* since the scheduling context was effectively paused,
          * we need to check if there is enough budget before scheduling it
          */
-        if (receiver->tcbSchedContext->budgetRemaining < PLAT_LEEWAY) {
-            if (raiseTemporalException(receiver)) {
+        if (reply_sc->budgetRemaining < PLAT_LEEWAY) {
+            if (readyToRelease(reply_sc)) {
+                recharge(reply_sc);
+            } else if (raiseTemporalException(receiver)) {
+                /* The reply isn't going to happen because the budget was already out,
+                 * we are just bouncing temporal exceptions at this point */
                 cteDeleteOne(slot);
                 return;
             } else {
-                resumeSchedContext(receiver->tcbSchedContext);
+                resumeSchedContext(reply_sc);
             }
         }
     }
+
+    assert(thread_state_get_tsType(receiver->tcbState) ==
+           ThreadState_BlockedOnReply);
 
     if (likely(fault_get_faultType(receiver->tcbFault) == fault_null_fault)) {
         doIPCTransfer(sender, NULL, 0, true, receiver, false);
@@ -409,14 +386,16 @@ getNextInterrupt(void)
 {
 
 #ifdef CONFIG_EDF_CBS
+    /* TODO@alyons reevaluate IA32_EXTRA -- might just have to up PLAT_LEEWAY */
+    /* TODO@alyons s/PLAT_LEEWAY/KERNEL_WCET */
     uint64_t nextInterrupt = UINT64_MAX - IA32_EXTRA;
 
     if (ksCurThread != ksIdleThread) {
+        assert(ksSchedContext->budgetRemaining >= PLAT_LEEWAY);
         TRACE("deadline irq at %llx, budget %llx\n", ksSchedContext->budgetRemaining + ksCurrentTime,
               ksSchedContext->budgetRemaining);
         /* TODO@alyons avoid overflow here ???*/
         nextInterrupt = ksSchedContext->budgetRemaining + ksCurrentTime;
-        assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
     assert(ksSchedContext->budgetRemaining > PLAT_LEEWAY);
@@ -424,21 +403,14 @@ getNextInterrupt(void)
     if (ksReleasePQ.head != NULL && ksReleasePQ.head->nextRelease < nextInterrupt) {
         TRACE("Release irq\n");
         nextInterrupt = ksReleasePQ.head->nextRelease;
-#ifdef CONFIG_DEBUG_BUILD
-        if (!(nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime) {
-            printf("Next interrupt %llx - PLATEEWAY + IA32_EXTRA %llx <= ksCurrentTime %llx\n",
-                   nextInterrupt, nextInterrupt - PLAT_LEEWAY + IA32_EXTRA, ksCurrentTime);
-        }
-#endif /* CONFIG_DEBUG_BUILD */
-        assert((nextInterrupt - PLAT_LEEWAY + IA32_EXTRA) > ksCurrentTime);
     }
 
 #ifdef CONFIG_DEBUG_BUILD
     if (nextInterrupt <= ksCurrentTime) {
         printf("Next interrupt %llx, ksCurrentTime %llx\n", nextInterrupt, ksCurrentTime);
     }
-#endif
     assert(nextInterrupt > ksCurrentTime);
+#endif /* CONFIG_DEBUG_BUILD */
     return nextInterrupt - PLAT_LEEWAY + IA32_EXTRA;
 #else
     uint64_t nextInterrupt = UINT64_MAX;
@@ -522,22 +494,34 @@ schedule(void)
     ksCurThread->tcbSchedContext = NULL;
     ksSchedContext->tcb = NULL;
 
+#ifdef CONFIG_PRIO_SCHEDULER_BENCHMARK
     TRACE_POINT_STOP;
+#endif
 }
 
+static inline PURE bool_t
+readyToRelease(sched_context_t *sc) 
+{
+    return sc->nextRelease <= ksCurrentTime + PLAT_LEEWAY;
+}
 
-/* current thread is out of budget, handle appropriately */
+/*
+ * ksCurThread is out of budget, handle appropriately:
+ *
+ * + if the release time has passed, recharge the thread and rotate on scheduler queue.
+ * + otherwise, if it has a temporal fault endpoint, raise an exception
+ * + otherwise, postpone until next recharge time.
+ *
+ */
 void
 enforceBudget(void)
 {
-
-    assert(ksSchedContext->budgetRemaining <= PLAT_LEEWAY);
 
 #ifdef CONFIG_FAIL_CBS
     fail("budget enforcement triggered");
 #endif /* CONFIG_FAIL_CBS */
 
-    if (raiseTemporalException(ksCurThread)) {
+    if (!readyToRelease(ksSchedContext) && raiseTemporalException(ksCurThread)) {
         return;
     }
 
@@ -560,11 +544,11 @@ enforceBudget(void)
     }
 #endif /* CONFIG_EDF */
 
-    if (ksSchedContext->nextRelease < ksCurrentTime + PLAT_LEEWAY) {
+    if (readyToRelease(ksSchedContext)) {
         /* recharge time has already passed, just apply round robin */
         recharge(ksSchedContext);
         tcbSchedAppend(ksCurThread);
-        TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, ksCurThread->tcbPriority);
+        TRACE("RR'd FP thread %p, prio %d\n", ksCurThread, tcb_prio_get_prio(ksCurThread->tcbPriority));
     } else {
         TRACE("Rate limited FP thread %llx < %llx\n",
               ksSchedContext->nextRelease, ksCurrentTime + PLAT_LEEWAY);
@@ -579,13 +563,12 @@ postpone(sched_context_t *sc)
 {
     assert(sc != NULL);
     assert(!sched_context_status_get_inReleaseHeap(sc->status));
-
     sc->nextRelease = ksCurrentTime + sc->period;
     releaseAdd(sc);
 }
 
 /* Release heap operations */
-void
+static inline void
 releaseHeadChanged(void)
 {
     ksReprogram = true;
@@ -747,19 +730,12 @@ void releaseJobs(void)
 {
 
     sched_context_t *head = ksReleasePQ.head;
-    while (head != NULL && head->nextRelease <= ksCurrentTime + PLAT_LEEWAY) {
-        /* released too late */
-        //if (ksCurrentTime > (head->nextRelease)) {
-        //    printf("WARN: task released %llx too late\n", ksCurrentTime - head->nextRelease);
-        //}
-
-        //assert(ksCurrentTime < head->nextRelease + PLAT_LEEWAY);
-
+    while (head != NULL && readyToRelease(head)) {
         tcb_t *thread = head->tcb;
+
         assert(thread != NULL);
-
-        rescheduleRequired();
-
+        assert(isRunnable(thread));
+        
         if (tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality) {
             releaseBehead();
             postpone(head);
@@ -767,6 +743,8 @@ void releaseJobs(void)
             /* recharge the budget */
             recharge(head);
             tcbCritEnqueue(head->tcb);
+
+            rescheduleRequired();
 
             if (thread_state_get_tsType(thread->tcbState) == ThreadState_BlockedOnAsyncEvent) {
                 TRACE("Sending async IPC to %x\n", ksReleasePQ.head);
@@ -806,7 +784,7 @@ void releaseJobs(void)
 #endif /* CONFIG_DEBUG */
 }
 
-inline prio_t
+static inline prio_t
 getHighestPrio(void)
 {
     word_t dom;
@@ -923,8 +901,11 @@ updateBudget(void)
         ksSchedContext->budgetRemaining -= consumed;
     }
     ksSchedContext->lastScheduled = ksCurrentTime;
-}
 
+    /* need to reprogram the timer
+     * as we have updated the budget */
+    ksReprogram = true;
+}
 
 void
 switchToThread(tcb_t *thread)
@@ -941,15 +922,7 @@ switchToThread(tcb_t *thread)
         if (ksSchedContext->lastScheduled != ksCurrentTime) {
             /* this case means the thread has not already been charged */
             updateBudget();
-
-            if (ksSchedContext->budgetRemaining <= PLAT_LEEWAY) {
-                enforceBudget();
-                /* pick a new thread, as enforceBudget() may have woken a higher prio
-                 * exception handler (otherwise highest prio thread will just
-                 * return the thread we already had) */
-                thread = getHighestPrioThread();
-                assert(thread != ksIdleThread);
-            }
+            assert(ksSchedContext->budgetRemaining > PLAT_LEEWAY);
         }
 
         /* switch the scheduling context */
@@ -1069,6 +1042,10 @@ possibleSwitchTo(tcb_t* target, bool_t onSamePriority, bool_t donate)
     prio_t curPrio, targetPrio;
     tcb_t *action;
 
+    assert(isRunnable(target));
+    assert(donate || target->tcbSchedContext != NULL);
+    assert(donate || target->tcbSchedContext->budgetRemaining >= PLAT_LEEWAY);
+
     curPrio = tcb_prio_get_prio(ksCurThread->tcbPriority);
     targetPrio = tcb_prio_get_prio(target->tcbPriority);
 
@@ -1142,14 +1119,8 @@ timerTick(void)
 
     ackDeadlineIRQ();
 
-    /* we will need to reprogram the timer if the interrupt came in early */
+    /* release pending jobs */
     ksReprogram = true;
-
-    updateBudget();
-    if (ksSchedContext->budgetRemaining <= PLAT_LEEWAY) {
-        enforceBudget();
-        rescheduleRequired();
-    }
 
     if (CONFIG_NUM_DOMAINS > 1) {
         ksDomainTime--;

@@ -77,15 +77,14 @@ sendIPC(bool_t blocking, bool_t do_call, bool_t donate, word_t badge,
             thread_state_get_blockingIPCDiminishCaps(dest->tcbState);
         doIPCTransfer(thread, epptr, badge, canGrant, dest, diminish);
 
+        setThreadState(dest, ThreadState_Running);
+
         donationOccured = donate && (dest->tcbSchedContext == NULL);
 
         if (donationOccured || dest->tcbSchedContext != NULL) {
             attemptSwitchTo(dest, donationOccured);
             /* otherwise don't enqueue */
         }
-
-        /* thread is in running state, but can't run until it somehow gets a sched context */
-        setThreadState(dest, ThreadState_Running);
 
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {
@@ -127,6 +126,7 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
         tcb_queue_t queue;
         tcb_t *sender;
 
+        /* TODO@alyons move to setCriticality */
         /* cull any threads in the ipc queue that are not the correct criticality */
         queue = ep_ptr_get_queue(epptr);
         while (unlikely(queue.head && tcb_prio_get_criticality(queue.head->tcbPriority) < ksCriticality)) {
@@ -218,13 +218,13 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
             } else {
                 /* if the sender wasn't doing a call or fault we can't do a donation.
                  * as a result the receiver becomes not runnable */
+                setThreadState(sender, ThreadState_Running);
                 if (donationRequired || sender->tcbSchedContext == NULL) {
                     rescheduleRequired();
                     /* thread has no sc, will not be able to run */
                 } else {
                     switchIfRequiredTo(sender, false);
                 }
-                setThreadState(sender, ThreadState_Running);
             }
 
             break;

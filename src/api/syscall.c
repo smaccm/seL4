@@ -35,19 +35,46 @@
 /* The haskell function 'handleEvent' is split into 'handleXXX' variants
  * for each event causing a kernel entry */
 
-/* this function is called on every kernel entry except
- * the fastpath */
-static inline void
+/*
+ * Perform time related operations relevant to every kernel operation.
+ *
+ * - update the kernel time stamp
+ * - reconnect ksCurThread and ksSchedContext (they are disconnected to
+ *    optimise the fastpath)
+ * - check that the current thread has enough budget to get through
+ *   whatever kernel operation is being attempted, if it doesn't,
+ *   handle this by postponing, recharging or raising a temporal
+ *   exception and return false if the thread is not schedulable.
+ */
+static inline bool_t
 passageOfTime(void)
 {
+    uint64_t consumed;
+
     /* read current kernel time */
     ksCurrentTime = getCurrentTime();
 
     /* restore sched context binding */
     ksCurThread->tcbSchedContext = ksSchedContext;
     ksSchedContext->tcb = ksCurThread;
-}
 
+    /* check if the thread has enough budget to proceed */
+    consumed = ksCurrentTime - ksSchedContext->lastScheduled + PLAT_LEEWAY;
+
+    if (unlikely(consumed > ksSchedContext->budgetRemaining)) {
+        /* it doesn't */
+        ksSchedContext->budgetRemaining = 0;
+        ksSchedContext->lastScheduled = ksCurrentTime;
+        ksReprogram = true;
+        enforceBudget();
+        rescheduleRequired();
+        return isSchedulable(ksCurThread);
+    }
+
+    /* we didn't actually charge the thread, so no reprogram required */
+    return true;
+
+}
 
 exception_t
 handleInterruptEntry(void)
@@ -56,6 +83,10 @@ handleInterruptEntry(void)
 
     passageOfTime();
 
+    /* We handle irqs regardless of whether the current
+     * thread has enough budget or not. The next scheduled thread
+     * will be charged.
+     */
     irq = getActiveIRQ();
     if (irq != irqInvalid) {
         handleInterrupt(irq);
@@ -167,8 +198,15 @@ handleUnknownSyscall(word_t w)
     }
 #endif /* CONFIG_MEASURE_TIMER */
 
-    current_fault = fault_unknown_syscall_new(w);
-    handleFault(ksCurThread);
+    /* at this point we know we are not doing a debug syscall,
+     * so actually handle an unknown syscall fault */
+    if (unlikely(!passageOfTime())) {
+        /* trigger the fault again once we have enough budget */
+        setThreadState(ksCurThread, ThreadState_Running);
+    } else {
+        current_fault = fault_unknown_syscall_new(w);
+        handleFault(ksCurThread);
+    }
 
     schedule();
     activateThread();
@@ -179,10 +217,13 @@ handleUnknownSyscall(word_t w)
 exception_t
 handleUserLevelFault(word_t w_a, word_t w_b)
 {
-    passageOfTime();
-
-    current_fault = fault_user_exception_new(w_a, w_b);
-    handleFault(ksCurThread);
+    if (unlikely(!passageOfTime())) {
+        /* restart the fault when the thread has enough budget to run */
+        setThreadState(ksCurThread, ThreadState_Running);
+    } else {
+        current_fault = fault_user_exception_new(w_a, w_b);
+        handleFault(ksCurThread);
+    }
 
     schedule();
     activateThread();
@@ -195,11 +236,14 @@ handleVMFaultEvent(vm_fault_type_t vm_faultType)
 {
     exception_t status;
 
-    passageOfTime();
-
-    status = handleVMFault(ksCurThread, vm_faultType);
-    if (status != EXCEPTION_NONE) {
-        handleFault(ksCurThread);
+    if (unlikely(!passageOfTime())) {
+        /* trigger the VMFault again when the thread has enough budget to run */
+        setThreadState(ksCurThread, ThreadState_Running);
+    } else {
+        status = handleVMFault(ksCurThread, vm_faultType);
+        if (status != EXCEPTION_NONE) {
+            handleFault(ksCurThread);
+        }
     }
 
     schedule();
@@ -561,65 +605,69 @@ handleSyscall(syscall_t syscall)
     exception_t ret;
     irq_t irq;
 
-    passageOfTime();
-
-    switch (syscall) {
-    case SysSend:
-        ret = handleInvocation(false, true);
-        if (unlikely(ret != EXCEPTION_NONE)) {
-            irq = getActiveIRQ();
-            if (irq != irqInvalid) {
-                handleInterrupt(irq);
+    if (unlikely(!passageOfTime())) {
+        /* trigger the syscall again when the thread has enough budget */
+        setThreadState(ksCurThread, ThreadState_Running);
+    } else {
+        switch (syscall) {
+        case SysSend:
+            ret = handleInvocation(false, true);
+            if (unlikely(ret == EXCEPTION_PREEMPTED)) {
+                irq = getActiveIRQ();
+                if (irq != irqInvalid) {
+                    handleInterrupt(irq);
+                }
             }
-        }
-        break;
+            break;
 
-    case SysNBSend:
-        ret = handleInvocation(false, false);
-        if (unlikely(ret != EXCEPTION_NONE)) {
-            irq = getActiveIRQ();
-            if (irq != irqInvalid) {
-                handleInterrupt(irq);
+        case SysNBSend:
+            ret = handleInvocation(false, false);
+            if (unlikely(ret == EXCEPTION_PREEMPTED)) {
+                irq = getActiveIRQ();
+                if (irq != irqInvalid) {
+                    handleInterrupt(irq);
+                }
             }
-        }
-        break;
+            break;
 
-    case SysCall:
-        ret = handleInvocation(true, true);
-        if (unlikely(ret != EXCEPTION_NONE)) {
-            irq = getActiveIRQ();
-            if (irq != irqInvalid) {
-                handleInterrupt(irq);
+        case SysCall:
+            ret = handleInvocation(true, true);
+            if (unlikely(ret == EXCEPTION_PREEMPTED)) {
+                irq = getActiveIRQ();
+                if (irq != irqInvalid) {
+                    handleInterrupt(irq);
+                }
             }
+            break;
+
+        case SysWait:
+            handleWait(true);
+            break;
+
+        case SysReply:
+            handleReply(false);
+            break;
+
+        case SysReplyWait:
+            handleReplyWait();
+            break;
+
+        case SysPoll:
+            handleWait(false);
+            break;
+
+        case SysYield:
+            handleYield();
+            break;
+
+        case SysSendWait:
+            handleSendWait();
+            break;
+
+        default:
+            fail("Invalid syscall");
         }
-        break;
 
-    case SysWait:
-        handleWait(true);
-        break;
-
-    case SysReply:
-        handleReply(false);
-        break;
-
-    case SysReplyWait:
-        handleReplyWait();
-        break;
-
-    case SysPoll:
-        handleWait(false);
-        break;
-
-    case SysYield:
-        handleYield();
-        break;
-
-    case SysSendWait:
-        handleSendWait();
-        break;
-
-    default:
-        fail("Invalid syscall");
     }
 
     schedule();
