@@ -122,7 +122,11 @@ suspend(tcb_t *target)
 
 }
 
-
+static inline PURE bool_t
+readyToRelease(sched_context_t *sc) 
+{
+    return sc->nextRelease <= ksCurrentTime + PLAT_LEEWAY;
+}
 
 void
 resumeSchedContext(sched_context_t *sc)
@@ -486,12 +490,6 @@ schedule(void)
      * this optimises scheduling context donation */
     ksCurThread->tcbSchedContext = NULL;
     ksSchedContext->tcb = NULL;
-}
-
-static inline PURE bool_t
-readyToRelease(sched_context_t *sc) 
-{
-    return sc->nextRelease <= ksCurrentTime + PLAT_LEEWAY;
 }
 
 /*
