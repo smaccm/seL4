@@ -126,24 +126,6 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t donationRequired)
         tcb_queue_t queue;
         tcb_t *sender;
 
-        /* TODO@alyons move to setCriticality */
-        /* cull any threads in the ipc queue that are not the correct criticality */
-        queue = ep_ptr_get_queue(epptr);
-        while (unlikely(queue.head && tcb_prio_get_criticality(queue.head->tcbPriority) < ksCriticality)) {
-            sender = queue.head;
-            /* invariant: anyone sending in an IPC queue MUST have a scheduling context */
-            assert(sender->tcbSchedContext != NULL);
-            /* this thread will restart its IPC request when the criticality is lowered again */
-            setThreadState(sender, ThreadState_Running);
-            queue = tcbEPDequeue(sender, queue);
-            postpone(sender->tcbSchedContext);
-        }
-
-        if (queue.head == NULL) {
-            endpoint_ptr_set_state(epptr, EPState_Idle);
-        }
-        ep_ptr_set_queue(epptr, queue);
-
         switch (endpoint_ptr_get_state(epptr)) {
         case EPState_Idle:
         case EPState_Recv: {

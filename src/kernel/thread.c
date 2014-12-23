@@ -123,7 +123,7 @@ suspend(tcb_t *target)
 }
 
 static inline PURE bool_t
-readyToRelease(sched_context_t *sc) 
+readyToRelease(sched_context_t *sc)
 {
     return sc->nextRelease <= ksCurrentTime + PLAT_LEEWAY;
 }
@@ -723,7 +723,7 @@ void releaseJobs(void)
 
         assert(thread != NULL);
         assert(isRunnable(thread));
-        
+
         if (tcb_prio_get_criticality(thread->tcbPriority) < ksCriticality) {
             releaseBehead();
             postpone(head);
@@ -1131,25 +1131,95 @@ enforceCriticality(tcb_t *tcb)
 {
     assert(tcb_prio_get_criticality(tcb->tcbPriority) < ksCriticality);
 
-    if (isSchedulable(tcb)) {
-        tcbSchedDequeue(tcb);
+    if (tcb->tcbSchedContext != NULL &&
+            sched_context_status_get_inReleaseHeap(tcb->tcbSchedContext->status)) {
+        /* nothing to do */
+
+        return;
+    }
+
+    switch (thread_state_get_tsType(tcb->tcbState)) {
+    case ThreadState_Inactive:
+    case ThreadState_IdleThreadState:
+        /* thread is not schedulable, nothing to do */
+        break;
+    case ThreadState_Running:
+    case ThreadState_Restart:
+        /* thread is runnable, might be in the scheduler queue */
+        if (tcb->tcbSchedContext != NULL) {
+            tcbSchedDequeue(tcb);
+            postpone(tcb->tcbSchedContext);
+            tcbCritDequeue(tcb);
+        }
+        break;
+    case ThreadState_BlockedOnReply: {
+        /* the thread may have donated its scheduling context to a server, or chain
+         * of servers, that need to be reset as this scheduling context is no longer
+         * active.
+         */
+        sched_context_t *home = tcb->tcbHomeSchedContext;
+        if (home && home->tcb != tcb &&
+                tcb_prio_get_criticality(home->tcb->tcbPriority) >= ksCriticality) {
+            /* try to raise an exception */
+            raiseTemporalException(home->tcb);
+            /* if it fails, just let the server keep going, the client
+             * will be not be switched to unless the criticality level is raised
+             */
+        }
+
+        break;
+    }
+    case ThreadState_BlockedOnReceive:
+    case ThreadState_BlockedOnSend: {
+        /* thread is blocked in an endpoint queue, and should not be serviced -- pull it out
+         * and restart the op once the thread is scheduled again */
+        endpoint_t *ep;
+        tcb_queue_t queue;
+
+        ep = EP_PTR(thread_state_get_blockingIPCEndpoint(tcb->tcbState));
+        assert(ep != NULL);
+
+        /* set thread to restart ipc op when criticality raises */
+        setThreadState(tcb, ThreadState_Running);
+
+        /* remove from endpoint queue */
+        queue = ep_ptr_get_queue(ep);
+        queue = tcbEPDequeue(tcb, queue);
+        if (queue.head == NULL) {
+            endpoint_ptr_set_state(ep, EPState_Idle);
+        }
+        ep_ptr_set_queue(ep, queue);
+
+        if (tcb->tcbSchedContext != NULL) {
+            postpone(tcb->tcbSchedContext);
+        }
+        tcbCritDequeue(tcb);
+        break;
+    }
+    case ThreadState_BlockedOnAsyncEvent: {
+        /* blocked in a queue on an async enpoint: same as sync, pull it out and restart
+         * theop once the thread is scheduled again */
+        async_endpoint_t *aep;
+        tcb_queue_t queue;
+
+        aep = AEP_PTR(thread_state_get_blockingIPCEndpoint(tcb->tcbState));
+        assert(aep != NULL);
+
+        /* set thread to restart ipc op when criticality raises */
+        setThreadState(tcb, ThreadState_Running);
+
+        /* remove from endpoint queue */
+        queue = aep_ptr_get_queue(aep);
+        queue = tcbEPDequeue(tcb, queue);
+        aep_ptr_set_queue(aep, queue);
+        if (queue.head == NULL) {
+            async_endpoint_ptr_set_state(aep, AEPState_Idle);
+        }
+
         postpone(tcb->tcbSchedContext);
         tcbCritDequeue(tcb);
-    } else if (tcb->tcbHomeSchedContext) {
-        /* this thread isn't eligible to run but its blocking a resource,
-         * attempt to send a temporal fault (otherwise
-         * the resource just stays blocked). */
-        tcb_t *other = tcb->tcbHomeSchedContext->tcb;
-        if (other != tcb &&
-                tcb_prio_get_criticality(other->tcbPriority) >=
-                tcb_prio_get_criticality(tcb->tcbPriority)) {
-
-            if (raiseTemporalException(other)) {
-                tcbSchedDequeue(other);
-            }
-        }
     }
-    /* todo COULD potentially remove from endpoint queues... check this */
+    }
 }
 
 
