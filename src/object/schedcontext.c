@@ -150,6 +150,13 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     d = (((uint64_t) getSyscallArg(3, buffer)) << 32llu) + getSyscallArg(2, buffer);
     e = (((uint64_t) getSyscallArg(5, buffer)) << 32llu) + getSyscallArg(4, buffer);
 
+
+    if (e <= PLAT_LEEWAY || d <= PLAT_LEEWAY || p <= PLAT_LEEWAY) {
+        userError("Parameters too small. All parameters must be greater than %llx\n", PLAT_LEEWAY);
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
     flags = schedFlagsFromWord(getSyscallArg(6, buffer));
     targetCap = extra_caps.excaprefs[0]->cap;
 
@@ -216,6 +223,11 @@ decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *
 
     targetCap = extra_caps.excaprefs[0]->cap;
 
+    if (e <= PLAT_LEEWAY || d <= PLAT_LEEWAY || p <= PLAT_LEEWAY) {
+        userError("Parameters too small. All parameters must be greater than %llx\n", PLAT_LEEWAY);
+        current_syscall_error.type = seL4_InvalidArgument;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
 
     /* TODO@alyons this is undefined behaviour :( */
     if ((p * ksTicksPerUs) < p) {
