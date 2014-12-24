@@ -229,7 +229,6 @@ decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-    /* TODO@alyons this is undefined behaviour :( */
     if ((p * ksTicksPerUs) < p) {
         userError("SchedControl_Extend: Integer overflow, p too big -- %llx * %llx = %llx\n",
                   p, ksTicksPerUs, p * ksTicksPerUs);
