@@ -687,7 +687,7 @@ getHighestPrioThread(void)
         TRACE("chose idle\n");
         return ksIdleThread;
     }
-
+        
     thread = ksReadyQueues[ready_queues_index(dom, prio)].head;
     TRACE("Chose prio thread %p at prio %d\n", thread, prio);
 

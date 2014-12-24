@@ -286,15 +286,8 @@ menu "seL4 System Parameters"
         bool
         default y
 
-    config EDF
-        bool "Enable EDF"
-        default y 
-        help 
-            Adds another priority level with EDF scheduling
-
     choice 
-        prompt "EDF Implementation"
-        depends on EDF
+        prompt "RT Implementation"
         default EDF_HEAP
         help 
             Choose EDF implementation
@@ -306,20 +299,6 @@ menu "seL4 System Parameters"
             bool "EDF_LIST"
     endchoice
         
-    config EDF_CBS
-        bool "Enable CBS for edf"
-        depends on EDF
-        default y 
-        help
-            Blah blah blah blah
-       
-    config FAIL_CBS
-        bool "Fail if cbs is triggered"
-        depends on EDF
-        default n
-        help
-            Used for benchmarks
-
     config ALLOW_NULL_CSPACE
         bool "Null CSpace support"
         default n

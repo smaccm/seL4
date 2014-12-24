@@ -15,10 +15,6 @@
 #include <object/structures.h>
 #include <object/tcb.h>
 
-/* The head of the EDF deadline queue */
-#ifdef CONFIG_EDF
-sc_prio_queue_t ksDeadlinePQ;
-#endif /* CONFIG_EDF */
 sc_prio_queue_t ksReleasePQ;
 uint64_t ksCurrentTime;
 bool_t ksReprogram = false;

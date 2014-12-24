@@ -16,9 +16,6 @@
 enum priorityConstants {
     seL4_InvalidPrio = -1,
     seL4_MinPrio = 0,
-#ifdef CONFIG_EDF
-    seL4_EDFPrio = 125,
-#endif /* CONFIG_EDF */
     seL4_MaxPrio = 255,
 };
 

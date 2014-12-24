@@ -116,7 +116,6 @@ receiveAsyncIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
      * regardless of state */
     /* TODO@alyons think hard about this */
     if (isBlocking && ((tcb_t *) async_endpoint_ptr_get_aepBoundTCB(aepptr) == thread)) {
-        assert(thread->tcbSchedContext == ksDeadlinePQ.head || thread == ksCurThread);
         completeCurrentJob();
     }
 

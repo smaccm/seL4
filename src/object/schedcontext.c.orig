@@ -63,6 +63,23 @@ invokeSchedControl_Extend(sched_context_t *sched_context, uint64_t p, uint64_t d
         }
     }
 
+#ifdef CONFIG_EDF
+    /* update deadline */
+    if (sched_context_status_get_inDeadlineHeap(sched_context->status) &&
+            d != sched_context->deadline) {
+
+        deadlineRemove(sched_context);
+
+        if (likely(d > sched_context->deadline)) {
+            sched_context->nextDeadline += (d - sched_context->deadline);
+        } else {
+            sched_context->nextDeadline -= (sched_context->deadline - d);
+        }
+
+        deadlineAdd(sched_context);
+    }
+#endif /* CONFIG_EDF */
+
     sched_context->budget = e;
     sched_context->period = p;
     sched_context->deadline = d;
@@ -162,7 +179,7 @@ decodeSchedControl_Configure(unsigned int length, extra_caps_t extra_caps, word_
     }
 
     if (trigger != seL4_EventTriggered && trigger != seL4_TimeTriggered) {
-        userError("SchedControl_Configure: invalid trigger.");
+        userError("TCB JoinEDF: invalid trigger.");
         current_syscall_error.type = seL4_InvalidArgument;
         return EXCEPTION_SYSCALL_ERROR;
     }
@@ -205,7 +222,7 @@ decodeSchedControl_Extend(unsigned int length, extra_caps_t extra_caps, word_t *
     e = (((uint64_t) getSyscallArg(5, buffer)) << 32llu) + getSyscallArg(4, buffer);
 
     targetCap = extra_caps.excaprefs[0]->cap;
-
+    
     if (e <= PLAT_LEEWAY || d <= PLAT_LEEWAY || p <= PLAT_LEEWAY) {
         userError("Parameters too small. All parameters must be greater than %llx\n", PLAT_LEEWAY);
         current_syscall_error.type = seL4_InvalidArgument;
@@ -681,6 +698,10 @@ sched_context_purge(sched_context_t *sc)
     /* remove sched context from any queues it is in */
     if (sched_context_status_get_inReleaseHeap(sc->status)) {
         releaseRemove(sc);
+#ifdef CONFIG_EDF
+    } else if (sched_context_status_get_inDeadlineHeap(sc->status)) {
+        deadlineRemove(sc);
+#endif /* CONFIG_EDF */
     }
 
 }
