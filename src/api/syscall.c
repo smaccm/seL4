@@ -607,7 +607,9 @@ handleSyscall(syscall_t syscall)
 
     if (unlikely(!passageOfTime())) {
         /* trigger the syscall again when the thread has enough budget */
-        setThreadState(ksCurThread, ThreadState_Running);
+        if (isRunnable(ksCurThread)) {
+            setThreadState(ksCurThread, ThreadState_Restart);
+        }
     } else {
         switch (syscall) {
         case SysSend:
