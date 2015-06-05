@@ -9,3 +9,5 @@
 #
 
 DIRECTORIES += src/arch/$(ARCH)/64
+
+ARCH_ASM_SOURCES += 64/head.S
