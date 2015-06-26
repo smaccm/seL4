@@ -811,6 +811,7 @@ performX86PageInvocationUnmap(cap_t cap, cte_t *ctSlot)
 
     cap_frame_cap_ptr_set_capFMappedAddress(&ctSlot->cap, 0);
     cap_frame_cap_ptr_set_capFMappedASID(&ctSlot->cap, asidInvalid);
+    cap_frame_cap_ptr_set_capFMapType(&ctSlot->cap, X86_MAPPING_NONE);
 
     return EXCEPTION_NONE;
 }
@@ -859,6 +860,8 @@ exception_t decodeX86FrameInvocation(
 
             return EXCEPTION_SYSCALL_ERROR;
         }
+
+        assert(cap_frame_cap_get_capFMapType(cap) == X86_MAPPING_NONE);
 
         if (!isValidNativeRoot(vspaceCap)) {
             userError("X86Frame: Attempting to map frame into invalid page directory cap.");
@@ -911,6 +914,7 @@ exception_t decodeX86FrameInvocation(
 
         cap = cap_frame_cap_set_capFMappedASID(cap, asid);
         cap = cap_frame_cap_set_capFMappedAddress(cap, vaddr);
+        cap = cap_frame_cap_set_capFMapType(cap, X86_MAPPING_VSPACE);
 
         switch (frameSize) {
             /* PTE mappings */
@@ -992,8 +996,8 @@ exception_t decodeX86FrameInvocation(
         vm_page_size_t  frameSize;
         asid_t          asid;
 
-        if (isIOSpaceFrame(cap)) {
-            userError("X86FrameRemap: Attempting to remap frame mapped into an IOSpace");
+        if (cap_frame_cap_get_capFMapType(cap) != X86_MAPPING_VSPACE) {
+            userError("X86FrameRemap: Attempting to remap frame with different mapping type");
             current_syscall_error.type = seL4_IllegalOperation;
 
             return EXCEPTION_SYSCALL_ERROR;
@@ -1113,11 +1117,15 @@ exception_t decodeX86FrameInvocation(
 
     case X86PageUnmap: { /* Unmap */
         if (cap_frame_cap_get_capFMappedASID(cap) != asidInvalid) {
-            if (isIOSpaceFrame(cap)) {
-                return decodeX86IOUnMapInvocation(invLabel, length, cte, cap, excaps);
-            } else {
+            switch (cap_frame_cap_get_capFMapType(cap)) {
+            case X86_MAPPING_VSPACE:
                 setThreadState(ksCurThread, ThreadState_Restart);
                 return performX86PageInvocationUnmap(cap, cte);
+            case X86_MAPPING_IOSPACE:
+                return decodeX86IOUnMapInvocation(invLabel, length, cte, cap, excaps);
+            case X86_MAPPING_NONE:
+                fail("Mapped frame cap was not mapped");
+                break;
             }
         }
 

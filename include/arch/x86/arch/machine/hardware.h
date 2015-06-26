@@ -28,6 +28,13 @@ enum vm_page_size {
 };
 typedef word_t vm_page_size_t;
 
+enum vm_page_map_type {
+    X86_MAPPING_NONE = 0,
+    X86_MAPPING_VSPACE,
+    X86_MAPPING_IOSPACE
+};
+typedef uint32_t vm_page_map_type_t;
+
 enum frameSizeConstants {
     X86_4K_bits = 12,
     X86_2M_bits = 21,

@@ -48,5 +48,6 @@ exception_t decodeX86IOUnMapInvocation(word_t invLabel, uint32_t length, cte_t* 
 exception_t decodeX86IOSpaceInvocation(word_t invLabel, cap_t cap);
 void unmapIOPage(cap_t cap);
 void deleteIOPageTable(cap_t cap);
+void unmapVTDContextEntry(cap_t cap);
 
 #endif

@@ -43,7 +43,7 @@ Mode_deriveCap(cte_t* slot, cap_t cap)
 
     switch (cap_get_capType(cap)) {
     case cap_frame_cap:
-        cap = cap_frame_cap_set_capFIsIOSpace(cap, 0);
+        cap = cap_frame_cap_set_capFMapType(cap, X86_MAPPING_NONE);
         ret.cap = cap_frame_cap_set_capFMappedASID(cap, asidInvalid);
         ret.status = EXCEPTION_NONE;
         return ret;
@@ -69,17 +69,23 @@ cap_t Mode_finaliseCap(cap_t cap, bool_t final)
         break;
 
     case cap_frame_cap:
-        if (cap_frame_cap_get_capFMappedASID(cap)) {
-            if (cap_frame_cap_get_capFIsIOSpace(cap)) {
+        if (final && cap_frame_cap_get_capFMappedASID(cap)) {
+            switch (cap_frame_cap_get_capFMapType(cap)) {
+            case X86_MAPPING_VSPACE:
+                unmapPage(
+                    cap_frame_cap_get_capFSize(cap),
+                    cap_frame_cap_get_capFMappedASID(cap),
+                    cap_frame_cap_get_capFMappedAddress(cap),
+                    (void *)cap_frame_cap_get_capFBasePtr(cap)
+                );
+                break;
+            case X86_MAPPING_IOSPACE:
                 unmapIOPage(cap);
                 break;
+            default:
+                fail("No mapping type for mapped cap");
+                break;
             }
-            unmapPage(
-                cap_frame_cap_get_capFSize(cap),
-                cap_frame_cap_get_capFMappedASID(cap),
-                cap_frame_cap_get_capFMappedAddress(cap),
-                (void *)cap_frame_cap_get_capFBasePtr(cap)
-            );
         }
         break;
 
@@ -136,9 +142,9 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
         }
         return cap_frame_cap_new(
                    X86_SmallPage,          /* capFSize             */
-                   false,                  /* capFIsIOSpace        */
                    ASID_LOW(asidInvalid),  /* capFMappedASIDLow    */
                    false,                  /* capFMappedAddress    */
+                   X86_MAPPING_NONE,       /* capFMapType          */
                    deviceMemory,           /* capFIsDevice         */
                    ASID_HIGH(asidInvalid), /* capFMappedASIDHigh   */
                    VMReadWrite,            /* capFVMRights         */
@@ -151,9 +157,9 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
         }
         return cap_frame_cap_new(
                    X86_LargePage,          /* capFSize             */
-                   false,                  /* capFIsIOSpace        */
                    ASID_LOW(asidInvalid),  /* capFMappedASIDLow    */
                    false,                  /* capFMappedAddress    */
+                   X86_MAPPING_NONE,       /* capFMapType          */
                    deviceMemory,           /* capFIsDevice         */
                    ASID_HIGH(asidInvalid), /* capFMappedASIDHigh   */
                    VMReadWrite,            /* capFVMRights         */
