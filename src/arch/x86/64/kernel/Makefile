@@ -8,4 +8,5 @@
 # @TAG(GD_GPL)
 #
 
-ARCH_C_SOURCES += 64/kernel/vspace.c
+ARCH_C_SOURCES += 64/kernel/thread.c \
+                  64/kernel/vspace.c
