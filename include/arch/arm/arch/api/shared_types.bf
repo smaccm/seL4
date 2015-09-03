@@ -9,3 +9,6 @@
 --
 
 #include <mode/api/shared_types.bf>
+
+#elif CONFIG_WORD_SIZE == 64
+#include "types_64.bf"

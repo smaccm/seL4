@@ -18,7 +18,11 @@ CHANGED_PATH := ${SOURCE_DIR}/tools/changed.sh
 ifeq (${KERNEL_32}, y)
 TYPE_SUFFIX:=32
 else
+ifeq (${KERNEL_64}, y)
+TYPE_SUFFIX:=64
+else
 $(error Cannot determine TYPE_SUFFIX)
+endif
 endif
 
 # Targets
