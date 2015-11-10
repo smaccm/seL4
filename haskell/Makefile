@@ -16,11 +16,11 @@ BOOT_MODULES = Kernel/CSpace Kernel/Thread Kernel/FaultHandler \
 BOOT_FILES=$(BOOT_MODULES:%=src/SEL4/%.lhs-boot)
 
 all: build pdf
-	
+
 build: $(BOOT_FILES)
 	cabal sandbox init
 	cabal install --dependencies-only
-	cabal configure
+	cabal configure --configure-option="arm-qemu"
 	cabal build
 
 pdf:
