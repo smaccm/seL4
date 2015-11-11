@@ -39,7 +39,7 @@ targets =
     , ("arm-kzm", ("ARM", "KZM"))
     , ("arm-sabre", ("ARM", "SABRE"))
     , ("arm-qemu", ("ARM", "QEmu"))
-    , ("x86_64-pc99", ("X86_64", "PC99"))
+    , ("x64-pc99", ("X64", "PC99"))
     ]
 
 getPlatform targetName = do

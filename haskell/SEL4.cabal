@@ -88,7 +88,6 @@ Library
                             SEL4.Model.StateData.ARM
                             SEL4.Machine.RegisterSet.ARM
                             SEL4.Machine.Hardware.ARM
-                           
 
     hs-source-dirs:         src
     ghc-prof-options:       -auto-all -fprof-auto
