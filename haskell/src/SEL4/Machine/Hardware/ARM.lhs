@@ -16,7 +16,7 @@
 
 This module defines the low-level ARM hardware interface.
 
-> module SEL4.Machine.Hardware.X64 where
+> module SEL4.Machine.Hardware.ARM where
 
 \begin{impdetails}
 
@@ -30,10 +30,10 @@ This module defines the low-level ARM hardware interface.
 
 \end{impdetails}
 
-The x86-64-specific register set definitions are qualified with the "X64" prefix, and the platform-specific hardware access functions are qualified with the "Platform" prefix. The latter module is outside the scope of the reference manual; for the executable model, it is specific to the external simulator used for user-level code.
+The ARM-specific register set definitions are qualified with the "ARM" prefix, and the platform-specific hardware access functions are qualified with the "Platform" prefix. The latter module is outside the scope of the reference manual; for the executable model, it is specific to the external simulator used for user-level code.
 
-> import qualified SEL4.Machine.RegisterSet.X64 as X64
-> import qualified SEL4.Machine.Hardware.X64.PLATFORM as Platform
+> import qualified SEL4.Machine.RegisterSet.ARM as ARM
+> import qualified SEL4.Machine.Hardware.ARM.PLATFORM as Platform
 
 \subsection{Data Types}
 
@@ -45,8 +45,6 @@ The machine monad contains a platform-specific opaque pointer, used by the exter
 
 > type IRQ = Platform.IRQ
 
-FIXME there is a 1-to-1 correspondence between hardware and software ASIDs on x64
-
 > newtype HardwareASID = HardwareASID { fromHWASID :: Word8 }
 >     deriving (Num, Enum, Bounded, Ord, Ix, Eq, Show)
 
@@ -54,24 +52,25 @@ FIXME there is a 1-to-1 correspondence between hardware and software ASIDs on x6
 
 \subsubsection{Virtual Memory}
 
-x86-64 hardware-defined pages come in three sizes: 4k, 2M, 1G.
+ARM hardware-defined pages come in four sizes: 4k, 64k, 1M and 16M. The 16M page size only has hardware support on some ARMv6 CPUs, such as the ARM1136; the kernel will simulate them using 16 1M mappings on other CPUs.
 
 > data VMPageSize
->     = X64SmallPage
->     | X64LargePage
->     | X64HugePage
+>     = ARMSmallPage
+>     | ARMLargePage
+>     | ARMSection
+>     | ARMSuperSection
 >     deriving (Show, Eq, Ord, Enum, Bounded)
 
-x86 virtual memory faults are handled by one of two trap handlers: one for data faults, and one for instruction faults.
+ARM virtual memory faults are handled by one of two trap handlers: one for data aborts, and one for instruction aborts.
 
 > data VMFaultType
->     = X64DataFault
->     | X64InstructionFault
+>     = ARMDataAbort
+>     | ARMPrefetchAbort
 >     deriving Show
 
 \subsubsection{Physical Memory}
 
-The MMU does not allow access to physical addresses while translation is enabled; the kernel must access its objects via virtual addresses. Depending on the platform, these virtual addresses may either be the same as the physical addresses, or offset by a constant.
+The ARM MMU does not allow access to physical addresses while translation is enabled; the kernel must access its objects via virtual addresses. Depending on the platform, these virtual addresses may either be the same as the physical addresses, or offset by a constant.
 
 > type PAddr = Platform.PAddr
 
@@ -86,15 +85,16 @@ The MMU does not allow access to physical addresses while translation is enabled
 
 \subsection{Hardware Access}
 
-The following functions define the x86 64bit specific interface between the kernel and the hardware. Most of them depend on the simulator in use, and are therefore defined in the platform module.
+The following functions define the ARM-specific interface between the kernel and the hardware. Most of them depend on the simulator in use, and are therefore defined in the platform module.
 
 > pageBits :: Int
 > pageBits = 12
 
 > pageBitsForSize :: VMPageSize -> Int
-> pageBitsForSize X64SmallPage = 12
-> pageBitsForSize X64LargePage = 21
-> pageBitsForSize X64HugePage = 30
+> pageBitsForSize ARMSmallPage = 12
+> pageBitsForSize ARMLargePage = 16
+> pageBitsForSize ARMSection = 20
+> pageBitsForSize ARMSuperSection = 24
 
 > getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
 > getMemoryRegions = do
@@ -124,8 +124,6 @@ The following functions define the x86 64bit specific interface between the kern
 > storeWordVM :: PPtr Word -> Word -> MachineMonad ()
 > storeWordVM ptr val = storeWord ptr val
 
-FIXME: Not on x64
-
 > pageColourBits :: Int
 > pageColourBits = Platform.pageColourBits
 
@@ -144,8 +142,7 @@ FIXME: Not on x64
 >     cbptr <- ask
 >     liftIO $ Platform.maskInterrupt cbptr maskI irq
 
-FIXME: IOAPIC: set\_mode\_config and map\_pin\_to\_vector equivalents?
-
+> -- IOAPIC only does stuff on IA32
 > setInterruptMode :: IRQ -> Bool -> Bool -> MachineMonad ()
 > setInterruptMode _ _ _ = return ()
 
@@ -162,20 +159,19 @@ FIXME: IOAPIC: set\_mode\_config and map\_pin\_to\_vector equivalents?
 > debugPrint :: String -> MachineMonad ()
 > debugPrint str = liftIO $ putStrLn str
 
-> getRestartPC = getRegister (Register X64.FaultInstruction)
-> setNextPC = setRegister (Register X64.NextIP)
+> getRestartPC = getRegister (Register ARM.FaultInstruction)
+> setNextPC = setRegister (Register ARM.LR_svc)
 
-\subsection{Memory Management}
+\subsection{ARM Memory Management}
 
-There are several operations used by the memory management code to access relevant hardware registers.
+There are several operations used by the ARM memory management code to access relevant hardware registers.
 
 \subsubsection{Cleaning Memory}
 
 This function is called before a region of user-memory is recycled.
 It zeros every word to ensure that user tasks cannot access any private data
-that might previously have been stored in the region.
-
-X64: FIXME then flushes the kernel's mapping from the virtually-indexed caches?
+that might previously have been stored in the region and
+then flushes the kernel's mapping from the virtually-indexed caches.
 
 > clearMemory :: PPtr Word -> Int -> MachineMonad ()
 > clearMemory ptr byteLength = do
@@ -183,6 +179,9 @@ X64: FIXME then flushes the kernel's mapping from the virtually-indexed caches?
 >     let ptr' = PPtr $ fromPPtr ptr
 >     let ptrs = [ptr', ptr' + wordSize .. ptr' + fromIntegral byteLength - 1]
 >     mapM_ (\p -> storeWord p 0) ptrs
+>     cleanCacheRange_PoU (VPtr $ fromPPtr ptr)
+>                         (VPtr (fromPPtr (ptr + fromIntegral byteLength - 1)))
+>                         (toPAddr $ fromPPtr ptr)
 
 This function is called before a region of memory is made user-accessible.
 Though in Haskell, it is implemented as "clearMemory",
@@ -213,7 +212,10 @@ caches must be done separately.
 
 \subsubsection{Address Space Setup}
 
-FIXME: what does this do on x64?
+> writeTTBR0 :: PAddr -> MachineMonad ()
+> writeTTBR0 pd = do
+>     cbptr <- ask
+>     liftIO $ Platform.writeTTBR0 cbptr pd
 
 > setCurrentPD :: PAddr -> MachineMonad ()
 > setCurrentPD pd = do
@@ -228,12 +230,20 @@ FIXME: what does this do on x64?
 
 \subsubsection{Memory Barriers}
 
-FIXME: does this have to be called dsb?
-
-> mfence :: MachineMonad ()
-> mfence = do
+> isb :: MachineMonad ()
+> isb = do
 >     cbptr <- ask
->     liftIO $ Platform.mfenceCallback cbptr
+>     liftIO $ Platform.isbCallback cbptr
+
+> dsb :: MachineMonad ()
+> dsb = do
+>     cbptr <- ask
+>     liftIO $ Platform.dsbCallback cbptr
+
+> dmb :: MachineMonad ()
+> dmb = do
+>     cbptr <- ask
+>     liftIO $ Platform.dmbCallback cbptr
 
 \subsubsection{Cache Cleaning and TLB Flushes}
 
@@ -247,6 +257,147 @@ FIXME: does this have to be called dsb?
 >     cbptr <- ask
 >     liftIO $ Platform.invalidateTLB_ASIDCallback cbptr hw_asid
 
+> invalidateTLB_VAASID :: Word -> MachineMonad ()
+> invalidateTLB_VAASID mva_plus_asid = do
+>     cbptr <- ask
+>     liftIO $ Platform.invalidateTLB_VAASIDCallback cbptr mva_plus_asid
+
+> cleanByVA :: VPtr -> PAddr -> MachineMonad ()
+> cleanByVA mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanByVACallback cbptr mva pa
+
+> cleanByVA_PoU :: VPtr -> PAddr -> MachineMonad ()
+> cleanByVA_PoU mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanByVA_PoUCallback cbptr mva pa
+
+> invalidateByVA :: VPtr -> PAddr -> MachineMonad ()
+> invalidateByVA mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheInvalidateByVACallback cbptr mva pa
+
+> invalidateByVA_I :: VPtr -> PAddr -> MachineMonad ()
+> invalidateByVA_I mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheInvalidateByVA_ICallback cbptr mva pa
+
+> invalidate_I_PoU :: MachineMonad ()
+> invalidate_I_PoU = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheInvalidate_I_PoUCallback cbptr
+
+> cleanInvalByVA :: VPtr -> PAddr -> MachineMonad ()
+> cleanInvalByVA mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanInvalidateByVACallback cbptr mva pa
+
+> branchFlush :: VPtr -> PAddr -> MachineMonad ()
+> branchFlush mva pa = do
+>     cbptr <- ask
+>     liftIO $ Platform.branchFlushCallback cbptr mva pa
+
+> clean_D_PoU :: MachineMonad ()
+> clean_D_PoU = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheClean_D_PoUCallback cbptr
+
+> cleanInvalidate_D_PoC :: MachineMonad ()
+> cleanInvalidate_D_PoC = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanInvalidate_D_PoCCallback cbptr
+
+> cleanInvalidate_D_PoU :: MachineMonad ()
+> cleanInvalidate_D_PoU = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanInvalidate_D_PoUCallback cbptr
+
+> cleanInvalidateL2Range :: PAddr -> PAddr -> MachineMonad ()
+> cleanInvalidateL2Range start end = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanInvalidateL2RangeCallback cbptr start end
+
+> invalidateL2Range :: PAddr -> PAddr -> MachineMonad ()
+> invalidateL2Range start end = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheInvalidateL2RangeCallback cbptr start end
+
+> cleanL2Range :: PAddr -> PAddr -> MachineMonad ()
+> cleanL2Range start end = do
+>     cbptr <- ask
+>     liftIO $ Platform.cacheCleanL2RangeCallback cbptr start end
+
+> lineStart addr = (addr `shiftR` cacheLineBits) `shiftL` cacheLineBits
+
+Performs the given operation on every cache line that intersects the
+supplied range.
+
+> cacheRangeOp :: (VPtr -> PAddr -> MachineMonad ()) ->
+>                 VPtr -> VPtr -> PAddr -> MachineMonad ()
+> cacheRangeOp operation vstart vend pstart = do
+>     let pend = pstart + (toPAddr $ fromVPtr (vend - vstart))
+>     let vptrs = [lineStart vstart, lineStart vstart + fromIntegral cacheLine .. lineStart vend]
+>     let pptrs = [lineStart pstart, lineStart pstart + fromIntegral cacheLine .. lineStart pend]
+>     mapM_ (\(v,p) -> operation v p) (zip vptrs pptrs)
+
+> cleanCacheRange_PoC :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> cleanCacheRange_PoC vstart vend pstart =
+>     cacheRangeOp cleanByVA vstart vend pstart
+
+> cleanInvalidateCacheRange_RAM :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> cleanInvalidateCacheRange_RAM vstart vend pstart = do
+>     cleanCacheRange_PoC vstart vend pstart
+>     dsb
+>     cleanInvalidateL2Range pstart (pstart + (toPAddr $ fromVPtr $ vend - vstart))
+>     cacheRangeOp cleanInvalByVA vstart vend pstart
+>     dsb
+
+> cleanCacheRange_RAM :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> cleanCacheRange_RAM vstart vend pstart = do
+>     cleanCacheRange_PoC vstart vend pstart
+>     dsb
+>     cleanL2Range pstart (pstart + (toPAddr $ fromVPtr $ vend - vstart))
+
+> cleanCacheRange_PoU :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> cleanCacheRange_PoU vstart vend pstart =
+>     cacheRangeOp cleanByVA_PoU vstart vend pstart
+
+> invalidateCacheRange_RAM :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> invalidateCacheRange_RAM vstart vend pstart = do
+>     when (vstart /= lineStart vstart) $
+>         cleanCacheRange_RAM vstart vstart pstart
+>     when (vend + 1 /= lineStart (vend + 1)) $
+>         cleanCacheRange_RAM (lineStart vend) (lineStart vend)
+>             (pstart + (toPAddr $ fromVPtr $ lineStart vend - vstart))
+>     invalidateL2Range pstart
+>         (pstart + (toPAddr $ fromVPtr $ vend - vstart))
+>     cacheRangeOp invalidateByVA vstart vend pstart
+>     dsb
+
+> invalidateCacheRange_I :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> invalidateCacheRange_I vstart vend pstart =
+>     cacheRangeOp invalidateByVA_I vstart vend pstart
+
+> branchFlushRange :: VPtr -> VPtr -> PAddr -> MachineMonad ()
+> branchFlushRange vstart vend pstart =
+>     cacheRangeOp branchFlush vstart vend pstart
+
+> cleanCaches_PoU :: MachineMonad ()
+> cleanCaches_PoU = do
+>     dsb
+>     clean_D_PoU
+>     dsb
+>     invalidate_I_PoU
+>     dsb
+
+> cleanInvalidateL1Caches :: MachineMonad ()
+> cleanInvalidateL1Caches = do
+>     dsb
+>     cleanInvalidate_D_PoC
+>     dsb
+>     invalidate_I_PoU
+>     dsb
+
 This function is used to clear the load exclusive monitor. This dummy
 implementation assumes the monitor is not modelled in our simulator.
 
@@ -255,7 +406,20 @@ implementation assumes the monitor is not modelled in our simulator.
 
 \subsubsection{Fault Status Registers}
 
-FIXME: x64 has anything like this?
+> getIFSR :: MachineMonad Word
+> getIFSR = do
+>     cbptr <- ask
+>     liftIO $ Platform.getIFSR cbptr
+
+> getDFSR :: MachineMonad Word
+> getDFSR = do
+>     cbptr <- ask
+>     liftIO $ Platform.getDFSR cbptr
+
+> getFAR :: MachineMonad VPtr
+> getFAR = do
+>     cbptr <- ask
+>     liftIO $ Platform.getFAR cbptr
 
 \subsubsection{Page Table Structure}
 
@@ -350,14 +514,13 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 > data VMAttributes = VMAttributes {
 >     armPageCacheable, armParityEnabled, armExecuteNever :: Bool }
 
-All tables in x86 64bit do 9 bits of translation, with eight bytes per entry.
-Every table is one small page in size.
+ARM page directories and page tables occupy four frames and one quarter of a frame, respectively.
 
-> ptTranslationBits :: Int
-> ptTranslationBits = 9
+> pdBits :: Int
+> pdBits = pageBits + 2
 
 > ptBits :: Int
-> ptBits = ptTranslationBits + 3
+> ptBits = pageBits - 2
 
 > cacheLineBits = Platform.cacheLineBits
 > cacheLine = Platform.cacheLine
