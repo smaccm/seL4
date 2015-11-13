@@ -10,7 +10,7 @@
 
 This module contains the architecture-specific thread switch code for the ARM.
 
-> module SEL4.Kernel.Thread.ARM where
+> module SEL4.Kernel.Thread.X64 where
 
 \begin{impdetails}
 
@@ -21,7 +21,7 @@ This module contains the architecture-specific thread switch code for the ARM.
 > import SEL4.Object.Structures
 > import SEL4.Object.TCB
 > import SEL4.Kernel.VSpace.ARM
-> import qualified SEL4.Machine.Hardware.ARM as ARMHardware
+> import qualified SEL4.Machine.Hardware.X64 as X64Hardware
 > import {-# SOURCE #-} SEL4.Kernel.Init
 > import SEL4.Model.PSpace
 
