@@ -151,9 +151,11 @@ The following data type defines the set of possible invocations for IRQ capabili
 
 The following type enumerates all the kinds of invocations that clients can request of the kernel. The derived Enum instance defines the message label that clients should use when requesting that service. These labels are enumerated globally to ensure that no objects share an invocation label. This is to avoid confusion: service requests to the wrong object will fail immediately rather than perform unexpected actions.
 
-This datatype is defined globally over architectures as well as object types.
+FIXME this is not quite accurate anymore, no one knows what the argument should be however
+FIXME TODO move arch-dependent datatype to appropriate arch files
+FIXME TODO define for x64
 
-> data InvocationLabel
+> data APIInvocationLabel
 >         = InvalidInvocation
 >         | UntypedRetype
 >         | TCBReadRegisters
@@ -183,6 +185,11 @@ This datatype is defined globally over architectures as well as object types.
 >         | IRQClearIRQHandler
 >         | IRQSetMode
 >         | DomainSetSet
+>         | ArchInvocationLabel ArchInvocationLabel
+>         deriving (Show, Eq, Bounded)
+
+> data InvocationLabel
+>         = APIInvocationLabel APIInvocationLabel
 >         | ARMPDClean_Data
 >         | ARMPDInvalidate_Data
 >         | ARMPDCleanInvalidate_Data
@@ -199,7 +206,52 @@ This datatype is defined globally over architectures as well as object types.
 >         | ARMPageGetAddress
 >         | ARMASIDControlMakePool
 >         | ARMASIDPoolAssign
->         deriving (Enum, Bounded, Eq)
+>         deriving (Eq)
+
+> instance Bounded InvocationLabel where
+>     minBound = APIInvocationLabel minBound
+>     maxBound = ARMASIDPoolAssign
+
+> instance Enum InvocationLabel where
+>     fromEnum e = case e of
+>         APIInvocationLabel a -> fromEnum a
+>         ARMPDClean_Data -> apiMax + 1
+>         ARMPDInvalidate_Data -> apiMax + 2
+>         ARMPDCleanInvalidate_Data -> apiMax + 3
+>         ARMPDUnify_Instruction -> apiMax + 4
+>         ARMPageTableMap -> apiMax + 5
+>         ARMPageTableUnmap -> apiMax + 6
+>         ARMPageMap -> apiMax + 7
+>         ARMPageRemap -> apiMax + 8
+>         ARMPageUnmap -> apiMax + 9
+>         ARMPageClean_Data -> apiMax + 10
+>         ARMPageInvalidate_Data -> apiMax + 11
+>         ARMPageCleanInvalidate_Data -> apiMax + 12
+>         ARMPageUnify_Instruction -> apiMax + 13
+>         ARMPageGetAddress -> apiMax + 14
+>         ARMASIDControlMakePool -> apiMax + 15
+>         ARMASIDPoolAssign -> apiMax + 16
+>         where apiMax = fromEnum (maxBound :: APIInvocationLabel)
+>     toEnum n
+>         | n <= apiMax = APIInvocationLabel $ toEnum n
+>         | n == apiMax + 1 = ARMPDClean_Data
+>         | n == apiMax + 2 = ARMPDInvalidate_Data
+>         | n == apiMax + 3 = ARMPDCleanInvalidate_Data
+>         | n == apiMax + 4 = ARMPDUnify_Instruction
+>         | n == apiMax + 5 = ARMPageTableMap
+>         | n == apiMax + 6 = ARMPageTableUnmap
+>         | n == apiMax + 7 = ARMPageMap
+>         | n == apiMax + 8 = ARMPageRemap
+>         | n == apiMax + 9 = ARMPageUnmap
+>         | n == apiMax + 10 = ARMPageClean_Data
+>         | n == apiMax + 11 = ARMPageInvalidate_Data
+>         | n == apiMax + 12 = ARMPageCleanInvalidate_Data
+>         | n == apiMax + 13 = ARMPageUnify_Instruction
+>         | n == apiMax + 14 = ARMPageGetAddress
+>         | n == apiMax + 15 = ARMASIDControlMakePool
+>         | n == apiMax + 16 = ARMASIDPoolAssign
+>         | otherwise = error "toEnum out of range for ARM.InvocationLabel"
+>         where apiMax = fromEnum (maxBound :: APIInvocationLabel)
 
 Decode the invocation type requested by a particular message label.
 
