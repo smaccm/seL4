@@ -40,6 +40,7 @@ This module defines the handling of the ARM hardware-defined page tables.
 The ARM-specific invocations are imported with the "ArchInv" prefix. This is necessary to avoid namespace conflicts with the generic invocations.
 
 > import SEL4.API.Invocation.ARM as ArchInv
+> import SEL4.API.InvocationLabels.ARM as ArchInv
 
 \subsection{Constants}
 
@@ -1073,7 +1074,7 @@ There are five ARM-specific capability types. They correspond to the two levels 
 Capabilities for page directories --- the top level of the hardware-defined page table --- have only a single invocation, which allows the user to clean and/or invalidate caches.
 
 > decodeARMMMUInvocation label args _ _ cap@(PageDirectoryCap {}) _ =
->     case (isPDFlush (invocationType label), args) of
+>     case (ArchLabels.isPDFlush (invocationType label), args) of
 >         (True, start:end:_) -> do
 >             when (end <= start) $ 
 >                 throw $ InvalidArgument 1

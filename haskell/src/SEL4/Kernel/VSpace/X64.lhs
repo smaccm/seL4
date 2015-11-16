@@ -39,7 +39,8 @@ This module defines the handling of the ARM hardware-defined page tables.
 
 The ARM-specific invocations are imported with the "ArchInv" prefix. This is necessary to avoid namespace conflicts with the generic invocations.
 
-> import SEL4.API.Invocation.ARM as ArchInv
+> import SEL4.API.Invocation.X64 as ArchInv
+> import SEL4.API.InvocationLabels.X64 as ArchLabels
 
 \subsection{Constants}
 

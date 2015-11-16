@@ -39,7 +39,7 @@ This module makes use of the GHC extension allowing data types with no construct
 >         | ARMPageGetAddress
 >         | ARMASIDControlMakePool
 >         | ARMASIDPoolAssign
->         deriving (Eq, Bounded)
+>         deriving (Eq, Enum, Bounded)
 
 > isPDFlush :: InvocationLabel -> Bool
 > isPDFlush x = case x of
@@ -47,13 +47,5 @@ This module makes use of the GHC extension allowing data types with no construct
 >       ARMPDInvalidate_Data -> True
 >       ARMPDCleanInvalidate_Data -> True
 >       ARMPDUnify_Instruction -> True
->       _ -> False
-
-> isPageFlush :: InvocationLabel -> Bool
-> isPageFlush x = case x of
->       ARMPageClean_Data -> True
->       ARMPageInvalidate_Data -> True
->       ARMPageCleanInvalidate_Data -> True
->       ARMPageUnify_Instruction -> True
 >       _ -> False
 

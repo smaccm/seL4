@@ -266,13 +266,3 @@ Decode the invocation type requested by a particular message label.
 >     | otherwise = InvalidInvocation
 >     where x' = fromIntegral x
 
-> isPDFlush :: InvocationLabel -> Bool
-> isPDFlush x = case x of
->       ArchInvocationLabel a -> ArchLabels.isPDFlush a
->       _ -> False
-
-> isPageFlush :: InvocationLabel -> Bool
-> isPageFlush x = case x of
->       ArchInvocationLabel a -> ArchLabels.isPageFlush a
->       _ -> False
-
