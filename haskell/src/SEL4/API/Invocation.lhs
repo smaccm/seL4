@@ -31,6 +31,7 @@ We use the C preprocessor to select a target architecture.
 The architecture-specific definitions are imported qualified with the "Arch" prefix.
 
 > import qualified SEL4.API.Invocation.TARGET as Arch
+> import qualified SEL4.API.InvocationLabels.TARGET as ArchLabels
 
 \subsection{Invocation Type}
 
@@ -152,8 +153,6 @@ The following data type defines the set of possible invocations for IRQ capabili
 The following type enumerates all the kinds of invocations that clients can request of the kernel. The derived Enum instance defines the message label that clients should use when requesting that service. These labels are enumerated globally to ensure that no objects share an invocation label. This is to avoid confusion: service requests to the wrong object will fail immediately rather than perform unexpected actions.
 
 FIXME this is not quite accurate anymore, no one knows what the argument should be however
-FIXME TODO move arch-dependent datatype to appropriate arch files
-FIXME TODO define for x64
 
 > data InvocationLabel
 >         = InvalidInvocation
@@ -185,16 +184,15 @@ FIXME TODO define for x64
 >         | IRQClearIRQHandler
 >         | IRQSetMode
 >         | DomainSetSet
->         | ArchInvocationLabel Arch.InvocationLabel
+>         | ArchInvocationLabel ArchLabels.InvocationLabel
 >         deriving (Show, Eq)
 
 > instance Bounded InvocationLabel where
 >     minBound = InvalidInvocation
->     maxBound = maxBound Arch.InvocationLabel
+>     maxBound = maxBound ArchLabels.InvocationLabel
 
 > instance Enum InvocationLabel where
 >     fromEnum e = case e of
-> data InvocationLabel
 >          InvalidInvocation -> 0
 >          UntypedRetype -> 1
 >          TCBReadRegisters -> 2
@@ -270,23 +268,11 @@ Decode the invocation type requested by a particular message label.
 
 > isPDFlush :: InvocationLabel -> Bool
 > isPDFlush x = case x of
->       ArchInvocationLabel a -> Arch.isPDFlush a
+>       ArchInvocationLabel a -> ArchLabels.isPDFlush a
 >       _ -> False
 
 > isPageFlush :: InvocationLabel -> Bool
 > isPageFlush x = case x of
->       ArchInvocationLabel a -> Arch.isPageFlush a
+>       ArchInvocationLabel a -> ArchLabels.isPageFlush a
 >       _ -> False
-
-
-> isPDFlush :: InvocationLabel -> Bool
-> isPDFlush x = case x of
-        ArchInvocationLabel a -> Arch.isPDFlush a
->       _ -> False
-
-> isPageFlush :: InvocationLabel -> Bool
-> isPageFlush x = case x of
-        ArchInvocationLabel a - > Arch.isPageFlush a
->       _ -> False
-
 
