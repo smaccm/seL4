@@ -18,14 +18,14 @@ This module makes use of the GHC extension allowing declaration of types with no
 
 \end{impdetails}
 
-> module SEL4.Object.Structures.ARM where
+> module SEL4.Object.Structures.X64 where
 
 \begin{impdetails}
 
 > import SEL4.Machine.RegisterSet
-> import SEL4.Machine.Hardware.ARM
+> import SEL4.Machine.Hardware.X64
 > import Data.Array
-> import Data.Word(Word32)
+> import Data.Word
 > import Data.Bits
 
 \end{impdetails}
@@ -39,6 +39,15 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capASIDPool :: PPtr ASIDPool,
 >         capASIDBase :: ASID }
 >     | ASIDControlCap
+>     | IOPortCap {
+>         capIOPortFirstPort :: Word, -- FIXME
+>         capIOPortLastPort :: Word }
+>     | IOSpaceCap {
+>         capIODomainID :: Word, --FIXME types
+>         capIOPCIDevice :: Word }
+>     | IOPageTableCap {
+>         capIOPTBasePtr :: PPtr IOPTE, -- ?? FIXME WTF TYPES
+>         capIOPTMappedAddress :: Maybe (IOASID, VPtr) }
 >     | PageCap {
 >         capVPBasePtr :: PPtr Word,
 >         capVPRights :: VMRights,
@@ -50,6 +59,12 @@ There are six ARM-specific capability types: the global ASID control capability,
 >     | PageDirectoryCap {
 >         capPDBasePtr :: PPtr PDE,
 >         capPDMappedASID :: Maybe ASID }
+>     | PDPointerTableCap {
+>         capPDPTBasePtr :: PPtr PDPTE,
+>         capPDPTMappedAddress :: Maybe (ASID, VPtr) }
+>     | PML4Cap {
+>         capPML4BasePtr :: PPtr PML4E,
+>         capPML4MappedAddress :: Maybe (ASID, VPtr) }
 >     deriving (Eq, Show)
 
 \subsection{Kernel Objects}
@@ -60,13 +75,18 @@ The ARM kernel stores one ARM-specific type of object in the PSpace: ASID pools,
 >     = KOASIDPool ASIDPool
 >     | KOPTE PTE
 >     | KOPDE PDE
+>     | KOPDPTE PDPTE
+>     | KOPML4E PML4E
+>     -- FIXME x64: more here? io stuff?
 >     deriving Show
 
 > archObjSize ::  ArchKernelObject -> Int
 > archObjSize a = case a of 
 >                 KOASIDPool _ -> pageBits
->                 KOPTE _ -> 2 
->                 KOPDE _ -> 2
+>                 KOPTE _ -> 3 
+>                 KOPDE _ -> 3
+>                 KOPDPTE _ -> 3
+>                 KOPML4E _ -> 3
 
 \subsection{ASID Pools}
 
@@ -77,10 +97,14 @@ An ASID pool is an array of pointers to page directories. This is used to implem
 
 An ASID is an unsigned word. Note that it is a \emph{virtual} address space identifier, and may not correspond to any hardware-defined identifier --- especially on ARMv5 and earlier, where the only identifier implemented in hardware is the 4-bit domain number.
 
-> newtype ASID = ASID Word32
+> newtype ASID = ASID Word64
+>     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
+
+> newtype IOASID = IOASID Word16
 >     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
 
 ASIDs are mapped to address space roots by a global two-level table. The actual ASID values are opaque to the user, as are the sizes of the levels of the tables; ASID allocation calls will simply return an error once the available ASIDs are exhausted.
+> -- FIXME x64: these need to be changed for 64bit
 
 > asidHighBits :: Int
 > asidHighBits = 8

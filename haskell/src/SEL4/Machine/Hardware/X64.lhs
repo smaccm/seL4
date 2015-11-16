@@ -258,6 +258,41 @@ FIXME: x64 has anything like this?
 
 \subsubsection{Page Table Structure}
 
+> data PML4E
+>     = InvalidPML4E
+>     | PDPointerTablePML4E {
+>         pml4Table :: PAddr,
+>         pml4Accessed :: Bool,
+>         pml4CacheDisabled :: Bool,
+>         pml4WriteThrough :: Bool,
+>         pml4SuperUser :: Bool,
+>         pml4ReadWrite :: Bool,
+>         pml4ExecuteDisable :: Bool }
+>     deriving (Show, Eq)
+
+> data PDPTE
+>     = InvalidPDPTE
+>     | PageDirectoryPDPTE {
+>         pdptTable :: PAddr,
+>         pdptAccessed :: Bool,
+>         pdptCacheDisabled :: Bool,
+>         pdptWriteThrough :: Bool,
+>         pdptSuperUser :: Bool,
+>         pdptReadWrite :: Bool,
+>         pdptExecuteDisable :: Bool }
+>     | HugePagePDPTE {
+>         pdptFrame :: PAddr,
+>         pdptGlobal :: Bool,
+>         pdptDirty :: Bool,
+>         pdptAccessed :: Bool,
+>         pdptCacheDisabled :: Bool,
+>         pdptWriteThrough :: Bool,
+>         pdptSuperUser :: Bool,
+>         pdptReadWrite :: Bool,
+>         pdptExecuteDisable :: Bool }
+>     deriving (Show, Eq)
+
+         
 The ARM architecture defines a two-level hardware-walked page table. The kernel must write entries to this table in the defined format to construct address spaces for user-level tasks.
 
 The following types are Haskell representations of an entry in an ARMv6 page table. The "PDE" (page directory entry) type is an entry in the first level, and the "PTE" (page table entry) type is an entry in the second level. Note that "SuperSectionPDE" is an extension provided by some ARMv6 cores.
@@ -266,25 +301,25 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     = InvalidPDE
 >     | PageTablePDE {
 >         pdeTable :: PAddr,
->         pdeParity :: Bool,
->         pdeDomain :: Word }
->     | SectionPDE {
+>         pdeAccessed :: Bool,
+>         pdeCacheDisabled :: Bool,
+>         pdeWriteThrough :: Bool,
+>         pdeSuperUser :: Bool,
+>         pdeReadWrite :: Bool,
+>         pdeExecuteDisable :: Bool }
+>     | LargePagePDE {
 >         pdeFrame :: PAddr,
->         pdeParity :: Bool,
->         pdeDomain :: Word,
->         pdeCacheable :: Bool,
 >         pdeGlobal :: Bool,
->         pdeExecuteNever :: Bool,
->         pdeRights :: VMRights }
->     | SuperSectionPDE {
->         pdeFrame :: PAddr,
->         pdeParity :: Bool,
->         pdeCacheable :: Bool,
->         pdeGlobal :: Bool,
->         pdeExecuteNever :: Bool,
->         pdeRights :: VMRights }
+>         pdeDirty :: Bool,
+>         pdeAccessed :: Bool,
+>         pdeCacheDisabled :: Bool,
+>         pdeWriteThrough :: Bool,
+>         pdeSuperUser :: Bool,
+>         pdeReadWrite :: Bool,
+>         pdeExecuteDisable :: Bool }
 >     deriving (Show, Eq)
 
+> -- FIXME x64
 > wordFromPDE :: PDE -> Word
 > wordFromPDE InvalidPDE = 0
 > wordFromPDE (PageTablePDE table parity domain) = 1 .|.
@@ -310,20 +345,19 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 
 > data PTE
 >     = InvalidPTE
->     | LargePagePTE {
->         pteFrame :: PAddr,
->         pteCacheable :: Bool,
->         pteGlobal :: Bool,
->         pteExecuteNever :: Bool,
->         pteRights :: VMRights }
 >     | SmallPagePTE {
 >         pteFrame :: PAddr,
->         pteCacheable :: Bool,
 >         pteGlobal :: Bool,
->         pteExecuteNever :: Bool,
->         pteRights :: VMRights }
+>         pteDirty :: Bool,
+>         pteAccessed :: Bool,
+>         pteCacheDisabled :: Bool,
+>         pteWriteThrough :: Bool,
+>         pteSuperUser :: Bool,
+>         pteReadWrite :: Bool,
+>         pteExecuteDisable :: Bool }
 >     deriving (Show, Eq)
 
+> -- FIXME x64
 > wordFromPTE :: PTE -> Word
 > wordFromPTE InvalidPTE = 0
 > wordFromPTE (LargePagePTE frame cacheable global xn rights) = 1 .|.
@@ -339,6 +373,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if global then 0 else bit 11) .|.
 >     (fromIntegral $ fromEnum rights `shiftL` 4)
 
+> -- FIXME x64: what do these change to, how do we amalgamate
 > data VMRights
 >     = VMNoAccess
 >     | VMKernelOnly

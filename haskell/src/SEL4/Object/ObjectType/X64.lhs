@@ -10,19 +10,19 @@
 
 This module contains operations on machine-specific object types for the ARM.
 
-> module SEL4.Object.ObjectType.ARM where
+> module SEL4.Object.ObjectType.X64 where
 
 \begin{impdetails}
 
 > import SEL4.Machine.RegisterSet
-> import SEL4.Machine.Hardware.ARM
+> import SEL4.Machine.Hardware.X64
 > import SEL4.Model
-> import SEL4.Model.StateData.ARM
+> import SEL4.Model.StateData.X64
 > import SEL4.API.Types
 > import SEL4.API.Failures
-> import SEL4.API.Invocation.ARM as ArchInv
+> import SEL4.API.Invocation.X64 as ArchInv
 > import SEL4.Object.Structures
-> import SEL4.Kernel.VSpace.ARM
+> import SEL4.Kernel.VSpace.X64
 
 > import Data.Bits
 > import Data.Array
