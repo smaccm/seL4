@@ -121,3 +121,40 @@ The ARM platform currently does not define any additional register sets for the 
 >     deriving Show
 
 
+> data InvocationLabel
+>         = ARMPDClean_Data
+>         | ARMPDInvalidate_Data
+>         | ARMPDCleanInvalidate_Data
+>         | ARMPDUnify_Instruction
+>         | ARMPageTableMap
+>         | ARMPageTableUnmap
+>         | ARMPageMap
+>         | ARMPageRemap
+>         | ARMPageUnmap
+>         | ARMPageClean_Data
+>         | ARMPageInvalidate_Data
+>         | ARMPageCleanInvalidate_Data
+>         | ARMPageUnify_Instruction
+>         | ARMPageGetAddress
+>         | ARMASIDControlMakePool
+>         | ARMASIDPoolAssign
+>         deriving (Eq, Bounded)
+
+
+> isPDFlush :: InvocationLabel -> Bool
+> isPDFlush x = case x of
+>       ARMPDClean_Data -> True
+>       ARMPDInvalidate_Data -> True
+>       ARMPDCleanInvalidate_Data -> True
+>       ARMPDUnify_Instruction -> True
+>       _ -> False
+
+> isPageFlush :: InvocationLabel -> Bool
+> isPageFlush x = case x of
+>       ARMPageClean_Data -> True
+>       ARMPageInvalidate_Data -> True
+>       ARMPageCleanInvalidate_Data -> True
+>       ARMPageUnify_Instruction -> True
+>       _ -> False
+
+

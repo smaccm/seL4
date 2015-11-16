@@ -155,7 +155,7 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 FIXME TODO move arch-dependent datatype to appropriate arch files
 FIXME TODO define for x64
 
-> data APIInvocationLabel
+> data InvocationLabel
 >         = InvalidInvocation
 >         | UntypedRetype
 >         | TCBReadRegisters
@@ -185,73 +185,80 @@ FIXME TODO define for x64
 >         | IRQClearIRQHandler
 >         | IRQSetMode
 >         | DomainSetSet
->         | ArchInvocationLabel ArchInvocationLabel
->         deriving (Show, Eq, Bounded)
-
-> data InvocationLabel
->         = APIInvocationLabel APIInvocationLabel
->         | ARMPDClean_Data
->         | ARMPDInvalidate_Data
->         | ARMPDCleanInvalidate_Data
->         | ARMPDUnify_Instruction
->         | ARMPageTableMap
->         | ARMPageTableUnmap
->         | ARMPageMap
->         | ARMPageRemap
->         | ARMPageUnmap
->         | ARMPageClean_Data
->         | ARMPageInvalidate_Data
->         | ARMPageCleanInvalidate_Data
->         | ARMPageUnify_Instruction
->         | ARMPageGetAddress
->         | ARMASIDControlMakePool
->         | ARMASIDPoolAssign
->         deriving (Eq)
+>         | ArchInvocationLabel Arch.InvocationLabel
+>         deriving (Show, Eq)
 
 > instance Bounded InvocationLabel where
->     minBound = APIInvocationLabel minBound
->     maxBound = ARMASIDPoolAssign
+>     minBound = InvalidInvocation
+>     maxBound = maxBound Arch.InvocationLabel
 
 > instance Enum InvocationLabel where
 >     fromEnum e = case e of
->         APIInvocationLabel a -> fromEnum a
->         ARMPDClean_Data -> apiMax + 1
->         ARMPDInvalidate_Data -> apiMax + 2
->         ARMPDCleanInvalidate_Data -> apiMax + 3
->         ARMPDUnify_Instruction -> apiMax + 4
->         ARMPageTableMap -> apiMax + 5
->         ARMPageTableUnmap -> apiMax + 6
->         ARMPageMap -> apiMax + 7
->         ARMPageRemap -> apiMax + 8
->         ARMPageUnmap -> apiMax + 9
->         ARMPageClean_Data -> apiMax + 10
->         ARMPageInvalidate_Data -> apiMax + 11
->         ARMPageCleanInvalidate_Data -> apiMax + 12
->         ARMPageUnify_Instruction -> apiMax + 13
->         ARMPageGetAddress -> apiMax + 14
->         ARMASIDControlMakePool -> apiMax + 15
->         ARMASIDPoolAssign -> apiMax + 16
->         where apiMax = fromEnum (maxBound :: APIInvocationLabel)
+> data InvocationLabel
+>          InvalidInvocation -> 0
+>          UntypedRetype -> 1
+>          TCBReadRegisters -> 2
+>          TCBWriteRegisters -> 3
+>          TCBCopyRegisters -> 4
+>          TCBConfigure -> 5
+>          TCBSetPriority -> 6
+>          TCBSetIPCBuffer -> 7
+>          TCBSetSpace -> 8
+>          TCBSuspend -> 9
+>          TCBResume -> 10
+>          TCBBindNotification -> 11
+>          TCBUnbindNotification -> 12
+>          CNodeRevoke -> 13
+>          CNodeDelete -> 14
+>          CNodeRecycle -> 15
+>          CNodeCopy -> 16
+>          CNodeMint -> 17
+>          CNodeMove -> 18
+>          CNodeMutate -> 19
+>          CNodeRotate -> 20
+>          CNodeSaveCaller -> 21
+>          IRQIssueIRQHandler -> 22
+>          IRQInterruptControl -> 23
+>          IRQAckIRQ -> 24
+>          IRQSetIRQHandler -> 25
+>          IRQClearIRQHandler -> 26
+>          IRQSetMode -> 27
+>          DomainSetSet -> apiMax
+>          ArchInvocationLabel a -> apiMax + 1 + fromEnum a
+>          where apiMax = 28
 >     toEnum n
->         | n <= apiMax = APIInvocationLabel $ toEnum n
->         | n == apiMax + 1 = ARMPDClean_Data
->         | n == apiMax + 2 = ARMPDInvalidate_Data
->         | n == apiMax + 3 = ARMPDCleanInvalidate_Data
->         | n == apiMax + 4 = ARMPDUnify_Instruction
->         | n == apiMax + 5 = ARMPageTableMap
->         | n == apiMax + 6 = ARMPageTableUnmap
->         | n == apiMax + 7 = ARMPageMap
->         | n == apiMax + 8 = ARMPageRemap
->         | n == apiMax + 9 = ARMPageUnmap
->         | n == apiMax + 10 = ARMPageClean_Data
->         | n == apiMax + 11 = ARMPageInvalidate_Data
->         | n == apiMax + 12 = ARMPageCleanInvalidate_Data
->         | n == apiMax + 13 = ARMPageUnify_Instruction
->         | n == apiMax + 14 = ARMPageGetAddress
->         | n == apiMax + 15 = ARMASIDControlMakePool
->         | n == apiMax + 16 = ARMASIDPoolAssign
->         | otherwise = error "toEnum out of range for ARM.InvocationLabel"
->         where apiMax = fromEnum (maxBound :: APIInvocationLabel)
+>         | n == 0 = InvalidInvocation
+>         | n == 1 = UntypedRetype
+>         | n == 2 = TCBReadRegisters
+>         | n == 3 = TCBWriteRegisters
+>         | n == 4 = TCBCopyRegisters
+>         | n == 5 = TCBConfigure
+>         | n == 6 = TCBSetPriority
+>         | n == 7 = TCBSetIPCBuffer
+>         | n == 8 = TCBSetSpace
+>         | n == 9 = TCBSuspend
+>         | n == 10 = TCBResume
+>         | n == 11 = TCBBindNotification
+>         | n == 12 = TCBUnbindNotification
+>         | n == 13 = CNodeRevoke
+>         | n == 14 = CNodeDelete
+>         | n == 15 = CNodeRecycle
+>         | n == 16 = CNodeCopy
+>         | n == 17 = CNodeMint
+>         | n == 18 = CNodeMove
+>         | n == 19 = CNodeMutate
+>         | n == 20 = CNodeRotate
+>         | n == 21 = CNodeSaveCaller
+>         | n == 22 = IRQIssueIRQHandler
+>         | n == 23 = IRQInterruptControl
+>         | n == 24 = IRQAckIRQ
+>         | n == 25 = IRQSetIRQHandler
+>         | n == 26 = IRQClearIRQHandler
+>         | n == 27 = IRQSetMode
+>         | n == 28 = DomainSetSet
+>         | n > apiMax = ArchInvocationLabel $ toEnum n
+>         | otherwise = error "toEnum out of range for InvocationLabel"
+>         where apiMax = 28
 
 Decode the invocation type requested by a particular message label.
 
@@ -263,18 +270,23 @@ Decode the invocation type requested by a particular message label.
 
 > isPDFlush :: InvocationLabel -> Bool
 > isPDFlush x = case x of
->       ARMPDClean_Data -> True
->       ARMPDInvalidate_Data -> True
->       ARMPDCleanInvalidate_Data -> True
->       ARMPDUnify_Instruction -> True
+>       ArchInvocationLabel a -> Arch.isPDFlush a
 >       _ -> False
 
 > isPageFlush :: InvocationLabel -> Bool
 > isPageFlush x = case x of
->       ARMPageClean_Data -> True
->       ARMPageInvalidate_Data -> True
->       ARMPageCleanInvalidate_Data -> True
->       ARMPageUnify_Instruction -> True
+>       ArchInvocationLabel a -> Arch.isPageFlush a
+>       _ -> False
+
+
+> isPDFlush :: InvocationLabel -> Bool
+> isPDFlush x = case x of
+        ArchInvocationLabel a -> Arch.isPDFlush a
+>       _ -> False
+
+> isPageFlush :: InvocationLabel -> Bool
+> isPageFlush x = case x of
+        ArchInvocationLabel a - > Arch.isPageFlush a
 >       _ -> False
 
 
