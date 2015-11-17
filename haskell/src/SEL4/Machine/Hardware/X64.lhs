@@ -265,9 +265,8 @@ FIXME: x64 has anything like this?
 >         pml4Accessed :: Bool,
 >         pml4CacheDisabled :: Bool,
 >         pml4WriteThrough :: Bool,
->         pml4SuperUser :: Bool,
->         pml4ReadWrite :: Bool,
->         pml4ExecuteDisable :: Bool }
+>         pml4ExecuteDisable :: Bool,
+>         pdptRights :: VMRights }
 >     deriving (Show, Eq)
 
 > data PDPTE
@@ -277,9 +276,8 @@ FIXME: x64 has anything like this?
 >         pdptAccessed :: Bool,
 >         pdptCacheDisabled :: Bool,
 >         pdptWriteThrough :: Bool,
->         pdptSuperUser :: Bool,
->         pdptReadWrite :: Bool,
->         pdptExecuteDisable :: Bool }
+>         pdptExecuteDisable :: Bool,
+>         pdptRights :: VMRights }
 >     | HugePagePDPTE {
 >         pdptFrame :: PAddr,
 >         pdptGlobal :: Bool,
@@ -287,9 +285,9 @@ FIXME: x64 has anything like this?
 >         pdptAccessed :: Bool,
 >         pdptCacheDisabled :: Bool,
 >         pdptWriteThrough :: Bool,
->         pdptSuperUser :: Bool,
->         pdptReadWrite :: Bool,
->         pdptExecuteDisable :: Bool }
+>         pdptExecuteDisable :: Bool,
+>         pdptPAT :: Bool,
+>         pdptRights :: VMRights }
 >     deriving (Show, Eq)
 
          
@@ -297,6 +295,7 @@ The ARM architecture defines a two-level hardware-walked page table. The kernel 
 
 The following types are Haskell representations of an entry in an ARMv6 page table. The "PDE" (page directory entry) type is an entry in the first level, and the "PTE" (page table entry) type is an entry in the second level. Note that "SuperSectionPDE" is an extension provided by some ARMv6 cores.
 
+> -- FIXME x64: rights on tables, not pages?
 > data PDE
 >     = InvalidPDE
 >     | PageTablePDE {
@@ -304,9 +303,8 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pdeAccessed :: Bool,
 >         pdeCacheDisabled :: Bool,
 >         pdeWriteThrough :: Bool,
->         pdeSuperUser :: Bool,
->         pdeReadWrite :: Bool,
->         pdeExecuteDisable :: Bool }
+>         pdeExecuteDisable :: Bool,
+>         pdeRights :: VMRights }
 >     | LargePagePDE {
 >         pdeFrame :: PAddr,
 >         pdeGlobal :: Bool,
@@ -314,9 +312,9 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pdeAccessed :: Bool,
 >         pdeCacheDisabled :: Bool,
 >         pdeWriteThrough :: Bool,
->         pdeSuperUser :: Bool,
->         pdeReadWrite :: Bool,
->         pdeExecuteDisable :: Bool }
+>         pdeExecuteDisable :: Bool,
+>         pdePAT :: Bool,
+>         pdeRights :: VMRights }
 >     deriving (Show, Eq)
 
 > -- FIXME x64
@@ -352,9 +350,8 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pteAccessed :: Bool,
 >         pteCacheDisabled :: Bool,
 >         pteWriteThrough :: Bool,
->         pteSuperUser :: Bool,
->         pteReadWrite :: Bool,
->         pteExecuteDisable :: Bool }
+>         pteExecuteDisable :: Bool,
+>         pteRights :: VMRights }
 >     deriving (Show, Eq)
 
 > -- FIXME x64
@@ -373,16 +370,14 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if global then 0 else bit 11) .|.
 >     (fromIntegral $ fromEnum rights `shiftL` 4)
 
-> -- FIXME x64: what do these change to, how do we amalgamate
 > data VMRights
->     = VMNoAccess
->     | VMKernelOnly
+>     = VMKernelOnly
 >     | VMReadOnly
 >     | VMReadWrite
 >     deriving (Show, Eq, Enum)
 
 > data VMAttributes = VMAttributes {
->     armPageCacheable, armParityEnabled, armExecuteNever :: Bool }
+>     x64WriteThrough, x64PAT, x64CacheDisabled :: Bool }
 
 All tables in x86 64bit do 9 bits of translation, with eight bytes per entry.
 Every table is one small page in size.
@@ -396,4 +391,5 @@ Every table is one small page in size.
 > cacheLineBits = Platform.cacheLineBits
 > cacheLine = Platform.cacheLine
 
+> -- FIXME x64: IOPTEs
 
