@@ -22,7 +22,7 @@ This module makes use of the GHC extension allowing data types with no construct
 
 \subsection{ARM-Specific Invocation Labels}
 
-> data InvocationLabel
+> data ArchInvocationLabel
 >         = ARMPDClean_Data
 >         | ARMPDInvalidate_Data
 >         | ARMPDCleanInvalidate_Data
@@ -41,11 +41,4 @@ This module makes use of the GHC extension allowing data types with no construct
 >         | ARMASIDPoolAssign
 >         deriving (Eq, Enum, Bounded)
 
-> isPDFlush :: InvocationLabel -> Bool
-> isPDFlush x = case x of
->       ARMPDClean_Data -> True
->       ARMPDInvalidate_Data -> True
->       ARMPDCleanInvalidate_Data -> True
->       ARMPDUnify_Instruction -> True
->       _ -> False
 

@@ -184,7 +184,7 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 >         | IRQClearIRQHandler
 >         | IRQSetMode
 >         | DomainSetSet
->         | ArchInvocationLabel ArchLabels.InvocationLabel
+>         | ArchInvocationLabel ArchLabels.ArchInvocationLabel
 >         deriving (Show, Eq)
 
 > instance Bounded InvocationLabel where
