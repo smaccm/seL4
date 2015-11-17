@@ -24,10 +24,13 @@ This module makes use of the GHC extension allowing data types with no construct
 
 FIXME The kernel team is in the process of renaming these. In the XML spec, they are a total confusion between IA32 and X86, even for 64-bit only features! We have renamed them to X64 out of frustration, but some may genuinely be 32-bit only.
 
+FIXME the XML says PML4s can be invoked; they can't.
+Note: there is no unmap for IO pages.
+
+FIXME: other things that don't exist: IOSpaceRemovePassthrough, IOSpaceUnmap
+
 > data InvocationLabel
->         = X64PML4Map
->         | X64PML4Unmap
->         | X64PDPTMap
+>         = X64PDPTMap
 >         | X64PDPTUnmap
 >         | X64PageDirectoryMap
 >         | X64PageDirectoryUnmap
@@ -40,7 +43,7 @@ FIXME The kernel team is in the process of renaming these. In the XML spec, they
 >         | X64PageUnmap
 >         | X64PageMapIO
 >         | X64PageGetAddress
->         | X64ASIDControlMakePool
+>         | X64ASIDControlMakePool -- "ASIDs are same as ARM basically"
 >         | X64ASIDPoolAssign
 >         | X64IOPortIn8
 >         | X64IOPortIn16
@@ -48,8 +51,6 @@ FIXME The kernel team is in the process of renaming these. In the XML spec, they
 >         | X64IOPortOut8
 >         | X64IOPortOut16
 >         | X64IOPortOut32
->         | X64IOSpaceRemovePassthrough
->         | X64IOSpaceUnmap
 >         | X64IRQIssueIRQHandlerIOAPIC
 >         | X64IRQIssueIRQHandlerMSI
 >         deriving (Eq, Enum, Bounded)

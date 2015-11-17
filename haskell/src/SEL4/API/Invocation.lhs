@@ -124,6 +124,8 @@ The following data type defines the parameters expected for invocations of Untyp
 
 The following data type defines the set of possible invocations for interrupt controller capabilities.
 
+FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones which we need to make arch-dependant, and so move IssueIRQHandler to ARM-specific code and rebase.
+
 > data IRQControlInvocation
 >         = InterruptControl { interruptControlArch :: Arch.InterruptControl }
 >         | IssueIRQHandler {
