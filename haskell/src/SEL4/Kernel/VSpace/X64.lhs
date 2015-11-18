@@ -17,10 +17,10 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import SEL4.API.Types
 > import SEL4.API.Failures
 > import SEL4.Machine.RegisterSet
-> import SEL4.Machine.Hardware.ARM
+> import SEL4.Machine.Hardware.X64
 > import SEL4.Model
 > import SEL4.Object.Structures
-> import SEL4.Model.StateData.ARM
+> import SEL4.Model.StateData.X64
 > import SEL4.Object.Instances()
 > import SEL4.API.Invocation
 > import SEL4.Kernel.BootInfo
@@ -33,7 +33,7 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import Data.Maybe
 > import Data.List
 > import Data.Array
-> import Data.Word(Word32)
+> import Data.Word
 
 \end{impdetails}
 
@@ -46,6 +46,7 @@ The ARM-specific invocations are imported with the "ArchInv" prefix. This is nec
 
 All virtual addresses above "kernelBase" cannot be mapped by user-level tasks. With the exception of one page, at "globalsBase", they cannot be read; the globals page is mapped read-only.
 
+> -- FIXME x64: do these exist?
 > kernelBase :: VPtr
 > kernelBase = VPtr 0xf0000000
 
@@ -68,6 +69,7 @@ The idle thread executes a short loop that drains the CPU's write buffer and the
 >     ]
 
 \subsection{Creating the vspace for the initial thread}
+> --FIXME x64: do this still
 
 Function mapKernelWindow will create a virtialll address space for the initial thread
 
@@ -564,81 +566,84 @@ When the kernel tries to access a thread's IPC buffer, this function is called t
 
 Locating the page directory for a given ASID is necessary when updating or deleting a mapping given its ASID and virtual address.
 
-> findPDForASID :: ASID -> KernelF LookupFailure (PPtr PDE)
-> findPDForASID asid = do
+> findVSpaceForASID :: ASID -> KernelF LookupFailure (PPtr PML4E)
+> findVSpaceForASID asid = do
 >     assert (asid > 0) "ASID 0 is used for objects that are not mapped"
 >     assert (asid <= snd asidRange) "ASID out of range"
->     asidTable <- withoutFailure $ gets (armKSASIDTable . ksArchState)
+>     asidTable <- withoutFailure $ gets (x86KSASIDTable . ksArchState)
 >     let poolPtr = asidTable!(asidHighBitsOf asid)
 >     ASIDPool pool <- case poolPtr of
 >         Just ptr -> withoutFailure $ getObject ptr
 >         Nothing -> throw InvalidRoot
->     let pd = pool!(asid .&. mask asidLowBits)
->     case pd of
+>     let pm = pool!(asid .&. mask asidLowBits)
+>     case pm of
 >         Just ptr -> do
 >             assert (ptr /= 0) "findPDForASID: found null PD"
->             withoutFailure $ checkPDAt ptr
 >             return ptr
 >         Nothing -> throw InvalidRoot
 
 This version of findPDForASID will fail rather than raise an exception if the ASID does not look up a page directory.
 
-> findPDForASIDAssert :: ASID -> Kernel (PPtr PDE)
-> findPDForASIDAssert asid = do
->     pd <- findPDForASID asid `catchFailure`
->         const (fail "findPDForASIDAssert: pd not found")
->     assert (pd .&. mask pdBits == 0)
->         "findPDForASIDAssert: page directory pointer alignment check"
->     checkPDAt pd
->     checkPDUniqueToASID pd asid
->     asidMap <- gets (armKSASIDMap . ksArchState)
->     flip assert "findPDForASIDAssert: page directory map mismatch"
+> findVSpaceForASIDAssert :: ASID -> Kernel (PPtr PML4E)
+> findVSpaceForASIDAssert asid = do
+>     pm <- findVSpaceForASID asid `catchFailure`
+>         const (fail "findVSpaceForASIDAssert: pd not found")
+>     assert (pm .&. mask pdBits == 0)
+>         "findVSpaceForASIDAssert: page directory pointer alignment check"
+>     asidMap <- gets (x86KSASIDMap . ksArchState)
+>     flip assert "findVSpaceForASIDAssert: page directory map mismatch"
 >         $ case asidMap ! asid of
 >             Nothing -> True
->             Just (_, pd') -> pd == pd'
->     return pd
-
-These checks are too expensive to run in haskell. The first funcion checks that the pointer is to a page directory, which would require testing that each entry of the table is present. The second checks that the page directory appears in armKSASIDMap only on the ASIDs specified, which would require walking all possible ASIDs to test. In the formalisation of this specification, these functions are given alternative definitions that make the appropriate checks.
-
-> checkPDAt :: PPtr PDE -> Kernel ()
-> checkPDAt _ = return ()
+>             Just (_, pm') -> pm == pm'
+>     return pm
 
 
-> checkPTAt :: PPtr PDE -> Kernel ()
-> checkPTAt _ = return ()
-
-> checkPDASIDMapMembership :: PPtr PDE -> [ASID] -> Kernel ()
-> checkPDASIDMapMembership _ _ = return ()
-
-> checkPDUniqueToASID :: PPtr PDE -> ASID -> Kernel ()
-> checkPDUniqueToASID pd asid = checkPDASIDMapMembership pd [asid]
-
-> checkPDNotInASIDMap :: PPtr PDE -> Kernel ()
-> checkPDNotInASIDMap pd = checkPDASIDMapMembership pd []
 
 \subsubsection{Locating Page Table and Page Directory Slots}
 
 The "lookupPTSlot" function locates the page table slot that maps a given virtual address, and returns a pointer to the slot. It will throw a lookup failure if the required page directory slot does not point to a page table.
 
-> lookupPTSlot :: PPtr PDE -> VPtr -> KernelF LookupFailure (PPtr PTE)
-> lookupPTSlot pd vptr = do
->     let pdSlot = lookupPDSlot pd vptr
+> lookupPTSlot :: PPtr PML4E -> VPtr -> KernelF LookupFailure (PPtr PTE)
+> lookupPTSlot pm vptr = do
+>     let pdSlot = lookupPDSlot pm vptr
 >     pde <- withoutFailure $ getObject pdSlot
 >     case pde of
 >         PageTablePDE {} -> do
 >             let pt = ptrFromPAddr $ pdeTable pde
->             let ptIndex = fromVPtr $ vptr `shiftR` 12 .&. 0xff
->             let ptSlot = pt + (PPtr $ ptIndex `shiftL` 2)
->             withoutFailure $ checkPTAt pt
+>             let ptIndex = getPTIndex vptr 
+>             let ptSlot = pt + (PPtr $ ptIndex `shiftL` 3) -- ptr arithmetic, 8 byte words
 >             return ptSlot
->         _ -> throw $ MissingCapability 20
+>         _ -> throw $ MissingCapability (pageBits + ptBits)
+
+> lookupPDSlot :: PPtr PML4E -> VPtr -> KernelF LookupFailure (PPtr PDE)
+> lookupPDSlot pm vptr = do
+>     let pdptSlot = lookupPDPTSlot pm vptr
+>     pdpte <- withoutFailure $ getObject pdptSlot
+>     case pdpte of
+>         PageDirectoryPDPTE {} -> do
+>             let pd = ptrFromPAddr $ pdpteTable pdpte
+>             let pdIndex = getPDIndex vptr 
+>             let pdSlot = pd + (PPtr $ ptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
+>             return pdSlot
+>         _ -> throw $ MissingCapability (pageBits + ptBits)
+
+> lookupPDPTSlot :: PPtr PML4E -> VPtr -> KernelF LookupFailure (PPtr PDE)
+> lookupPDPTSlot pm vptr = do
+>     let pml4Slot = lookupPML4Slot pm vptr
+>     pml4e <- withoutFailure $ getObject pml4Slot
+>     case pml4e of
+>         PDPointerTablePML4E {} -> do
+>             let pdpt = ptrFromPAddr $ pml4Table pml4e
+>             let pdptIndex = getPML4Index vptr 
+>             let pdptSlot = pdpt + (PPtr $ ptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
+>             return pdptSlot
 
 Similarly, "lookupPDSlot" locates a slot in the top-level page directory. However, it does not access the kernel state and never throws a fault, so it is not in the kernel monad.
 
-> lookupPDSlot :: PPtr PDE -> VPtr -> PPtr PDE
-> lookupPDSlot pd vptr =
->     let pdIndex = fromVPtr $ vptr `shiftR` 20
->     in pd + (PPtr $ pdIndex `shiftL` 2)
+> lookupPML4Slot :: PPtr PML4E -> VPtr -> PPtr PML4E
+> lookupPML4Slot pm vptr =
+>     let pmIndex = getPML4Index vptr
+>     in pm + (PPtr $ pmIndex `shiftL` 3)
 
 \subsubsection{Handling Faults}
 

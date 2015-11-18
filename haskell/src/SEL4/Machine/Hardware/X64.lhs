@@ -90,10 +90,22 @@ The following functions define the x86 64bit specific interface between the kern
 > pageBits :: Int
 > pageBits = 12
 
+> ptBits :: Int
+> ptBits = 9
+
+> pdBits :: Int
+> pdBits = 9
+
+> pdptBits :: Int
+> pdptBits = 9
+
+> pml4Bits :: Int
+> pml4Bits = 9
+
 > pageBitsForSize :: VMPageSize -> Int
-> pageBitsForSize X64SmallPage = 12
-> pageBitsForSize X64LargePage = 21
-> pageBitsForSize X64HugePage = 30
+> pageBitsForSize X64SmallPage = pageBits
+> pageBitsForSize X64LargePage = pageBits + ptBits
+> pageBitsForSize X64HugePage = pageBits + ptBits + pdBits
 
 > getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
 > getMemoryRegions = do
@@ -418,6 +430,29 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
 >     (fromIntegral $ fromEnum rights `shiftL` 1)
+
+Pointer Accessor Functions FIXME x64 TYPES
+
+> getPTIndex :: VPtr -> Word
+> getPTIndex vptr = 
+>     let shiftBits = pageBits 
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptBits
+
+> getPDIndex :: VPtr -> Word
+> getPDIndex vptr = 
+>     let shiftBits = pageBits + ptBits 
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdBits
+
+> getPDPTIndex :: VPtr -> Word
+> getPDPTIndex vptr = 
+>     let shiftBits = pageBits + ptBits + pdBits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdptBits
+
+> getPML4Index :: VPtr -> Word
+> getPML4Index vptr = 
+>     let shiftBits = pageBits + ptBits + pdBits + pdptBits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pml4Bits
+
 
 > data VMRights
 >     = VMReadOnly
