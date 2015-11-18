@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,16 +7,16 @@
 % @TAG(GD_GPL)
 %
 
-This module contains the architecture-specific kernel global data for the ARM architecture.
+This module contains the architecture-specific kernel global data for the X86-64bit architecture.
  
-> module SEL4.Model.StateData.ARM where
+> module SEL4.Model.StateData.X86 where
 
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.Hardware.ARM
->     (HardwareASID(..), PTE(..), PDE(..), ptBits, pdBits)
-> import SEL4.Object.Structures.ARM
+> import SEL4.Machine.Hardware.X86
+>     (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
+> import SEL4.Object.Structures.X86
 
 > import Data.Array
 > import Data.Bits
@@ -25,56 +24,31 @@ This module contains the architecture-specific kernel global data for the ARM ar
 
 \end{impdetails}
 
-The datatype ArmVSpaceRegionUse is solely used to formulate invariants about the use of memory regions.
-Consider the data to be ghost state (only written, never read by the implementation).
+FIXME move this somewhere more appropriate?
 
-> data ArmVSpaceRegionUse
->  = ArmVSpaceUserRegion
->  | ArmVSpaceInvalidRegion
->  | ArmVSpaceKernelWindow
->  | ArmVSpaceDeviceWindow
+> data GdtSlot
+>     = GDT_NULL
+>     | GDT_CS_0
+>     | GDT_DS_0
+>     | GDT_TSS_1
+>     | GDT_TSS_2
+>     | GDT_CS_3
+>     | GDT_DS_3
+>     | GDT_TLS
+>     | GDT_IPCBUF
+>     | GDT_ENTRIES
+>     deriving (Eq, Show, Enum)
 
-There are three ARM-specific global data elements:
+FIXME the only difference in our GDT entries seems to be the base address (broken up into pieces)
+FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so something is fishy
 
-\begin{itemize}
-\item a pointer to the globals frame, which is used to map thread-local data --- such as the IPC buffer location --- into every user thread's address space;
-\item the root ASID table; and
-\item the global page directory, which is copied to initialise new page directories, and also as the hardware page table root when the current thread has no valid root.
-\end{itemize}
+> data GdtEntry = X64GdtEntry {
+>     base :: PPtr}
 
-> data KernelState = ARMKernelState {
->     armKSGlobalsFrame :: PPtr Word,
->     armKSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
->     armKSHWASIDTable :: Array HardwareASID (Maybe ASID),
->     armKSNextASID :: HardwareASID,
->     armKSASIDMap :: Array ASID (Maybe (HardwareASID, PPtr PDE)),
->     armKSGlobalPD :: PPtr PDE,
->     armKSGlobalPTs :: [PPtr PTE],
->     armKSKernelVSpace :: PPtr Word -> ArmVSpaceRegionUse}
+> data KernelState = X64KernelState {
+>     x64KSGdt :: Array GdtSlot GdtEntry,
+>     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool))}
 
 > newKernelState :: PAddr -> (KernelState, [PAddr])
-> newKernelState data_start = (state, frames)
->     where
->         alignToBits addr b = (((addr - 1) `shiftR` b) + 1) `shiftL` b
->         globalsFrame = data_start `alignToBits` pageBits
->         globalsFrameTop = globalsFrame + bit pageBits
->         globalPTs = globalsFrameTop `alignToBits` pageBits
->         globalPTsTop = globalPTs + bit pageBits
->         globalPD = globalPTsTop `alignToBits` pdBits
->         globalPDTop = globalPD + bit pdBits
->         frames = globalsFrame :
->             [globalPTs, globalPTs + bit pageBits .. globalPTsTop - 1] ++
->             [globalPD, globalPD + bit pageBits .. globalPDTop - 1]
->         state = ARMKernelState {
->             armKSGlobalsFrame = ptrFromPAddr globalsFrame,
->             armKSASIDTable = funPartialArray (const Nothing) (0, (1 `shiftL` asidHighBits) - 1),
->             armKSHWASIDTable = funArray (const Nothing),
->             armKSNextASID = minBound,
->             armKSASIDMap = funPartialArray (const Nothing) asidRange,
->             armKSGlobalPD = ptrFromPAddr globalPD,
->             armKSGlobalPTs = map ptrFromPAddr
->                 [globalPTs, globalPTs + bit ptBits .. globalPTsTop-1],
->             armKSKernelVSpace =
->                 (\vref -> if vref < mask 20 then ArmVSpaceKernelWindow
->                                             else ArmVSpaceInvalidRegion) }
+> newKernelState data_start = error "No initial state defined for x64"
 

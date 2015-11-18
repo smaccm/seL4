@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,51 +7,50 @@
 % @TAG(GD_GPL)
 %
 
-This module contains the architecture-specific thread switch code for the ARM.
+This module contains the architecture-specific thread switch code for X86-64bit.
 
 > module SEL4.Kernel.Thread.X64 where
 
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.RegisterSet.ARM
+> import SEL4.Machine.RegisterSet.X64
 > import SEL4.Model.StateData
-> import SEL4.Model.StateData.ARM
+> import SEL4.Model.StateData.X64
 > import SEL4.Object.Structures
 > import SEL4.Object.TCB
-> import SEL4.Kernel.VSpace.ARM
+> import SEL4.Kernel.VSpace.X64
 > import qualified SEL4.Machine.Hardware.X64 as X64Hardware
 > import {-# SOURCE #-} SEL4.Kernel.Init
 > import SEL4.Model.PSpace
 
 \end{impdetails}
 
-The ARM thread switch function invalidates all caches and the TLB, and writes the IPC buffer pointer to the first word of the globals page.
-
 > switchToThread :: PPtr TCB -> Kernel ()
 > switchToThread tcb = do
 >     setVMRoot tcb
->     globals <- gets $ armKSGlobalsFrame . ksArchState
+>     base <- asUser tcb $ getRegister (Register TLS_BASE)
 >     bufferPtr <- threadGet tcbIPCBuffer tcb
->     storeWordUser globals $ fromVPtr bufferPtr
->     doMachineOp $ ARMHardware.clearExMonitor
-
-The ARM idle thread runs in system mode with interrupts enabled, with the PC pointing to a small kernel routine that executes a wait-for-interrupt instruction. In the Haskell model, this routine is placed in the globals page, so the simulator can access it; in a real kernel there would be no need for it to be user-accessible.
+>     gdt <- gets $ x86KSGdt . ksArchState
+>     let gdt' <- gdt//[ (GDT_TLS, base), (GDT_IPCBUF, bufferPtr) ]
+>     modify (\s -> s {
+>         ksArchState = (ksArchState s) { x64Gdt = gdt' }})
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
 > configureIdleThread tcb = do
 >     doKernelOp $ asUser tcb $ do
->         setRegister (Register CPSR) 0x1f
->         setRegister (Register LR_svc) $ fromVPtr idleThreadStart
-
-Since the idle thread only accesses global mappings, there is nothing to be done when switching to it.
+>         setRegister (Register RFLAGS) 0x1f
+>         setRegister (Register NEXTIP) $ fromVPtr idleThreadStart
+>         setRegister (Register CS) selCS0
+>         setRegister (Register DS) selDS0
+>         setRegister (Register ES) selDS0
+>         setRegister (Register FS) selDS0
+>         setRegister (Register GS) selDS0
+>         setRegister (Register SS) selDS0
+>         setRegister (Register RSP) $ kernelStackAlloc
 
 > switchToIdleThread :: Kernel ()
-> switchToIdleThread = do
->  globals <- gets $ armKSGlobalsFrame . ksArchState
->  storeWordUser globals 0
-
-There is nothing special about idle thread activation on ARM.
+> switchToIdleThread = return ()
 
 > activateIdleThread :: PPtr TCB -> Kernel ()
 > activateIdleThread _ = return ()
