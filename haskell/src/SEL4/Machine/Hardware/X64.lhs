@@ -269,6 +269,16 @@ FIXME: x64 has anything like this?
 >         pdptRights :: VMRights }
 >     deriving (Show, Eq)
 
+> wordFromPML4E :: PML4E -> Word
+> wordFromPML4E InvalidPML4E = 0
+> wordFromPML4E (PDPointerTablePML4E table accessed cd wt xd rights) = 1 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral table .&. 0x7fffffffff000) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
+
 > data PDPTE
 >     = InvalidPDPTE
 >     | PageDirectoryPDPTE {
@@ -281,14 +291,35 @@ FIXME: x64 has anything like this?
 >     | HugePagePDPTE {
 >         pdptFrame :: PAddr,
 >         pdptGlobal :: Bool,
+>         pdptPAT :: Bool,
 >         pdptDirty :: Bool,
 >         pdptAccessed :: Bool,
 >         pdptCacheDisabled :: Bool,
 >         pdptWriteThrough :: Bool,
 >         pdptExecuteDisable :: Bool,
->         pdptPAT :: Bool,
 >         pdptRights :: VMRights }
 >     deriving (Show, Eq)
+
+> wordFromPDPTE :: PDPTE -> Word
+> wordFromPDPTE InvalidPDPTE = 0
+> wordFromPDPTE (PageDirectoryPTE table accessed cd wt xd rights) = 1 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral table .&. 0x7fffffffff000) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
+> wordFromPDPTE (HugePagePDPTE frame global pat dirty accessed cd wt xd rights) = 1 .|. bit 7 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral frame .&. 0x7ffffc0000000) .|.
+>     (if global then bit 8 else 0) .|.
+>     (if pat then bit 12 else 0) .|.
+>     (if dirty then bit 6 else 0) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
+
 
          
 The ARM architecture defines a two-level hardware-walked page table. The kernel must write entries to this table in the defined format to construct address spaces for user-level tasks.
@@ -308,18 +339,37 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     | LargePagePDE {
 >         pdeFrame :: PAddr,
 >         pdeGlobal :: Bool,
+>         pdePAT :: Bool,
 >         pdeDirty :: Bool,
 >         pdeAccessed :: Bool,
 >         pdeCacheDisabled :: Bool,
 >         pdeWriteThrough :: Bool,
 >         pdeExecuteDisable :: Bool,
->         pdePAT :: Bool,
 >         pdeRights :: VMRights }
 >     deriving (Show, Eq)
 
 > -- FIXME x64
 > wordFromPDE :: PDE -> Word
 > wordFromPDE InvalidPDE = 0
+> wordFromPDE (PageTablePTE table accessed cd wt xd rights) = 1 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral table .&. 0x7fffffffff000) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
+> wordFromPDE (LargePagePDE frame global pat dirty accessed cd wt xd rights) = 1 .|. bit 7 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral frame .&. 0x7ffffffe00000) .|.
+>     (if global then bit 8 else 0) .|.
+>     (if pat then bit 12 else 0) .|.
+>     (if dirty then bit 6 else 0) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
+
+
 > wordFromPDE (PageTablePDE table parity domain) = 1 .|.
 >     (fromIntegral table .&. 0xfffffc00) .|.
 >     (if parity then bit 9 else 0) .|.
@@ -346,6 +396,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     | SmallPagePTE {
 >         pteFrame :: PAddr,
 >         pteGlobal :: Bool,
+>         pdePAT :: Bool,
 >         pteDirty :: Bool,
 >         pteAccessed :: Bool,
 >         pteCacheDisabled :: Bool,
@@ -354,26 +405,24 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pteRights :: VMRights }
 >     deriving (Show, Eq)
 
-> -- FIXME x64
+> -- FIXME x64: word size?
 > wordFromPTE :: PTE -> Word
 > wordFromPTE InvalidPTE = 0
-> wordFromPTE (LargePagePTE frame cacheable global xn rights) = 1 .|.
->     (fromIntegral frame .&. 0xffff0000) .|.
->     (if cacheable then bit 2 .|. bit 3 else 0) .|.
->     (if global then 0 else bit 11) .|.
->     (if xn then bit 15 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 4)
-> wordFromPTE (SmallPagePTE frame cacheable global xn rights) = 2 .|.
->     (fromIntegral frame .&. 0xfffff000) .|.
->     (if xn then 1 else 0) .|.
->     (if cacheable then bit 2 .|. bit 3 else 0) .|.
->     (if global then 0 else bit 11) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 4)
+> wordFromPTE (SmallPagePTE frame global pat dirty accessed cd wt xd rights) = 1 .|.
+>     (if xd then bit 63 else 0) .|.
+>     (fromIntegral frame .&. 0x7fffffffffe000) .|.
+>     (if global then bit 8 else 0) .|.
+>     (if pat then bit 7 else 0) .|.
+>     (if dirty then bit 6 else 0) .|.
+>     (if accessed then bit 5 else 0) .|.
+>     (if cd then bit 4 else 0) .|.
+>     (if wt then bit 3 else 0) .|.
+>     (fromIntegral $ fromEnum rights `shiftL` 1)
 
 > data VMRights
->     = VMKernelOnly
->     | VMReadOnly
+>     = VMReadOnly
 >     | VMReadWrite
+>     | VMKernelOnly
 >     deriving (Show, Eq, Enum)
 
 > data VMAttributes = VMAttributes {
