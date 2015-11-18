@@ -90,22 +90,10 @@ The following functions define the x86 64bit specific interface between the kern
 > pageBits :: Int
 > pageBits = 12
 
-> ptBits :: Int
-> ptBits = 9
-
-> pdBits :: Int
-> pdBits = 9
-
-> pdptBits :: Int
-> pdptBits = 9
-
-> pml4Bits :: Int
-> pml4Bits = 9
-
 > pageBitsForSize :: VMPageSize -> Int
 > pageBitsForSize X64SmallPage = pageBits
-> pageBitsForSize X64LargePage = pageBits + ptBits
-> pageBitsForSize X64HugePage = pageBits + ptBits + pdBits
+> pageBitsForSize X64LargePage = pageBits + ptTranslationBits
+> pageBitsForSize X64HugePage = pageBits + ptTranslationBits + ptTranslationBits
 
 > getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
 > getMemoryRegions = do
@@ -440,17 +428,17 @@ Pointer Accessor Functions FIXME x64 TYPES
 
 > getPDIndex :: VPtr -> Word
 > getPDIndex vptr = 
->     let shiftBits = pageBits + ptBits 
+>     let shiftBits = pageBits + ptTranslationBits 
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdBits
 
 > getPDPTIndex :: VPtr -> Word
 > getPDPTIndex vptr = 
->     let shiftBits = pageBits + ptBits + pdBits
+>     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdptBits
 
 > getPML4Index :: VPtr -> Word
 > getPML4Index vptr = 
->     let shiftBits = pageBits + ptBits + pdBits + pdptBits
+>     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits 
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pml4Bits
 
 
