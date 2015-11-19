@@ -10,7 +10,7 @@
 
 This module defines the handling of the ARM hardware-defined page tables.
 
-> module SEL4.Kernel.VSpace.ARM where
+> module SEL4.Kernel.VSpace.X64 where
 
 \begin{impdetails}
 
@@ -670,121 +670,122 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 > deleteASIDPool base ptr = do
 >     assert (base .&. mask asidLowBits == 0)
 >         "ASID pool's base must be aligned"
->     asidTable <- gets (armKSASIDTable . ksArchState)
+>     asidTable <- gets (x86KSASIDTable . ksArchState)
 >     when (asidTable!(asidHighBitsOf base) == Just ptr) $ do
->         ASIDPool pool <- getObject ptr
->         forM [0 .. (bit asidLowBits) - 1] $ \offset -> do
->             when (isJust $ pool ! offset) $ do
->                 flushSpace $ base + offset
->                 invalidateASIDEntry $ base + offset
 >         let asidTable' = asidTable//[(asidHighBitsOf base, Nothing)]
 >         modify (\s -> s {
->             ksArchState = (ksArchState s) { armKSASIDTable = asidTable' }})
+>             ksArchState = (ksArchState s) { x86KSASIDTable = asidTable' }})
 >         tcb <- getCurThread
 >         setVMRoot tcb
 
 \subsubsection{Deleting an Address Space}
 
-> deleteASID :: ASID -> PPtr PDE -> Kernel ()
-> deleteASID asid pd = do
->     asidTable <- gets (armKSASIDTable . ksArchState)
+> deleteASID :: ASID -> PPtr PML4E -> Kernel ()
+> deleteASID asid pm = do
+>     asidTable <- gets (x86KSASIDTable . ksArchState)
+>     hwASIDInvalidate asid --FIXME x64: add to hardware functions
 >     case asidTable!(asidHighBitsOf asid) of
 >         Nothing -> return ()
 >         Just poolPtr -> do
 >             ASIDPool pool <- getObject poolPtr
->             when (pool!(asid .&. mask asidLowBits) == Just pd) $ do
->                 flushSpace asid
->                 invalidateASIDEntry asid
+>             when (pool!(asid .&. mask asidLowBits) == Just pm) $ do
 >                 let pool' = pool//[(asid .&. mask asidLowBits, Nothing)]
 >                 setObject poolPtr $ ASIDPool pool'
 >                 tcb <- getCurThread
 >                 setVMRoot tcb
 
+\subsubsection{Deleting a PDPT}
+
+> unmapPDPT :: ASID -> VPtr -> PPtr PDPTE -> Kernel ()
+> unmapPDPT asid vaddr pdpt = ignoreFailure $ do
+>     vspace <- findVSpaceForASID asid
+>     let pmSlot = lookupPML4Slot vspace vaddr
+>     pml4e <- withoutFailure $ getObject pdptSlot
+>     case pml4e of
+>         PageDirectoryPTPML4E { pml4Table = pt' } -> return $
+>             if pt' = addrFromPPtr pdpt then return () else throw InvalidRoot
+>         _ -> throw InvalidRoot
+>     flushPDPT vspace pdpt
+>     withoutFailure $ storePML4E pml4e InvalidPML4E
+
+\subsubsection{Deleting a Page Directory}
+
+> unmapPageDirectory :: ASID -> VPtr -> PPtr PDE -> Kernel ()
+> unmapPageDirectory asid vaddr pd = ignoreFailure $ do
+>     vspace <- findVSpaceForASID asid
+>     let pdptSlot = lookupPDPTSlot vspace vaddr
+>     pdpte <- withoutFailure $ getObject pdptSlot
+>     case pdpte of
+>         PageDirectoryPDPTE { pdptTable = pd' } -> return $
+>             if pt' = addrFromPPtr pd then return () else throw InvalidRoot
+>         _ -> throw InvalidRoot
+>     invalidatePageStructureCache -- FIXME x64: hardware implement
+>     withoutFailure $ storePDPTE pdpte InvalidPDPTE
+
 \subsubsection{Deleting a Page Table}
 
-> pageTableMapped :: ASID -> VPtr -> PPtr PTE -> Kernel (Maybe (PPtr PDE))
-> pageTableMapped asid vaddr pt = catchFailure
->     (do
->         pd <- findPDForASID asid
->         let pdSlot = lookupPDSlot pd vaddr
->         pde <- withoutFailure $ getObject pdSlot
->         case pde of
->             PageTablePDE { pdeTable = pt' } -> return $
->                 if pt' == addrFromPPtr pt then Just pd else Nothing
->             _ -> return Nothing)
->     (\_ -> return Nothing)
-
 > unmapPageTable :: ASID -> VPtr -> PPtr PTE -> Kernel ()
-> unmapPageTable asid vaddr pt = do
->     maybePD <- pageTableMapped asid vaddr pt
->     case maybePD of
->         Just pd -> do
->             let pdSlot = lookupPDSlot pd vaddr
->             storePDE pdSlot InvalidPDE
->             doMachineOp $ cleanByVA_PoU (VPtr $ fromPPtr pdSlot) (addrFromPPtr pdSlot)
->             flushTable pd asid vaddr
->         Nothing -> return ()
+> unmapPageTable asid vaddr pt = ignoreFailure $ do
+>     vspace <- findVSpaceForASID asid
+>     let pdSlot = lookupPDSlot vspace vaddr
+>     pde <- withoutFailure $ getObject pdSlot
+>     case pde of
+>         PageTablePDE { pdeTable = pt' } -> return $
+>             if pt' = addrFromPPtr pt then return () else throw InvalidRoot
+>         _ -> throw InvalidRoot -- FIXME x64: dummy throw
+>     flushTable vspace vaddr pt -- FIXME x64: implement
+>     withoutFailure $ storePDE pdSlot InvalidPDE
+>     invalidatePageStructureCache -- FIXME x64: hardware implement
+
 
 \subsubsection{Unmapping a Frame}
 
 > unmapPage :: VMPageSize -> ASID -> VPtr -> PPtr Word -> Kernel ()
 > unmapPage size asid vptr ptr = ignoreFailure $ do
->     pd <- findPDForASID asid
+>     vspace <- findVSpaceForASID asid
 >     case size of
->         ARMSmallPage -> do
->             p <- lookupPTSlot pd vptr
->             checkMappingPPtr ptr size (Left p)
->             withoutFailure $ do
->                 storePTE p InvalidPTE
->                 doMachineOp $ cleanByVA_PoU (VPtr $ fromPPtr p) (addrFromPPtr p)
->         ARMLargePage -> do
->             p <- lookupPTSlot pd vptr
->             checkMappingPPtr ptr size (Left p)
->             withoutFailure $ do
->                 let slots = map (+p) [0, 4 .. 60]
->                 mapM (flip storePTE InvalidPTE) slots
->                 doMachineOp $
->                     cleanCacheRange_PoU (VPtr $ fromPPtr $ (head slots))
->                                         (VPtr $ (fromPPtr (last slots)) + (bit (objBits (undefined :: PTE)) - 1 ))
->                                         (addrFromPPtr (head slots))
->         ARMSection -> do
->             let p = lookupPDSlot pd vptr
->             checkMappingPPtr ptr size (Right p)
->             withoutFailure $ do
->                 storePDE p InvalidPDE
->                 doMachineOp $ cleanByVA_PoU (VPtr $ fromPPtr p) (addrFromPPtr p)
->         ARMSuperSection -> do
->             let p = lookupPDSlot pd vptr
->             checkMappingPPtr ptr size (Right p)
->             withoutFailure $ do
->                 let slots = map (+p) [0, 4 .. 60]
->                 mapM (flip storePDE InvalidPDE) slots
->                 doMachineOp $
->                     cleanCacheRange_PoU (VPtr $ fromPPtr $ (head slots))
->                                         (VPtr $ (fromPPtr  (last slots)) + (bit (objBits (undefined :: PDE)) - 1))
->                                         (addrFromPPtr (head slots))
->     withoutFailure $ flushPage size pd asid vptr
+>         X64SmallPage -> do
+>             p <- lookupPTSlot vspace vptr
+>             checkMappingPPtr ptr (VMPTE p)
+>             withoutFailure $ storePTE p InvalidPTE
+>         X64LargePage -> do
+>             p <- lookupPDSlot vspace vptr
+>             checkMappingPPtr ptr (VMPDE p)
+>             withoutFailure $ storePDE p InvalidPDE
+>         X64HugePage -> do
+>             let p = lookupPDPTSlot vspace vptr
+>             checkMappingPPtr ptr (VMPDPTE p)
+>             withoutFailure $ storePDPTE p InvalidPDPTE
+>     tcb <- getCurThread
+>     threadRootSlot <- getThreadVSpaceRoot tcb
+>     threadRoot <- getSlotCap threadRootSlot
+>     case threadRoot of -- FIXME x64: don't really know if this is how this should be written
+>         ArchObjectCap (PML4Cap { capPML4BasePtr = ptr', capPML4MappedAsid = Just _ }) 
+>                            -> when (ptr' == vspace) $ invalidateTLBEntry vptr
+>         _ -> return ()
 
 This helper function checks that the mapping installed at a given PT or PD slot points at the given physical address. If that is not the case, the mapping being unmapped has already been displaced, and the unmap need not be performed.
 
-> checkMappingPPtr :: PPtr Word -> VMPageSize ->
->                 Either (PPtr PTE) (PPtr PDE) -> KernelF LookupFailure ()
-> checkMappingPPtr pptr size (Left pt) = do
+> checkMappingPPtr :: PPtr Word -> VMPageEntry -> KernelF LookupFailure ()
+> checkMappingPPtr pptr (VMPTE pt) = do
 >     pte <- withoutFailure $ getObject pt
->     case (pte, size) of
->         (SmallPagePTE { pteFrame = base }, ARMSmallPage) ->
->             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
->         (LargePagePTE { pteFrame = base }, ARMLargePage) ->
+>     case pte of
+>         SmallPagePTE { pteFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
-> checkMappingPPtr pptr size (Right pd) = do
+> checkMappingPPtr pptr (VMPDE pd) = do
 >     pde <- withoutFailure $ getObject pd
->     case (pde, size) of
->         (SectionPDE { pdeFrame = base }, ARMSection) ->
->             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
->         (SuperSectionPDE { pdeFrame = base }, ARMSuperSection) ->
+>     case pde of
+>         LargePagePDE { pdeFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
+> checkMappingPPtr pptr (VMPDPTE pdpt) = do
+>     pdpte <- withoutFailure $ getObject pdpt
+>     case pdpte of
+>         HugePagePDPTE { pdpteFrame = base } ->
+>             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
+>         _ -> throw InvalidRoot
+
 
 
 > armv_contextSwitch_HWASID :: PPtr PDE -> HardwareASID -> MachineMonad ()

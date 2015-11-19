@@ -441,6 +441,13 @@ Pointer Accessor Functions FIXME x64 TYPES
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits 
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pml4Bits
 
+Page entries - could be either PTEs, PDEs or PDPTEs.
+
+> -- FIXME x64: fix this up?
+> data VMPageEntry
+>     = VMPTE (PPtr PTE)
+>     | VMPDE (PPtr PDE)
+>     | VMPDPTE (PPtr PDPTE)
 
 > data VMRights
 >     = VMReadOnly
