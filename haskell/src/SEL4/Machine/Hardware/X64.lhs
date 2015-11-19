@@ -72,6 +72,10 @@ x86 virtual memory faults are handled by one of two trap handlers: one for data 
 
 The MMU does not allow access to physical addresses while translation is enabled; the kernel must access its objects via virtual addresses. Depending on the platform, these virtual addresses may either be the same as the physical addresses, or offset by a constant.
 
+FIXME pc99 has 2 separate offsets for different kernel windows.
+addrFromKPPtr is called in non-boot code exactly once in setVMRoot, so rather
+than add an additional pointer type we just give a different translation function
+
 > type PAddr = Platform.PAddr
 
 > ptrFromPAddr :: PAddr -> PPtr a
@@ -79,6 +83,9 @@ The MMU does not allow access to physical addresses while translation is enabled
 
 > addrFromPPtr :: PPtr a -> PAddr
 > addrFromPPtr = Platform.addrFromPPtr
+
+> addrFromKPPtr :: PPtr a -> PAddr
+> addrFromKPPtr :: Platform.addrFromKPPtr
 
 > fromPAddr :: PAddr -> Word
 > fromPAddr = Platform.fromPAddr
@@ -212,18 +219,12 @@ caches must be done separately.
 
 \subsubsection{Address Space Setup}
 
-FIXME: what does this do on x64?
+FIXME update when this register has a bitfield entry
 
-> setCurrentPD :: PAddr -> MachineMonad ()
-> setCurrentPD pd = do
->     dsb
->     writeTTBR0 pd
->     isb
-
-> setHardwareASID :: HardwareASID -> MachineMonad ()
-> setHardwareASID (HardwareASID hw_asid) = do
->     cbptr <- ask
->     liftIO $ Platform.setHardwareASID cbptr hw_asid
+> setCurrentVSpaceRoot :: PAddr -> ASID -> MachineMonad ()
+> setCurrentVSpaceRoot pd asid = do
+>     writecr3 pd asid
+>     
 
 \subsubsection{Memory Barriers}
 

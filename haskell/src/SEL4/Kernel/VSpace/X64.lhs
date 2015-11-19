@@ -578,7 +578,7 @@ Locating the page directory for a given ASID is necessary when updating or delet
 >     let pm = pool!(asid .&. mask asidLowBits)
 >     case pm of
 >         Just ptr -> do
->             assert (ptr /= 0) "findPDForASID: found null PD"
+>             assert (ptr /= 0) "findVSpaceForASID: found null PD"
 >             return ptr
 >         Nothing -> throw InvalidRoot
 
@@ -598,6 +598,23 @@ This version of findPDForASID will fail rather than raise an exception if the AS
 >     return pm
 
 
+These checks are too expensive to run in haskell. The first funcion checks that the pointer is to a page directory, which would require testing that each entry of the table is present. The second checks that the page directory appears in x86KSASIDMap only on the ASIDs specified, which would require walking all possible ASIDs to test. In the formalisation of this specification, these functions are given alternative definitions that make the appropriate checks.
+
+> checkPDAt :: PPtr PDE -> Kernel ()
+> checkPDAt _ = return ()
+
+
+> checkPTAt :: PPtr PDE -> Kernel ()
+> checkPTAt _ = return ()
+
+> checkPML4ASIDMapMembership :: PPtr PML4E -> [ASID] -> Kernel ()
+> checkPDASIDMapMembership _ _ = return ()
+
+> checkPML4UniqueToASID :: PPtr PML4E -> ASID -> Kernel ()
+> checkPML4UniqueToASID pd asid = checkPML4ASIDMapMembership pd [asid]
+
+> checkPML4NotInASIDMap :: PPtr PML4E -> Kernel ()
+> checkPML4NotInASIDMap pd = checkPML4ASIDMapMembership pd []
 
 \subsubsection{Locating Page Table and Page Directory Slots}
 
@@ -801,47 +818,28 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 
 \subsection{Address Space Switching}
 
-When switching threads, or after deleting an ASID or page directory, the kernel must locate the current thread's page directory, check the validity of the thread's ASID, and set the hardware's ASID and page directory registers.
-
-If the current thread has no page directory, or if it has an invalid ASID, the hardware page directory register is set to the global page directory, which contains only kernel mappings. In this case it is not necessary to set the current ASID, since the valid mappings are all global.
-
 > setVMRoot :: PPtr TCB -> Kernel ()
 > setVMRoot tcb = do
 >     threadRootSlot <- getThreadVSpaceRoot tcb
 >     threadRoot <- getSlotCap threadRootSlot
 >     catchFailure
 >         (case threadRoot of
->             ArchObjectCap (PageDirectoryCap {
->                     capPDMappedASID = Just asid,
->                     capPDBasePtr = pd }) -> do
->                 pd' <- findPDForASID asid
+>             ArchObjectCap (PML4Cap {
+>                     capPML4MappedASID = Just asid,
+>                     capPML4BasePtr = pd }) -> do
+>                 pd' <- findVSpaceForASID asid
 >                 when (pd /= pd') $ do
 >                     throw InvalidRoot
->                 withoutFailure $ armv_contextSwitch pd asid
+>                 doMachineOp $ setCurrentVSpaceRoot (addrFromPPtr pd, asid)
 >             _ -> throw InvalidRoot)
 >         (\_ -> do
 >             case threadRoot of
 >                 ArchObjectCap (PageDirectoryCap {
 >                     capPDMappedASID = Just _,
->                     capPDBasePtr = pd }) -> checkPDNotInASIDMap pd
+>                     capPDBasePtr = pd }) -> checkPML4NotInASIDMap pd
 >                 _ -> return ()
->             globalPD <- gets (armKSGlobalPD . ksArchState)
->             doMachineOp $ setCurrentPD $ addrFromPPtr globalPD )
-
-When cleaning the cache by user virtual address on ARM11, the active address space must be the one that contains the mappings being cleaned. The following function is used to temporarily switch to a given page directory and ASID, in order to clean the cache. It returns "True" if the address space was not the same as the current one, in which case the caller must switch back to the current address space once the cache is clean.
-
-> setVMRootForFlush :: PPtr PDE -> ASID -> Kernel Bool
-> setVMRootForFlush pd asid = do
->     tcb <- getCurThread
->     threadRootSlot <- getThreadVSpaceRoot tcb
->     threadRoot <- getSlotCap threadRootSlot
->     case threadRoot of
->         ArchObjectCap (PageDirectoryCap {
->                 capPDMappedASID = Just _,
->                 capPDBasePtr = cur_pd }) | cur_pd == pd -> return False
->         _ -> do
->             armv_contextSwitch pd asid
->             return True
+>             globalPML4 <- gets (x86KSGlobalPML4 . ksArchState)
+>             doMachineOp $ setCurrentVSpaceRoot (addrFromKPPtr globalPML4, 0) )
 
 \subsection{Helper Functions}
 
