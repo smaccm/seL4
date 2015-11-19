@@ -58,13 +58,13 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capPTMappedAddress :: Maybe (ASID, VPtr) }
 >     | PageDirectoryCap {
 >         capPDBasePtr :: PPtr PDE,
->         capPDMappedASID :: Maybe ASID }
+>         capPDMappedAddress :: Maybe (ASID, VPtr) }
 >     | PDPointerTableCap {
 >         capPDPTBasePtr :: PPtr PDPTE,
 >         capPDPTMappedAddress :: Maybe (ASID, VPtr) }
 >     | PML4Cap {
 >         capPML4BasePtr :: PPtr PML4E,
->         capPML4MappedAddress :: Maybe (ASID, VPtr) }
+>         capPML4MappedASID :: Maybe ASID }
 >     deriving (Eq, Show)
 
 \subsection{Kernel Objects}
