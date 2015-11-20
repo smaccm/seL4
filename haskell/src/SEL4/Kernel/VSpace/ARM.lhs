@@ -1483,6 +1483,16 @@ the PT/PD is consistent.
 
 The kernel model's ARM targets use an external simulation of the physical address space for user-level virtual memory, I/O devices and MMU data structures, separate from the "PSpace" which is used for kernel objects. However, "PDE" objects are accessed by the kernel, so they must be stored in both the external physical memory model and the internal "PSpace". To make verification simpler we do the same for "PTE" objects.
 
+> storePML4E :: PPtr PML4E -> PML4E -> Kernel ()
+> storePML4E slot pml4e = do
+>     setObject slot pml4e
+>     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPML4E pml4e
+
+> storePDPTE :: PPtr PDPTE -> PDPTE -> Kernel ()
+> storePDPTE slot pdpte = do
+>     setObject slot pdpte
+>     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPDPTE pdpte
+
 > storePDE :: PPtr PDE -> PDE -> Kernel ()
 > storePDE slot pde = do
 >     setObject slot pde
