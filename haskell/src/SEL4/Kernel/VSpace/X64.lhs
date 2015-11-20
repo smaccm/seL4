@@ -437,15 +437,16 @@ The "mapKernelFrame" helper function is used when mapping the globals frame, ker
 
 When a new page directory is created, the kernel copies all of the global mappings from the kernel page directory into the new page directory.
 
-> copyGlobalMappings :: PPtr PDE -> Kernel ()
-> copyGlobalMappings newPD = do
->     globalPD <- gets (armKSGlobalPD . ksArchState)
->     let pdeBits = objBits (undefined :: PDE)
->     let pdSize = 1 `shiftL` (pdBits - pdeBits)
->     forM_ [fromVPtr kernelBase `shiftR` 20 .. pdSize - 1] $ \index -> do
->         let offset = PPtr index `shiftL` pdeBits
->         pde <- getObject (globalPD + offset)
->         storePDE (newPD + offset) pde
+> copyGlobalMappings :: PPtr PML4E -> Kernel ()
+> copyGlobalMappings newPM = do
+>     globalPM <- gets (x64KSGlobalPML4 . ksArchState)
+>     let base = getPML4Index pptrBase
+>     let pml4eBits = objBits (undefined :: PML4E) -- = 3, size of word
+>     let pmSize = 1 `shiftL` ptTranslationBits -- 512 entries in table
+>     forM_ [fromVPtr base .. pmSize - 1] $ \index -> do
+>         let offset = PPtr index `shiftL` pml4eBits 
+>         pml4e <- getObject $ globalPM + offset
+>         storePML4E (newPM + offset) pml4e
 
 \subsection{Creating and Updating Mappings}
 
@@ -966,14 +967,6 @@ X64UPDATE
 
 X64UPDATE
 
-> ifPresentInvalidate :: PPtr PTE -> Word -> VPtr -> Kernel ()
-> ifPresentInvalidate slot index vptr = do
->     pte <- getObject slot
->     case pte of
->         InvalidPTE -> return ()
->         _ -> let index' = index `shiftL` ptTranslationBits
->              in doMachineOp $ invalidateTLBEntry $ VPtr $ (fromVPtr vptr) + index'
-
 > -- FIXME x64: someone should look at this pile of fail
 > flushTable :: PPtr PML4E -> VPtr -> PPtr PTE -> Kernel ()
 > flushTable vspace vptr pt = do
@@ -982,17 +975,22 @@ X64UPDATE
 >     tcb <- getCurThread
 >     threadRootSlot <- getThreadVSpaceRoot tcb
 >     threadRoot <- getSlotCap threadRootSlot
->     ignoreFailure $ 
->         case threadRoot of
->             ArchObjectCap (PML4Cap {
->                   capPML4MappedASID = Just _,
->                   capPML4BasePtr = vspace'}) -> do
->                 when (vspace /= vspace') $ throw InvalidRoot
->                 let offsets = [0, 8, .. 4088] -- FIXME x64: does this include 4088
->                 let slots = zip offsets $ map (+pt) offsets                
->                 mapM_ (\(offset, slot) -> ifPresentInvalidate slot offset vptr) slots
->             _ -> return ()
-
+>     case threadRoot of
+>         ArchObjectCap (PML4Cap {
+>               capPML4MappedASID = Just _,
+>               capPML4BasePtr = vspace'}) ->
+>             when (vspace = vspace') $ do 
+>                 let pteBits = objBits (undefined :: PTE)
+>                 let ptSize = 1 `shiftL` ptTranslationBits
+>                 forM_ [0 .. ptSize - 1] $ \index -> do
+>                     let offset = PPtr index `shiftL` pteBits
+>                     pte <- getObject $ pt + offset
+>                     case pte of
+>                         InvalidPTE -> return ()
+>                         _ -> let index' = index `shiftL` pageBits
+>                              in doMachineOp $ invalidateTLBEntry $ 
+>                                          VPtr $ (fromVPtr vptr) + index'
+>         _ -> return ()
 
 > flushSpace :: ASID -> Kernel ()
 > flushSpace asid = do

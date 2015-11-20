@@ -104,6 +104,7 @@ The following functions define the x86 64bit specific interface between the kern
 > pageBitsForSize X64LargePage = pageBits + ptTranslationBits
 > pageBitsForSize X64HugePage = pageBits + ptTranslationBits + ptTranslationBits
 
+
 > getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
 > getMemoryRegions = do
 >     cpbtr <- ask
@@ -461,6 +462,10 @@ Every table is one small page in size.
 
 > cacheLineBits = Platform.cacheLineBits
 > cacheLine = Platform.cacheLine
+
+> pptrBase :: VPtr
+> pptrBase = Platform.pptrBase
+
 
 > -- FIXME x64: IOPTEs
 
