@@ -383,28 +383,6 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if wt then bit 3 else 0) .|.
 >     (fromIntegral $ fromEnum rights `shiftL` 1)
 
-
-> wordFromPDE (PageTablePDE table parity domain) = 1 .|.
->     (fromIntegral table .&. 0xfffffc00) .|.
->     (if parity then bit 9 else 0) .|.
->     ((domain .&. 0xf) `shiftL` 5)
-> wordFromPDE (SectionPDE frame parity domain cacheable global xn rights) = 2 .|.
->     (fromIntegral frame .&. 0xfff00000) .|.
->     (if parity then bit 9 else 0) .|.
->     (if cacheable then bit 2 .|. bit 3 else 0) .|.
->     (if xn then bit 4 else 0) .|.
->     ((domain .&. 0xf) `shiftL` 5) .|.
->     (if global then 0 else bit 17) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 10)
-> wordFromPDE (SuperSectionPDE frame parity cacheable global xn rights) = 2 .|.
->     bit 18 .|.
->     (fromIntegral frame .&. 0xff000000) .|.
->     (if parity then bit 9 else 0) .|.
->     (if cacheable then bit 2 .|. bit 3 else 0) .|.
->     (if xn then bit 4 else 0) .|.
->     (if global then 0 else bit 17) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 10)
-
 > data PTE
 >     = InvalidPTE
 >     | SmallPagePTE {
@@ -459,9 +437,9 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 
 > -- FIXME x64: fix this up?
 > data VMPageEntry
->     = VMPTE (PPtr PTE)
->     | VMPDE (PPtr PDE)
->     | VMPDPTE (PPtr PDPTE)
+>     = VMPTE PTE
+>     | VMPDE PDE
+>     | VMPDPTE PDPTE
 
 > data VMRights
 >     = VMReadOnly

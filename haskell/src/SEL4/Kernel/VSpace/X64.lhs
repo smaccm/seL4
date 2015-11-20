@@ -763,15 +763,18 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     case size of
 >         X64SmallPage -> do
 >             p <- lookupPTSlot vspace vptr
->             checkMappingPPtr ptr (VMPTE p)
+>             pte <- getObject p
+>             checkMappingPPtr ptr (VMPTE pte)
 >             withoutFailure $ storePTE p InvalidPTE
 >         X64LargePage -> do
 >             p <- lookupPDSlot vspace vptr
->             checkMappingPPtr ptr (VMPDE p)
+>             pde <- getObject p
+>             checkMappingPPtr ptr (VMPDE pde)
 >             withoutFailure $ storePDE p InvalidPDE
 >         X64HugePage -> do
 >             let p = lookupPDPTSlot vspace vptr
->             checkMappingPPtr ptr (VMPDPTE p)
+>             pdpte <- getObject p
+>             checkMappingPPtr ptr (VMPDPTE pdpte)
 >             withoutFailure $ storePDPTE p InvalidPDPTE
 >     tcb <- getCurThread
 >     threadRootSlot <- getThreadVSpaceRoot tcb
@@ -784,25 +787,21 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 This helper function checks that the mapping installed at a given PT or PD slot points at the given physical address. If that is not the case, the mapping being unmapped has already been displaced, and the unmap need not be performed.
 
 > checkMappingPPtr :: PPtr Word -> VMPageEntry -> KernelF LookupFailure ()
-> checkMappingPPtr pptr (VMPTE pt) = do
->     pte <- withoutFailure $ getObject pt
+> checkMappingPPtr pptr (VMPTE pte) =
 >     case pte of
 >         SmallPagePTE { pteFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
-> checkMappingPPtr pptr (VMPDE pd) = do
->     pde <- withoutFailure $ getObject pd
+> checkMappingPPtr pptr (VMPDE pde) =
 >     case pde of
 >         LargePagePDE { pdeFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
-> checkMappingPPtr pptr (VMPDPTE pdpt) = do
->     pdpte <- withoutFailure $ getObject pdpt
+> checkMappingPPtr pptr (VMPDPTE pdpte) =
 >     case pdpte of
 >         HugePagePDPTE { pdpteFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
-
 
 \subsection{Address Space Switching}
 

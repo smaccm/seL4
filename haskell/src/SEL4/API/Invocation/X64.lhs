@@ -74,6 +74,19 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >     | InvokeIRQ IRQInvocation -- FIXME this used to be generic, but now we're adding arch-dependent functionality
 >     deriving Show
 
+> data PageDirectoryInvocation
+>     = PageDirectoryUnmap {
+>         pdUnmapCap :: ArchCapability,
+>         pdUnmapCapSlot :: PPtr CTE }
+>     | PageDirectoryMap {
+>         pdMapCap :: Capability,
+>         pdMapCTSlot :: PPtr CTE,
+>         pdMapPDPTE :: PDPTE,
+>         pdMapPDPTSlot :: PPtr PDPTE }
+>     deriving Show
+
+PML4E
+
 > data PageTableInvocation
 >     = PageTableUnmap {
 >         ptUnmapCap :: ArchCapability,
@@ -85,18 +98,17 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >         ptMapPDSlot :: PPtr PDE }
 >     deriving Show
 
-> -- FIXME: should we consolidate start, end into a tuple
 > data PageInvocation
 >     = PageGetAddr {
 >         pageGetBasePtr :: PPtr Word }
 >     | PageRemap {
 >         pageRemapASID :: ASID,
->         pageRemapEntries :: Either (PTE, [PPtr PTE]) (PDE, [PPtr PDE]) }
+>         pageRemapEntries :: (VMPageEntry, [PPtr VMPageEntry]) }
 >     | PageMap {
 >         pageMapASID :: ASID,
 >         pageMapCap :: Capability,
 >         pageMapCTSlot :: PPtr CTE,
->         pageMapEntries :: Either (PTE, [PPtr PTE]) (PDE, [PPtr PDE]) }
+>         pageMapEntries :: (VMPageEntry, [PPtr VMPageEntry]) }
 >     | PageUnmap {
 >         pageUnmapCap :: ArchCapability,
 >         pageUnmapCapSlot :: PPtr CTE }
