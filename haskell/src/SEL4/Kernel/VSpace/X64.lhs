@@ -543,6 +543,7 @@ The following function is called before creating or modifying mappings in a page
 
 When the kernel tries to access a thread's IPC buffer, this function is called to determine whether the buffer exists and to find its physical address.
 
+> -- UNCHANGED FOR X64
 > lookupIPCBuffer :: Bool -> PPtr TCB -> Kernel (Maybe (PPtr Word))
 > lookupIPCBuffer isReceiver thread = do
 >     bufferPtr <- threadGet tcbIPCBuffer thread
@@ -667,15 +668,12 @@ Similarly, "lookupPDSlot" locates a slot in the top-level page directory. Howeve
 If the kernel receives a VM fault from the CPU, it must determine the address and cause of the fault and then throw it to the user-level fault handler. The C datastructure to sture the cause of the fault has only 12 bits space, hence the mask. Only the lower bits are significant anyway.
 
 > handleVMFault :: PPtr TCB -> VMFaultType -> KernelF Fault ()
-> handleVMFault _ ARMDataAbort = do
->     addr <- withoutFailure $ doMachineOp getFAR
->     fault <- withoutFailure $ doMachineOp getDFSR
->     throw $ VMFault addr [0, fault .&. mask 14]
->
-> handleVMFault thread ARMPrefetchAbort = do
->     pc <- withoutFailure $ asUser thread $ getRestartPC
->     fault <- withoutFailure $ doMachineOp getIFSR
->     throw $ VMFault (VPtr pc) [1, fault .&. mask 14]
+> handleVMFault thread f = do
+>     addr <- withoutFailure $ doMachineOp getFaultAddress -- FIXME x64: implement getFaultAddress = read_cr2
+>     fault <- withoutFailure $ asUser thread $ getRegister ErrorRegister
+>     case f of
+>         X64DataFault -> throw $ VMFault addr [0, fault .&. mask 5] -- FSR is 5 bits in x64
+>         X64InstructionFault -> throw $ VMFault addr [1, fault .&. mask 5]
 
 \subsection{Unmapping and Deletion}
 
@@ -990,7 +988,7 @@ X64UPDATE
 >                   capPML4MappedASID = Just _,
 >                   capPML4BasePtr = vspace'}) -> do
 >                 when (vspace /= vspace') $ throw InvalidRoot
->                 let offsets = [0, 8 .. 4088] -- FIXME x64: does this include 4088
+>                 let offsets = [0, 8, .. 4088] -- FIXME x64: does this include 4088
 >                 let slots = zip offsets $ map (+pt) offsets                
 >                 mapM_ (\(offset, slot) -> ifPresentInvalidate slot offset vptr) slots
 >             _ -> return ()
