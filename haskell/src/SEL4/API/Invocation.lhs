@@ -124,7 +124,7 @@ The following data type defines the parameters expected for invocations of Untyp
 
 The following data type defines the set of possible invocations for interrupt controller capabilities.
 
-FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones which we need to make arch-dependant, and so move IssueIRQHandler to ARM-specific code and rebase.
+FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones which are arch-specific and defined in InterruptControl
 
 > data IRQControlInvocation
 >         = InterruptControl { interruptControlArch :: Arch.InterruptControl }
@@ -256,7 +256,7 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 >         | n == 26 = IRQClearIRQHandler
 >         | n == 27 = IRQSetMode
 >         | n == 28 = DomainSetSet
->         | n > apiMax = ArchInvocationLabel $ toEnum n
+>         | n > apiMax = ArchInvocationLabel $ toEnum (n - 1 - apiMax)
 >         | otherwise = error "toEnum out of range for InvocationLabel"
 >         where apiMax = 28
 
