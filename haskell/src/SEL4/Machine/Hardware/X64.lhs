@@ -44,6 +44,8 @@ The machine monad contains a platform-specific opaque pointer, used by the exter
 
 > type IRQ = Platform.IRQ
 
+> type CR3 = Platform.CR3
+
 FIXME there is a 1-to-1 correspondence between hardware and software ASIDs on x64
 
 > newtype HardwareASID = HardwareASID { fromHWASID :: Word8 }
@@ -219,12 +221,20 @@ caches must be done separately.
 
 \subsubsection{Address Space Setup}
 
-FIXME update when this register has a bitfield entry
 
-> setCurrentVSpaceRoot :: PAddr -> ASID -> MachineMonad ()
-> setCurrentVSpaceRoot pd asid = do
->     writecr3 pd asid
->     
+> setCurrentCR3 :: CR3 -> MachineMonad ()
+> setCurrentCR3 cr3 = do
+>     cbptr <- ask
+>     liftIO $ Platform.writeCR3 cbptr cr3
+
+> getCurrentCR3 :: MachineMonad CR3
+> getCurrentCR3 cr3 = do
+>     cbptr <- ask
+>     liftIO $ Platform.readCR3 cbptr
+
+> setCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
+> setCurrentVSpaceRoot pd asid = 
+>   setCurrentCR3 (Platform.X86CR3 { baseAddress = PAddr, pcid = Word })
 
 \subsubsection{Memory Barriers}
 
@@ -242,10 +252,13 @@ FIXME: does this have to be called dsb?
 >     cbptr <- ask
 >     liftIO $ Platform.invalidateTLBCallback cbptr
 
-> invalidateTLB_ASID :: HardwareASID -> MachineMonad ()
-> invalidateTLB_ASID (HardwareASID hw_asid) = do
+> invalidateTLBEntry :: VPtr -> MachineMonad ()
+> invalidateTLBEntry vptr = do
 >     cbptr <- ask
->     liftIO $ Platform.invalidateTLB_ASIDCallback cbptr hw_asid
+>     liftIO $ Platform.invalidateTLBEntry cbptr vptr
+
+> invalidatePageStructureCache :: MachineMonad ()
+> invalidatePageStructureCache = invalidateTLBEntry 0
 
 This function is used to clear the load exclusive monitor. This dummy
 implementation assumes the monitor is not modelled in our simulator.

@@ -778,7 +778,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     threadRoot <- getSlotCap threadRootSlot
 >     case threadRoot of -- FIXME x64: don't really know if this is how this should be written
 >         ArchObjectCap (PML4Cap { capPML4BasePtr = ptr', capPML4MappedAsid = Just _ }) 
->                            -> when (ptr' == vspace) $ invalidateTLBEntry vptr
+>                            -> when (ptr' == vspace) $ doMachineOp $ invalidateTLBEntry vptr
 >         _ -> return ()
 
 This helper function checks that the mapping installed at a given PT or PD slot points at the given physical address. If that is not the case, the mapping being unmapped has already been displaced, and the unmap need not be performed.
@@ -804,18 +804,6 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 >         _ -> throw InvalidRoot
 
 
-
-> armv_contextSwitch_HWASID :: PPtr PDE -> HardwareASID -> MachineMonad ()
-> armv_contextSwitch_HWASID pd hwasid = do
->    setCurrentPD $ addrFromPPtr pd
->    setHardwareASID hwasid
-
-> armv_contextSwitch :: PPtr PDE -> ASID -> Kernel ()
-> armv_contextSwitch pd asid = do
->    hwasid <- getHWASID asid
->    doMachineOp $ armv_contextSwitch_HWASID pd hwasid
-
-
 \subsection{Address Space Switching}
 
 > setVMRoot :: PPtr TCB -> Kernel ()
@@ -828,8 +816,7 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 >                     capPML4MappedASID = Just asid,
 >                     capPML4BasePtr = pd }) -> do
 >                 pd' <- findVSpaceForASID asid
->                 when (pd /= pd') $ do
->                     throw InvalidRoot
+>                 when (pd /= pd') $ throw InvalidRoot
 >                 doMachineOp $ setCurrentVSpaceRoot (addrFromPPtr pd, asid)
 >             _ -> throw InvalidRoot)
 >         (\_ -> do
@@ -970,46 +957,45 @@ round-robin.
 >             storeHWASID asid new_hw_asid
 >             return new_hw_asid
 
-\subsection {ARM Cache and TLB consistency}
+X64UPDATE
 
-> doFlush :: FlushType -> VPtr -> VPtr -> PAddr -> MachineMonad ()
-> doFlush Clean vstart vend pstart =
->     cleanCacheRange_RAM vstart vend pstart
-> doFlush Invalidate vstart vend pstart =
->     invalidateCacheRange_RAM vstart vend pstart
-> doFlush CleanInvalidate vstart vend pstart =
->     cleanInvalidateCacheRange_RAM vstart vend pstart
-> doFlush Unify vstart vend pstart = do
->     cleanCacheRange_PoU vstart vend pstart
->     dsb
->     invalidateCacheRange_I vstart vend pstart
->     branchFlushRange vstart vend pstart
->     isb
+> flushPDPT :: PPtr PML4E -> VPtr -> PPtr PDPTE -> Kernel ()
+> flushPDPT vspace vptr pdpte = doMachineOp $ resetCR3
 
-> flushPage :: VMPageSize -> PPtr PDE -> ASID -> VPtr -> Kernel ()
-> flushPage _ pd asid vptr = do
->     assert (vptr .&. mask pageBits == 0)
->         "vptr must be 4k aligned"
->     root_switched <- setVMRootForFlush pd asid
->     maybe_hw_asid <- loadHWASID asid
->     when (isJust maybe_hw_asid) $ do
->       let Just hw_asid = maybe_hw_asid
->       doMachineOp $ invalidateTLB_VAASID (fromVPtr vptr .|. (fromIntegral $ fromHWASID hw_asid))
->       when root_switched $ do
->           tcb <- getCurThread
->           setVMRoot tcb
+X64UPDATE
 
-> flushTable :: PPtr PDE -> ASID -> VPtr -> Kernel ()
-> flushTable pd asid vptr = do
->     assert (vptr .&. mask (pageBitsForSize ARMSection) == 0)
+> flushPageDirectory :: PPtr PML4E -> VPtr -> PPtr PDE -> Kernel ()
+> flushPageDirectory vsoace vptr pde = doMachineOp $ resetCR3
+
+X64UPDATE
+
+> ifPresentInvalidate :: PPtr PTE -> Word -> VPtr -> Kernel ()
+> ifPresentInvalidate slot index vptr = do
+>     pte <- getObject slot
+>     case pte of
+>         InvalidPTE -> return ()
+>         _ -> let index' = index `shiftL` ptTranslationBits
+>              in doMachineOp $ invalidateTLBEntry $ VPtr $ (fromVPtr vptr) + index'
+
+> -- FIXME x64: someone should look at this pile of fail
+> flushTable :: PPtr PML4E -> VPtr -> PPtr PTE -> Kernel ()
+> flushTable vspace vptr pt = do
+>     assert (vptr .&. mask (ptTranslationBits + pageBits) == 0)
 >         "vptr must be 1MB aligned"
->     root_switched <- setVMRootForFlush pd asid
->     maybe_hw_asid <- loadHWASID asid
->     when (isJust maybe_hw_asid) $ do
->       doMachineOp $ invalidateTLB_ASID (fromJust maybe_hw_asid)
->       when root_switched $ do
->           tcb <- getCurThread
->           setVMRoot tcb
+>     tcb <- getCurThread
+>     threadRootSlot <- getThreadVSpaceRoot tcb
+>     threadRoot <- getSlotCap threadRootSlot
+>     ignoreFailure $ 
+>         case threadRoot of
+>             ArchObjectCap (PML4Cap {
+>                   capPML4MappedASID = Just _,
+>                   capPML4BasePtr = vspace'}) -> do
+>                 when (vspace /= vspace') $ throw InvalidRoot
+>                 let offsets = [0, 8 .. 4088] -- FIXME x64: does this include 4088
+>                 let slots = zip offsets $ map (+pt) offsets                
+>                 mapM_ (\(offset, slot) -> ifPresentInvalidate slot offset vptr) slots
+>             _ -> return ()
+
 
 > flushSpace :: ASID -> Kernel ()
 > flushSpace asid = do
