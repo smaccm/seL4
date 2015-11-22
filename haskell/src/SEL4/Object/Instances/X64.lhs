@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,13 +7,13 @@
 % @TAG(GD_GPL)
 %
 
-This module defines instances of "PSpaceStorable" for ARM-specific kernel objects. This includes page table and page directory entries, and ASID pools.
+This module defines instances of "PSpaceStorable" for X64-specific kernel objects. This includes page table and page directory entries, and ASID pools.
 
-> module SEL4.Object.Instances.ARM where
+> module SEL4.Object.Instances.X64 where
 
 \begin{impdetails}
 
-> import SEL4.Machine.Hardware.ARM(PTE(..), PDE(..))
+> import SEL4.Machine.Hardware.X64(PTE(..), PDE(..), PDPTE(..), PML4E(..))
 > import SEL4.Object.Structures
 > import SEL4.Model
 > import Data.Helpers
@@ -34,6 +33,22 @@ This module defines instances of "PSpaceStorable" for ARM-specific kernel object
 >     projectKO o = case o of 
 >                 KOArch (KOPTE p) -> return p
 >                 _ -> typeError "PTE" o
+
+> instance PSpaceStorable PDPTE where
+>     makeObject = InvalidPDPTE
+>     injectKO = KOArch . KOPDPTE
+>     projectKO o = case o of 
+>                 KOArch (KOPDPTE p) -> return p
+>                 _ -> typeError "PDPTE" o
+
+> instance PSpaceStorable PML4E where
+>     makeObject = InvalidPML4E
+>     injectKO = KOArch . KOPML4E
+>     projectKO o = case o of 
+>                 KOArch (KOPML4E p) -> return p
+>                 _ -> typeError "PML4E" o
+
+FIXME x64: What is the max size of an asidpool?
 
 > instance PSpaceStorable ASIDPool where
 >     makeObject = ASIDPool $
