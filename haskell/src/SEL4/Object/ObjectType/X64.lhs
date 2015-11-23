@@ -287,14 +287,27 @@ Create an architecture-specific object.
 > capUntypedPtr (PageCap { capVPBasePtr = PPtr p }) = PPtr p
 > capUntypedPtr (PageTableCap { capPTBasePtr = PPtr p }) = PPtr p
 > capUntypedPtr (PageDirectoryCap { capPDBasePtr = PPtr p }) = PPtr p
+> capUntypedPtr (PDPointerTableCap { capPDPTBasePtr = PPtr p}) = PPtr p
+> capUntypedPtr (PML4Cap { capPML4BasePtr = PPtr p}) = PPtr p
 > capUntypedPtr ASIDControlCap = error "ASID control has no pointer"
 > capUntypedPtr (ASIDPoolCap { capASIDPool = PPtr p }) = PPtr p
+> capUntypedPtr (IOPortCap {}) = error "IOPortCap has no pointer"
+> capUntypedPtr (IOSpaceCap {}) = error "IOSpaceCap has no pointer"
+> capUntypedPtr (IOPageTableCap { capIOPTBasePtr = PPtr p }) = PPtr p
+
+
+FIXME x64: ASIDControlCap is size 0?
 
 > capUntypedSize :: ArchCapability -> Word
 > capUntypedSize (PageCap {capVPSize = sz}) = 1 `shiftL` pageBitsForSize sz
-> capUntypedSize (PageTableCap {}) = 1 `shiftL` 10
-> capUntypedSize (PageDirectoryCap {}) = 1 `shiftL` 14
-> capUntypedSize (ASIDControlCap {}) = 1 `shiftL` (asidHighBits + 2)
-> capUntypedSize (ASIDPoolCap {}) = 1 `shiftL` (asidLowBits + 2)
+> capUntypedSize (PageTableCap {}) = 1 `shiftL` 12
+> capUntypedSize (PageDirectoryCap {}) = 1 `shiftL` 12
+> capUntypedSize (PDPointerTableCap {}) = 1 `shiftL` 12
+> capUntypedSize (PML4Cap {}) = 1 `shiftL` 12
+> capUntypedSize (ASIDControlCap {}) = 0
+> capUntypedSize (ASIDPoolCap {}) = 1 `shiftL` (asidLowBits + 3)
+> capUntypedSize (IOPortCap {}) = 0
+> capUntypedSize (IOSpaceCap {}) = 0
+> capUntypedSize (IOPageTableCap {}) = 1 `shiftL` 12
 
 
