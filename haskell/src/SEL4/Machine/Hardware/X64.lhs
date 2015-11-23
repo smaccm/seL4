@@ -89,7 +89,7 @@ than add an additional pointer type we just give a different translation functio
 > addrFromPPtr = Platform.addrFromPPtr
 
 > addrFromKPPtr :: PPtr a -> PAddr
-> addrFromKPPtr :: Platform.addrFromKPPtr
+> addrFromKPPtr = Platform.addrFromKPPtr
 
 > fromPAddr :: PAddr -> Word
 > fromPAddr = Platform.fromPAddr
