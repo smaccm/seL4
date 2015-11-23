@@ -73,95 +73,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pml4e <- getObject $ globalPM + offset
 >         storePML4E (newPM + offset) pml4e
 
-\subsection{Creating and Updating Mappings}
-
-When a frame is being mapped, or an existing mapping updated, the following function is used to locate the page table or page directory slots that will be updated and to construct the entry that will be written into them.
-
-> createMappingEntries :: PAddr -> VPtr ->
->     VMPageSize -> VMRights -> VMAttributes -> PPtr PDE ->
->     KernelF SyscallError (Either (PTE, [PPtr PTE]) (PDE, [PPtr PDE]))
-> createMappingEntries base vptr ARMSmallPage vmRights attrib pd = do
->     p <- lookupErrorOnFailure False $ lookupPTSlot pd vptr
->     return $ Left (SmallPagePTE {
->         pteFrame = base,
->         pteCacheable = armPageCacheable attrib,
->         pteGlobal = False,
->         pteExecuteNever = armExecuteNever attrib,
->         pteRights = vmRights }, [p])
->
-> createMappingEntries base vptr ARMLargePage vmRights attrib pd = do
->     p <- lookupErrorOnFailure False $ lookupPTSlot pd vptr
->     return $ Left (LargePagePTE {
->         pteFrame = base,
->         pteCacheable = armPageCacheable attrib,
->         pteGlobal = False,
->         pteExecuteNever = armExecuteNever attrib,
->         pteRights = vmRights }, [p, p + 4 .. p + 60])
->
-> createMappingEntries base vptr ARMSection vmRights attrib pd = do
->     let p = lookupPDSlot pd vptr
->     return $ Right (SectionPDE {
->         pdeFrame = base,
->         pdeParity = armParityEnabled attrib,
->         pdeDomain = 0,
->         pdeCacheable = armPageCacheable attrib,
->         pdeGlobal = False,
->         pdeExecuteNever = armExecuteNever attrib,
->         pdeRights = vmRights }, [p])
->
-> createMappingEntries base vptr ARMSuperSection vmRights attrib pd = do
->     let p = lookupPDSlot pd vptr
->     return $ Right (SuperSectionPDE {
->         pdeFrame = base,
->         pdeParity = armParityEnabled attrib,
->         pdeCacheable = armPageCacheable attrib,
->         pdeGlobal = False,
->         pdeExecuteNever = armExecuteNever attrib,
->         pdeRights = vmRights }, [p, p + 4 .. p + 60])
-
-The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe --- that is, that inserting it will behave predictably and will not damage the hardware. The ARMv6 specifications require that there are never two mappings of different sizes at any virtual address in the active address space, so this function will throw a fault if the requested operation would change the size of the mapping of any existing valid entry.
-
-> ensureSafeMapping :: Either (PTE, [PPtr PTE]) (PDE, [PPtr PDE]) ->
->     KernelF SyscallError ()
-
-> ensureSafeMapping (Left (InvalidPTE, _)) = return ()
->
-> ensureSafeMapping (Left (SmallPagePTE {}, ptSlots)) =
->     forM_ ptSlots $ \slot -> do
->         pte <- withoutFailure $ getObject slot
->         case pte of
->             InvalidPTE -> return ()
->             SmallPagePTE {} -> return ()
->             _ -> throw DeleteFirst
->
-> ensureSafeMapping (Left (LargePagePTE {}, ptSlots)) =
->     forM_ ptSlots $ \slot -> do
->         pte <- withoutFailure $ getObject slot
->         case pte of
->             InvalidPTE -> return ()
->             LargePagePTE {} -> return ()
->             _ -> throw DeleteFirst
-
-> ensureSafeMapping (Right (InvalidPDE, _)) = return ()
->
-> ensureSafeMapping (Right (PageTablePDE {}, _)) =
->     fail "This function is not called when mapping page tables"
->
-> ensureSafeMapping (Right (SectionPDE {}, pdSlots)) =
->     forM_ pdSlots $ \slot -> do
->         pde <- withoutFailure $ getObject slot
->         case pde of
->             InvalidPDE -> return ()
->             SectionPDE {} -> return ()
->             _ -> throw DeleteFirst
->
-> ensureSafeMapping (Right (SuperSectionPDE {}, pdSlots)) =
->     forM_ pdSlots $ \slot -> do
->         pde <- withoutFailure $ getObject slot
->         case pde of
->             InvalidPDE -> return ()
->             SuperSectionPDE {} -> return ()
->             _ -> throw DeleteFirst
+X64: Removed createMapping and checkSafeMapping. These seem to be baked into the decode function now.
 
 \subsection{Lookups and Faults}
 
@@ -235,7 +147,7 @@ These checks are too expensive to run in haskell. The first funcion checks that 
 > checkPTAt _ = return ()
 
 > checkPML4ASIDMapMembership :: PPtr PML4E -> [ASID] -> Kernel ()
-> checkPDASIDMapMembership _ _ = return ()
+> checkPML4ASIDMapMembership _ _ = return ()
 
 > checkPML4UniqueToASID :: PPtr PML4E -> ASID -> Kernel ()
 > checkPML4UniqueToASID pd asid = checkPML4ASIDMapMembership pd [asid]
@@ -341,9 +253,9 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 > unmapPDPT asid vaddr pdpt = ignoreFailure $ do
 >     vspace <- findVSpaceForASID asid
 >     let pmSlot = lookupPML4Slot vspace vaddr
->     pml4e <- withoutFailure $ getObject pdptSlot
+>     pml4e <- withoutFailure $ getObject pmSlot
 >     case pml4e of
->         PageDirectoryPTPML4E { pml4Table = pt' } -> return $
+>         PDPointerTablePML4E { pml4Table = pt' } -> return $
 >             if pt' = addrFromPPtr pdpt then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot
 >     flushPDPT vspace pdpt

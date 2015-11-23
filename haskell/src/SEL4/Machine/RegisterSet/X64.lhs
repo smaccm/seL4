@@ -45,7 +45,7 @@ FIXME kernel people are not using R8-R15 at the moment, but that can change
 FIXME move to structures?
 
 > gdtToSel :: Word -> Word
-> gdtToSel n = (n `shiftL` 3) .|. 3
+> gdtToSel n = ( n `shiftL` 3 ) .|. 3
 
 > selCS3 = gdtToSel 5
 > selDS3 = gdtToSel 6

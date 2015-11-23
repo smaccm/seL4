@@ -43,7 +43,7 @@ FIXME the only difference in our GDT entries seems to be the base address (broke
 FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so something is fishy
 
 > data GdtEntry = X64GdtEntry {
->     base :: PPtr}
+>     base :: PPtr PML4E}
 
 > data KernelState = X64KernelState {
 >     x64KSGdt :: Array GdtSlot GdtEntry,

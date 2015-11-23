@@ -101,6 +101,12 @@ The following functions define the x86 64bit specific interface between the kern
 > pageBits :: Int
 > pageBits = 12
 
+All tables in x86 64bit do 9 bits of translation, with eight bytes per entry.
+Every table is one small page in size.
+
+> ptTranslationBits :: Int
+> ptTranslationBits = 9
+
 > pageBitsForSize :: VMPageSize -> Int
 > pageBitsForSize X64SmallPage = pageBits
 > pageBitsForSize X64LargePage = pageBits + ptTranslationBits
@@ -262,12 +268,6 @@ FIXME: does this have to be called dsb?
 
 > invalidatePageStructureCache :: MachineMonad ()
 > invalidatePageStructureCache = invalidateTLBEntry 0
-
-This function is used to clear the load exclusive monitor. This dummy
-implementation assumes the monitor is not modelled in our simulator.
-
-> clearExMonitor :: MachineMonad ()
-> clearExMonitor = return ()
 
 \subsubsection{Fault Status Registers}
 
@@ -459,12 +459,6 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 
 > data VMAttributes = VMAttributes {
 >     x64WriteThrough, x64PAT, x64CacheDisabled :: Bool }
-
-All tables in x86 64bit do 9 bits of translation, with eight bytes per entry.
-Every table is one small page in size.
-
-> ptTranslationBits :: Int
-> ptTranslationBits = 9
 
 > ptBits :: Int
 > ptBits = ptTranslationBits + 3

@@ -31,10 +31,10 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 >     setVMRoot tcb
 >     base <- asUser tcb $ getRegister (Register TLS_BASE)
 >     bufferPtr <- threadGet tcbIPCBuffer tcb
->     gdt <- gets $ x86KSGdt . ksArchState
->     let gdt' <- gdt//[ (GDT_TLS, base), (GDT_IPCBUF, bufferPtr) ]
+>     gdt <- gets $ x64KSGdt . ksArchState
+>     let gdt' = gdt//[ (GDT_TLS, base), (GDT_IPCBUF, bufferPtr) ]
 >     modify (\s -> s {
->         ksArchState = (ksArchState s) { x64Gdt = gdt' }})
+>         ksArchState = (ksArchState s) { x64KSGdt = gdt' }})
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
 > configureIdleThread tcb = do

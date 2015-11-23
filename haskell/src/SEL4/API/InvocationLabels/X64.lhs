@@ -29,7 +29,7 @@ Note: there is no unmap for IO pages.
 
 FIXME: other things that don't exist: IOSpaceRemovePassthrough, IOSpaceUnmap
 
-> data InvocationLabel
+> data ArchInvocationLabel
 >         = X64PDPTMap
 >         | X64PDPTUnmap
 >         | X64PageDirectoryMap
