@@ -42,23 +42,70 @@ It is not possible to copy a page table or page directory capability unless it h
 > deriveCap _ (c@PageTableCap { capPTMappedAddress = Just _ }) = return c
 > deriveCap _ (PageTableCap { capPTMappedAddress = Nothing })
 >     = throw IllegalOperation
-> deriveCap _ (c@PageDirectoryCap { capPDMappedASID = Just _ }) = return c
+> deriveCap _ (c@PageDirectoryCap { capPDMappedAddress = Just _ }) = return c
 > deriveCap _ (PageDirectoryCap { capPDMappedASID = Nothing })
+>     = throw IllegalOperation
+> deriveCap _ (c@PDPointerTableCap { capPDPTMappedAddress = Just _ }) = return c
+> deriveCap _ (PDPointerTableCap { capPDPTMappedAddress = Nothing)
+>     = throw IllegalOperation
+> deriveCap _ (c@PML4Cap { capPML4MappedASID = Just _ }) = return c
+> deriveCap _ (PML4Cap { capPML4MappedASID = Nothing)
 >     = throw IllegalOperation
 
 Page capabilities are copied without their mapping information, to allow them to be mapped in multiple locations.
 
-> deriveCap _ (c@PageCap {}) = return $ c { capVPMappedAddress = Nothing }
+> deriveCap _ (c@PageCap {}) = return $ c { capVPMappedAddress = Nothing, capVPMapType = VMNoMap }
 
-ASID capabilities can be copied without modification.
+ASID capabilities can be copied without modification, as can IOPort and IOSpace caps.
 
 > deriveCap _ c@ASIDControlCap = return c
 > deriveCap _ (c@ASIDPoolCap {}) = return c
+> deriveCap _ (c@IOPortCap {}) = return c
+> deriveCap _ (c@IOSpaceCap {}) = return c
 
-None of the ARM-specific capabilities have a user writeable data word.
+IOPTs
 
-> updateCapData :: Bool -> Word -> ArchCapability -> Capability
-> updateCapData _ _ cap = ArchObjectCap cap
+> deriveCap _ (c@IOPageTableCap { capIOPTMappedAddress = Just _ }) = return c
+> deriveCap _ (IOPageTableCap { capIOPTMappedAddress = Nothing }) 
+>     = throw IllegalOperation
+
+X64 has two writable user data caps
+
+> -- FIXME x64: io_space_capdata_get_domainID
+> ioSpaceGetDomainID :: Word -> Word16
+> ioSpaceGetDomainID dat = return dat
+
+> -- FIXME x64: io_space_capdata_get_PCIDevice
+> ioSpaceGetPCIDevice :: Word -> Word16
+> ioSpaceGetPCIDevice dat = return dat
+
+> -- FIXME x64: io_port_capdata_get_firstPort
+> ioPortGetFirstPort :: Word -> Word16
+> ioPortGetFirstPort dat = return dat 
+
+> -- FIXME x64: io_port_capdata_get_lastPort
+> ioPortGetLastPort :: Word -> Word16
+> ioPortGetLastPort dat = return dat
+   
+> updateCapData :: Bool -> Word -> ArchCapability -> Kernel Capability
+> updateCapData preserve newData (c@IOSpaceCap {}) = do
+>     let pciDevice = ioSpaceGetPCIDevice newData
+>     let domID = ioSpaceGetDomainID newData
+>     fstValidDom <- gets (x64KSFirstValidIODomain . ksArchState)
+>     domIDBits <- gets (x64KSnumIODomainIDBits . ksArchState)
+>     return $ if (not preserve && capIOPCIDevice c = 0 && domID >= fstValidDom
+>                     && domID /= 0 && domID <= mask domIDBits) 
+>                then (ArchCapability (IOSpaceCap domID pciDevice))
+>                else NullCap
+> updateCapData preserve newData (c@IOPortCap {}) = do
+>     let firstPort = ioPortGetFirstPort newData
+>     let lastPort = ioPortGetLastPort newData
+>     assert (capIOPortFirstPort c <= capIOPortLastPort c)
+>     return $ if (firstPort <= lastPort && firstPort >= capIOPortFirstPort c
+>                      && lastPort <= capIOPortLastPort c)
+>               then (ArchCapability (IOPortCap firstPort lastPort))
+>               else NullCap
+> updateCapData _ _ c = return c
 
 Page capabilities have read and write permission bits, which are used to restrict virtual memory accesses to their contents. Note that the ability to map objects into a page table or page directory is granted by possession of a capability to it; there is no specific permission bit restricting this ability.
 
@@ -77,12 +124,29 @@ Deletion of a final capability to an ASID pool requires that the pool is removed
 >     deleteASIDPool b ptr
 >     return NullCap
 
+Delete a PML4
+
+> finaliseCap (PML4Cap {
+>         capPML4MappedASID = Just a,
+>         capPML4BasePtr = ptr }) True = do
+>     deleteASID a ptr
+>     return NullCap
+
+Delete a PDPT
+
+> finaliseCap (PDPointerTableCap {
+>         capPDPTMappedAddress = Just (a, v),
+>         capPDPTBasePtr = ptr }) True = do
+>     unmapPDPT a v ptr
+>     return NullCap
+
+
 Deletion of a final capability to a page directory with an assigned ASID requires the ASID assignment to be removed, and the ASID flushed from the caches.
 
 > finaliseCap (PageDirectoryCap {
->         capPDMappedASID = Just a,
+>         capPDMappedAddress = Just (a, v),
 >         capPDBasePtr = ptr }) True = do
->     deleteASID a ptr
+>     unmapPageDirectory a v ptr
 >     return NullCap
 
 Deletion of a final capability to a page table that has been mapped requires that the mapping be removed from the page directory, and the corresponding addresses flushed from the caches.
@@ -93,12 +157,21 @@ Deletion of a final capability to a page table that has been mapped requires tha
 >     unmapPageTable a v ptr
 >     return NullCap
 
+> finaliseCap (IOSpaceCap {}) True = return NullCap -- FIXME x64: not yet implemented in C
+
+> finaliseCap (c@IOPageTableCap { capIOPTMappedAddress = Just _ }) True = do
+>     deleteIOPageTable c
+>     return NullCap
+
 Deletion of any mapped frame capability requires the page table slot to be located and cleared, and the unmapped address to be flushed from the caches.
 
-> finaliseCap (PageCap { capVPMappedAddress = Just (a, v),
->                        capVPSize = s, capVPBasePtr = ptr }) _
+> finaliseCap (c@PageCap { capVPMappedAddress = Just (a, v),
+>                        capVPSize = s, capVPBasePtr = ptr,
+>                        capVPMapType = typ }) _
 >     = do
->         unmapPage s a v ptr
+>         case typ of
+>             VMIOSpaceMap -> unmapIOPage c
+>             _ -> unmapPage s a v ptr
 >         return NullCap
 
 All other capabilities need no finalisation action.
@@ -108,9 +181,11 @@ All other capabilities need no finalisation action.
 \subsection{Recycling Capabilities}
 
 > resetMemMapping :: ArchCapability -> ArchCapability
-> resetMemMapping (PageCap p rts sz _) = PageCap p rts sz Nothing
+> resetMemMapping (PageCap p rts _ sz _) = PageCap p rts sz Nothing
 > resetMemMapping (PageTableCap ptr _) = PageTableCap ptr Nothing
 > resetMemMapping (PageDirectoryCap ptr _) = PageDirectoryCap ptr Nothing
+> resetMemMapping (PDPointerTableCap ptr _ ) = PDPointerTableCap ptr Nothing
+> resetMemMapping (PML4Cap ptr _) = PML4Cap ptr Nothing
 > resetMemMapping cap = cap
 
 > recycleCap :: Bool -> ArchCapability -> Kernel ArchCapability
@@ -124,49 +199,62 @@ All other capabilities need no finalisation action.
 >     let pteBits = objBits InvalidPTE
 >     let slots = [ptr, ptr + bit pteBits .. ptr + bit ptBits - 1]
 >     mapM_ (flip storePTE InvalidPTE) slots
->     doMachineOp $
->         cleanCacheRange_PoU (VPtr $ fromPPtr ptr)
->                             (VPtr $ fromPPtr ptr + (1 `shiftL` ptBits) - 1)
->                             (addrFromPPtr ptr)
 >     case capPTMappedAddress cap of
 >         Nothing -> return ()
->         Just (a, v) -> do
->             mapped <- pageTableMapped a v ptr
->             when (mapped /= Nothing) $ invalidateTLBByASID a
+>         Just (a, v) -> unmapPageTable a v ptr
 >     finaliseCap cap is_final
 >     return (if is_final then resetMemMapping cap else cap)
 
 > recycleCap is_final (cap@PageDirectoryCap { capPDBasePtr = ptr }) = do
 >     let pdeBits = objBits InvalidPDE
->     let kBaseEntry = fromVPtr kernelBase
->                         `shiftR` pageBitsForSize ARMSection
->     let indices = [0 .. kBaseEntry - 1]
->     let offsets = map (PPtr . flip shiftL pdeBits) indices
->     let slots = map (+ptr) offsets
->     mapM_ (flip storePDE InvalidPDE) slots
->     doMachineOp $
->         cleanCacheRange_PoU (VPtr $ fromPPtr ptr)
->                             (VPtr $ fromPPtr ptr + (1 `shiftL` pdBits) - 1)
->                             (addrFromPPtr ptr)
->     case capPDMappedASID cap of
+>     let slots = [ptr, ptr + bit pdeBits .. ptr + bit pdBits - 1]
+>     mapM_ (flip storePTE InvalidPDE) slots
+>     case capPDMappedAddress cap of
 >         Nothing -> return ()
->         Just a -> do 
->             ignoreFailure $ (do
->                 pd' <- findPDForASID a
->                 withoutFailure $ when (ptr == pd') $ invalidateTLBByASID a)
+>         Just (a, v) -> unmapPageDirectory a v ptr
+>     finaliseCap cap is_final
+>     return (if is_final then resetMemMapping cap else cap)
+
+> recycleCap is_final (cap@PDPointerTableCap { capPDPTBasePtr = ptr }) = do
+>     let pdpteBits = objBits InvalidPDPTE
+>     let slots = [ptr, ptr + bit pdpteBits .. ptr + bit pdptBits - 1]
+>     mapM_ (flip storePTE InvalidPDPTE) slots
+>     case capPDMappedAddress cap of
+>         Nothing -> return ()
+>         Just (a, v) -> unmapPDPT a v ptr
+>     finaliseCap cap is_final
+>     return (if is_final then resetMemMapping cap else cap)
+
+> recycleCap is_final (cap@PML4Cap { capPML4BasePtr = ptr }) = do
+>     let pmBits = objBits InvalidPML4E
+>     let slots = [ptr, ptr + bit pmBits .. ptr + bit pml4bits - 1]
+>     mapM_ (flip storePDE InvalidPML4E) slots
 >     finaliseCap cap is_final
 >     return (if is_final then resetMemMapping cap else cap)  
 
+> recycleCap _ (c@IOPortCap {}) = return c
+> recycleCap is_final (cap@IOSpaceCap) = do
+>     finaliseCap cap is_final
+>     return cap
+
+> -- FIXME x64: check that this is final implementation
+> recycleCap is_final (cap@IOPageTableCap { capIOPTBasePtr = ptr }) = do
+>     let iopteBits = objBits InvalidIOPTE
+>     let slots = [ptr, ptr + bit iopteBits .. ptr + bit ioptBits - 1]
+>     mapM_ (flip storeIOPTE InvalidIOPTE) slots
+>     finaliseCap cap is_final
+>     return cap
+
 > recycleCap _ ASIDControlCap = return ASIDControlCap
 > recycleCap _ (cap@ASIDPoolCap { capASIDBase = base, capASIDPool = ptr }) = do
->     asidTable <- gets (armKSASIDTable . ksArchState)
+>     asidTable <- gets (x64KSASIDTable . ksArchState)
 >     when (asidTable!(asidHighBitsOf base) == Just ptr) $ do
 >         deleteASIDPool base ptr
 >         setObject ptr (makeObject :: ASIDPool)
->         asidTable <- gets (armKSASIDTable . ksArchState)
+>         asidTable <- gets (x64KSASIDTable . ksArchState)
 >         let asidTable' = asidTable//[(asidHighBitsOf base, Just ptr)]
 >         modify (\s -> s {
->             ksArchState = (ksArchState s) { armKSASIDTable = asidTable' }})
+>             ksArchState = (ksArchState s) { x64KSASIDTable = asidTable' }})
 >     return cap
  
  
@@ -190,9 +278,18 @@ All other capabilities need no finalisation action.
 >     capPTBasePtr a == capPTBasePtr b
 > sameRegionAs (a@PageDirectoryCap {}) (b@PageDirectoryCap {}) =
 >     capPDBasePtr a == capPDBasePtr b
+> sameRegionAs (a@PDPointerTableCap {}) (b@PDPointerTableCap {}) =
+>     capPDPTBasePtr a == capPDPTBasePtr b
+> sameRegionAs (a@PML4Cap {}) (b@PML4Cap {}) =
+>     capPML4BasePtr a == capPML4BasePtr b
 > sameRegionAs ASIDControlCap ASIDControlCap = True
 > sameRegionAs (a@ASIDPoolCap {}) (b@ASIDPoolCap {}) =
 >     capASIDPool a == capASIDPool b
+> sameRegionAs (a@IOPortCap {}) (b@IOPortCap {}) = True
+> sameRegionAs (a@IOSpaceCap {}) (b@IOSpaceCap {}) =
+>     capIOPCIDevice a == capIOPCIDevice b
+> sameRegionAs (a@IOPageTableCap {}) (b@IOPageTableCap {}) =
+>     capIOPTBasePtr a == capIOPTBasePtr b
 > sameRegionAs _ _ = False
 
 > isPhysicalCap :: ArchCapability -> Bool
@@ -202,7 +299,7 @@ All other capabilities need no finalisation action.
 > sameObjectAs :: ArchCapability -> ArchCapability -> Bool
 > sameObjectAs (a@PageCap { capVPBasePtr = ptrA }) (b@PageCap {}) =
 >     (ptrA == capVPBasePtr b) && (capVPSize a == capVPSize b)
->         && (ptrA <= ptrA + bit (pageBitsForSize $ capVPSize a) - 1)
+>         && (ptrA <= ptrA + bit (pageBitsForSize $ capVPSize a) - 1) -- FIXME x64: is overflow check required for x64?
 > sameObjectAs a b = sameRegionAs a b
 
 \subsection{Creating New Capabilities}
@@ -216,6 +313,7 @@ Creates a page-sized object that consists of plain words observable to the user.
 
 Create an architecture-specific object.
 
+> -- FIXME x64: WRITE THIS
 > createObject :: ObjectType -> PPtr () -> Int -> Kernel ArchCapability
 > createObject t regionBase _ =
 >     let funupd = (\f x v y -> if y == x then v else f y) in

@@ -43,14 +43,15 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capIOPortFirstPort :: Word, -- FIXME
 >         capIOPortLastPort :: Word }
 >     | IOSpaceCap {
->         capIODomainID :: Word, --FIXME types
->         capIOPCIDevice :: Word }
+>         capIODomainID :: Word16, --FIXME types
+>         capIOPCIDevice :: Word16 }
 >     | IOPageTableCap {
 >         capIOPTBasePtr :: PPtr IOPTE, -- ?? FIXME WTF TYPES
 >         capIOPTMappedAddress :: Maybe (IOASID, VPtr) }
 >     | PageCap {
 >         capVPBasePtr :: PPtr Word,
 >         capVPRights :: VMRights,
+>         capVPMapType :: VMMapType,
 >         capVPSize :: VMPageSize,
 >         capVPMappedAddress :: Maybe (ASID, VPtr) }
 >     | PageTableCap {

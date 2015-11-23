@@ -443,6 +443,13 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     = VMPTE PTE
 >     | VMPDE PDE
 >     | VMPDPTE PDPTE
+>     deriving (Show, Eq, Enum)
+
+> data VMMapType
+>     = VMNoMap
+>     | VMVSpaceMap
+>     | VMIOSpaceMap
+>     deriving (Show, Eq, Enum)
 
 > data VMRights
 >     = VMReadOnly
