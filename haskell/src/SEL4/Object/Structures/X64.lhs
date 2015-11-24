@@ -30,6 +30,9 @@ This module makes use of the GHC extension allowing declaration of types with no
 
 \end{impdetails}
 
+> newtype IOASID = IOASID Word16
+>     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
+
 \subsection{Capabilities}
 
 There are six ARM-specific capability types: the global ASID control capability, ASID pools, page tables, page directories, and pages.
@@ -40,8 +43,8 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capASIDBase :: ASID }
 >     | ASIDControlCap
 >     | IOPortCap {
->         capIOPortFirstPort :: Word, -- FIXME
->         capIOPortLastPort :: Word }
+>         capIOPortFirstPort :: Word16, -- FIXME
+>         capIOPortLastPort :: Word16 }
 >     | IOSpaceCap {
 >         capIODomainID :: Word16, --FIXME types
 >         capIOPCIDevice :: Word16 }
@@ -99,9 +102,6 @@ An ASID pool is an array of pointers to page directories. This is used to implem
 An ASID is an unsigned word. Note that it is a \emph{virtual} address space identifier, and may not correspond to any hardware-defined identifier --- especially on ARMv5 and earlier, where the only identifier implemented in hardware is the 4-bit domain number.
 
 > newtype ASID = ASID Word64
->     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
-
-> newtype IOASID = IOASID Word16
 >     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
 
 ASIDs are mapped to address space roots by a global two-level table. The actual ASID values are opaque to the user, as are the sizes of the levels of the tables; ASID allocation calls will simply return an error once the available ASIDs are exhausted.

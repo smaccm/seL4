@@ -31,7 +31,7 @@ This module contains operations on machine-specific object types for the ARM.
 
 The ARM-specific types and structures are qualified with the "Arch.Types" and "Arch.Structures" prefixes, respectively. This is to avoid namespace conflicts with the platform-independent modules.
 
-> import qualified SEL4.API.Types.ARM as Arch.Types
+> import qualified SEL4.API.Types.X64 as Arch.Types
 
 \subsection{Copying and Mutating Capabilities}
 
@@ -43,7 +43,7 @@ It is not possible to copy a page table or page directory capability unless it h
 > deriveCap _ (PageTableCap { capPTMappedAddress = Nothing })
 >     = throw IllegalOperation
 > deriveCap _ (c@PageDirectoryCap { capPDMappedAddress = Just _ }) = return c
-> deriveCap _ (PageDirectoryCap { capPDMappedASID = Nothing })
+> deriveCap _ (PageDirectoryCap { capPDMappedAddress = Nothing })
 >     = throw IllegalOperation
 > deriveCap _ (c@PDPointerTableCap { capPDPTMappedAddress = Just _ }) = return c
 > deriveCap _ (PDPointerTableCap { capPDPTMappedAddress = Nothing)
@@ -73,19 +73,19 @@ X64 has two writable user data caps
 
 > -- FIXME x64: io_space_capdata_get_domainID
 > ioSpaceGetDomainID :: Word -> Word16
-> ioSpaceGetDomainID dat = return dat
+> ioSpaceGetDomainID dat = error "Not implemented"
 
 > -- FIXME x64: io_space_capdata_get_PCIDevice
 > ioSpaceGetPCIDevice :: Word -> Word16
-> ioSpaceGetPCIDevice dat = return dat
+> ioSpaceGetPCIDevice dat = error "Not implemented"
 
 > -- FIXME x64: io_port_capdata_get_firstPort
 > ioPortGetFirstPort :: Word -> Word16
-> ioPortGetFirstPort dat = return dat 
+> ioPortGetFirstPort dat = error "Not implemented"
 
 > -- FIXME x64: io_port_capdata_get_lastPort
 > ioPortGetLastPort :: Word -> Word16
-> ioPortGetLastPort dat = return dat
+> ioPortGetLastPort dat = error "Not implemented"
    
 > updateCapData :: Bool -> Word -> ArchCapability -> Kernel Capability
 > updateCapData preserve newData (c@IOSpaceCap {}) = do
@@ -95,17 +95,17 @@ X64 has two writable user data caps
 >     domIDBits <- gets (x64KSnumIODomainIDBits . ksArchState)
 >     return $ if (not preserve && capIOPCIDevice c = 0 && domID >= fstValidDom
 >                     && domID /= 0 && domID <= mask domIDBits) 
->                then (ArchCapability (IOSpaceCap domID pciDevice))
+>                then (ArchObjectCap (IOSpaceCap domID pciDevice))
 >                else NullCap
 > updateCapData preserve newData (c@IOPortCap {}) = do
 >     let firstPort = ioPortGetFirstPort newData
 >     let lastPort = ioPortGetLastPort newData
->     assert (capIOPortFirstPort c <= capIOPortLastPort c)
+>     assert (capIOPortFirstPort c <= capIOPortLastPort c) "first port must be less than last"
 >     return $ if (firstPort <= lastPort && firstPort >= capIOPortFirstPort c
 >                      && lastPort <= capIOPortLastPort c)
->               then (ArchCapability (IOPortCap firstPort lastPort))
+>               then (ArchObjectCap (IOPortCap firstPort lastPort))
 >               else NullCap
-> updateCapData _ _ c = return c
+> updateCapData _ _ c = return (ArchObjectCap c)
 
 Page capabilities have read and write permission bits, which are used to restrict virtual memory accesses to their contents. Note that the ability to map objects into a page table or page directory is granted by possession of a capability to it; there is no specific permission bit restricting this ability.
 
@@ -159,29 +159,25 @@ Deletion of a final capability to a page table that has been mapped requires tha
 
 > finaliseCap (IOSpaceCap {}) True = return NullCap -- FIXME x64: not yet implemented in C
 
-> finaliseCap (c@IOPageTableCap { capIOPTMappedAddress = Just _ }) True = do
->     deleteIOPageTable c
->     return NullCap
+FIXME x64: limitations in caseconvs makes this horrible
 
-Deletion of any mapped frame capability requires the page table slot to be located and cleared, and the unmapped address to be flushed from the caches.
-
-> finaliseCap (c@PageCap { capVPMappedAddress = Just (a, v),
->                        capVPSize = s, capVPBasePtr = ptr,
->                        capVPMapType = typ }) _
->     = do
->         case typ of
->             VMIOSpaceMap -> unmapIOPage c
->             _ -> unmapPage s a v ptr
+> finaliseCap c b = case (c, b) of
+>     ((IOPageTableCap { capIOPTMappedAddress = Just _ }), True) -> do
+>         deleteIOPageTable c
 >         return NullCap
-
-All other capabilities need no finalisation action.
-
-> finaliseCap _ _ = return NullCap
+>     ((PageCap { capVPMappedAddress = Just _, capVPMapType = VMIOSpaceMap }), _) -> do 
+>         unmapIOPage c
+>         return NullCap
+>     ((PageCap { capVPMappedAddress = Just (a, v), capVPSize = s, capVPBasePtr = ptr }), _) -> do
+>         unmapPage s a v ptr
+>         return NullCap
+>     (_, _) -> return NullCap
+>     
 
 \subsection{Recycling Capabilities}
 
 > resetMemMapping :: ArchCapability -> ArchCapability
-> resetMemMapping (PageCap p rts _ sz _) = PageCap p rts sz Nothing
+> resetMemMapping (PageCap p rts mtyp sz _) = PageCap p rts mtyp sz Nothing
 > resetMemMapping (PageTableCap ptr _) = PageTableCap ptr Nothing
 > resetMemMapping (PageDirectoryCap ptr _) = PageDirectoryCap ptr Nothing
 > resetMemMapping (PDPointerTableCap ptr _ ) = PDPointerTableCap ptr Nothing
@@ -232,7 +228,7 @@ All other capabilities need no finalisation action.
 >     finaliseCap cap is_final
 >     return (if is_final then resetMemMapping cap else cap)  
 
-> recycleCap _ (c@IOPortCap {}) = return c
+> recycleCap _ (cap@IOPortCap {}) = return cap
 > recycleCap is_final (cap@IOSpaceCap) = do
 >     finaliseCap cap is_final
 >     return cap

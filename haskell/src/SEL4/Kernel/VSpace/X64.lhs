@@ -441,256 +441,20 @@ X64UPDATE
 
 \subsection{Decoding ARM Invocations}
 
-> labelToFlushType :: Word -> FlushType
-> labelToFlushType label = case invocationType label of
->       ARMPDClean_Data -> Clean
->       ARMPageClean_Data -> Clean
->       ARMPDInvalidate_Data -> Invalidate
->       ARMPageInvalidate_Data -> Invalidate
->       ARMPDCleanInvalidate_Data -> CleanInvalidate
->       ARMPageCleanInvalidate_Data -> CleanInvalidate
->       ARMPDUnify_Instruction -> Unify
->       ARMPageUnify_Instruction -> Unify
->       _ -> error "Should never be called without a flush invocation"
-
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
 
 
-> decodeARMMMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
+> decodeX64MMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
 
-There are five ARM-specific capability types. They correspond to the two levels of the hardware-defined page table, the two levels of the global ASID table, and the frames used to back virtual memory pages.
-
-Capabilities for page directories --- the top level of the hardware-defined page table --- have only a single invocation, which allows the user to clean and/or invalidate caches.
-
-> decodeARMMMUInvocation label args _ _ cap@(PageDirectoryCap {}) _ =
->     case (isPDFlush (invocationType label), args) of
->         (True, start:end:_) -> do
->             when (end <= start) $ 
->                 throw $ InvalidArgument 1
->             when (VPtr start >= kernelBase || VPtr end > kernelBase) $
->                 throw IllegalOperation 
->             (pd,asid) <- case cap of
->                 PageDirectoryCap {
->                          capPDMappedASID = Just asid,
->                          capPDBasePtr = pd}
->                     -> return (pd,asid)
->                 _ -> throw $ InvalidCapability 0 
->             pdCheck <- lookupErrorOnFailure False $ findPDForASID asid
->             when (pdCheck /= pd) $ throw $ InvalidCapability 0
->             frameInfo <-
->                  withoutFailure $ resolveVAddr (capPDBasePtr cap) (VPtr start)
->             case frameInfo of
->                 -- Fail if there is nothing mapped here
->                 Nothing -> return $ InvokePageDirectory PageDirectoryNothing
->                 Just frameInfo -> do
->                     withoutFailure $ checkValidMappingSize (fst frameInfo)
->                     let baseStart = pageBase (VPtr start) (fst frameInfo)
->                     let baseEnd = pageBase (VPtr end - 1) (fst frameInfo)
->                     when (baseStart /= baseEnd) $
->                         throw $ RangeError start $ fromVPtr $ baseStart + 
->                                   mask (pageBitsForSize (fst frameInfo))
->                     let offset = start .&. mask (pageBitsForSize (fst frameInfo))
->                     let pStart = snd frameInfo + toPAddr offset
->                     return $ InvokePageDirectory $ PageDirectoryFlush {
->                          pdFlushType = labelToFlushType label,
->                          pdFlushStart = VPtr start,
->                          pdFlushEnd = VPtr end - 1,
->                          pdFlushPStart = pStart,
->                          pdFlushPD = pd,
->                          pdFlushASID = asid }
->         (True, _) -> throw TruncatedMessage
->         _ -> throw IllegalOperation
-
-Capabilities for page tables --- that is, the second level of the hardware-defined page table structure --- have one method. It is used to attach the table to a top-level page directory, at a specific virtual address. It is a single-use method; if it succeeds, the table cannot be mapped again at a different address or in a different page directory, even if the original page directory is deleted. The mapping may only be removed by deleting the page table capability.
-
-Note that these capabilities cannot be copied until they have been mapped, so any given page table object can only appear in one page directory. This is to ensure that the page unmapping operation always succeeds.
-
-> decodeARMMMUInvocation label args _ cte cap@(PageTableCap {}) extraCaps =
->     case (invocationType label, args, extraCaps) of
->         (ARMPageTableMap, vaddr:attr:_, (pdCap,_):_) -> do
->             when (isJust $ capPTMappedAddress cap) $
->                 throw $ InvalidCapability 0
->             (pd,asid) <- case pdCap of
->                 ArchObjectCap (PageDirectoryCap {
->                          capPDMappedASID = Just asid,
->                          capPDBasePtr = pd })
->                     -> return (pd,asid)
->                 _ -> throw $ InvalidCapability 1
->             when (VPtr vaddr >= kernelBase) $
->                 throw $ InvalidArgument 0
->             pdCheck <- lookupErrorOnFailure False $ findPDForASID asid
->             when (pdCheck /= pd) $ throw $ InvalidCapability 1
->             let pdIndex = vaddr `shiftR` 20
->             let vaddr' = pdIndex `shiftL` 20
->             let pdSlot = pd + (PPtr $ pdIndex `shiftL` 2)
->             oldpde <- withoutFailure $ getObject pdSlot
->             unless (oldpde == InvalidPDE) $ throw DeleteFirst
->             let pde = PageTablePDE {
->                     pdeTable = addrFromPPtr $ capPTBasePtr cap,
->                     pdeParity = armParityEnabled $ attribsFromWord attr,
->                     pdeDomain = 0 }
->             return $ InvokePageTable $ PageTableMap {
->                 ptMapCap = ArchObjectCap $
->                     cap { capPTMappedAddress = Just (asid, VPtr vaddr') },
->                 ptMapCTSlot = cte,
->                 ptMapPDE = pde,
->                 ptMapPDSlot = pdSlot }
->         (ARMPageTableMap, _, _) -> throw TruncatedMessage
->         (ARMPageTableUnmap, _, _) -> do
->             cteVal <- withoutFailure $ getCTE cte
->             final <- withoutFailure $ isFinalCapability cteVal
->             unless final $ throw RevokeFirst
->             return $ InvokePageTable $ PageTableUnmap {
->                 ptUnmapCap = cap,
->                 ptUnmapCapSlot = cte }
->         _ -> throw IllegalOperation
-
-Virtual page capabilities may each represent a single mapping into a page table. Unlike page table capabilities, they may be unmapped without deletion, and may be freely copied to allow multiple mappings of the same page. Along with the \emph{Map} and \emph{Unmap} operations, there is a \emph{Remap} operation, which is used to change the access permissions on an existing mapping.
-
-> decodeARMMMUInvocation label args _ cte cap@(PageCap {}) extraCaps =
->     case (invocationType label, args, extraCaps) of
->         (ARMPageMap, vaddr:rightsMask:attr:_, (pdCap,_):_) -> do
->             when (isJust $ capVPMappedAddress cap) $
->                 throw $ InvalidCapability 0
->             (pd,asid) <- case pdCap of
->                 ArchObjectCap (PageDirectoryCap {
->                         capPDMappedASID = Just asid,
->                         capPDBasePtr = pd })
->                     -> return (pd,asid)
->                 _ -> throw $ InvalidCapability 1
->             pdCheck <- lookupErrorOnFailure False $ findPDForASID asid
->             when (pdCheck /= pd) $ throw $ InvalidCapability 1
->             let vtop = vaddr + bit (pageBitsForSize $ capVPSize cap) - 1
->             when (VPtr vtop >= kernelBase) $
->                 throw $ InvalidArgument 0
->             let vmRights = maskVMRights (capVPRights cap) $
->                     rightsFromWord rightsMask
->             checkVPAlignment (capVPSize cap) (VPtr vaddr)
->             entries <- createMappingEntries (addrFromPPtr $ capVPBasePtr cap)
->                 (VPtr vaddr) (capVPSize cap) vmRights
->                 (attribsFromWord attr) pd
->             ensureSafeMapping entries
->             return $ InvokePage $ PageMap {
->                 pageMapASID = asid,
->                 pageMapCap = ArchObjectCap $
->                     cap { capVPMappedAddress = Just (asid, VPtr vaddr) },
->                 pageMapCTSlot = cte,
->                 pageMapEntries = entries }
->         (ARMPageMap, _, _) -> throw TruncatedMessage
->         (ARMPageRemap, rightsMask:attr:_, (pdCap, _):_) -> do
->             (pd,asid) <- case pdCap of
->                 ArchObjectCap (PageDirectoryCap {
->                         capPDMappedASID = Just asid,
->                         capPDBasePtr = pd })
->                     -> return (pd,asid)
->                 _ -> throw $ InvalidCapability 1
->             (asidCheck, vaddr) <- case capVPMappedAddress cap of
->                 Just a -> return a
->                 _ -> throw $ InvalidCapability 0
->             pdCheck <- lookupErrorOnFailure False $ findPDForASID asidCheck
->             when (pdCheck /= pd || asidCheck /= asid) $ throw $ InvalidCapability 1
->             let vmRights = maskVMRights (capVPRights cap) $
->                     rightsFromWord rightsMask
->             checkVPAlignment (capVPSize cap) vaddr
->             entries <- createMappingEntries (addrFromPPtr $ capVPBasePtr cap)
->                 vaddr (capVPSize cap) vmRights (attribsFromWord attr) pd
->             ensureSafeMapping entries
->             return $ InvokePage $ PageRemap {
->                 pageRemapASID = asidCheck,
->                 pageRemapEntries = entries }
->         (ARMPageRemap, _, _) -> throw TruncatedMessage
->         (ARMPageUnmap, _, _) -> return $ InvokePage $ PageUnmap {
->                 pageUnmapCap = cap,
->                 pageUnmapCapSlot = cte }
->         (ARMPageClean_Data, _, _) -> decodeARMPageFlush label args cap
->         (ARMPageInvalidate_Data, _, _) -> decodeARMPageFlush label args cap
->         (ARMPageCleanInvalidate_Data, _, _) -> decodeARMPageFlush label args cap
->         (ARMPageUnify_Instruction, _, _) -> decodeARMPageFlush label args cap
->         (ARMPageGetAddress, _, _) -> return $ InvokePage $ PageGetAddr (capVPBasePtr cap)
->         _ -> throw IllegalOperation
-
-
-The ASID control capability refers to the top level of a global two-level table used for allocating address space identifiers. It has only one method, "MakePool", which creates an ASID allocation pool given a single frame of untyped memory. Since this method allocates part of a global range of ASIDs, it may return a "DeleteFirst" error if the entire range has been allocated to existing ASID pools.
-
-> decodeARMMMUInvocation label args _ _ ASIDControlCap extraCaps =
->     case (invocationType label, args, extraCaps) of
->         (ARMASIDControlMakePool, index:depth:_,
->                 (untyped,parentSlot):(root,_):_) -> do
->             asidTable <- withoutFailure $ gets (armKSASIDTable . ksArchState)
->             let free = filter (\(x,y) -> x <= (1 `shiftL` asidHighBits) - 1 && isNothing y) $ assocs asidTable
->             when (null free) $ throw DeleteFirst
->             let base = (fst $ head free) `shiftL` asidLowBits
->             let pool = makeObject :: ASIDPool
->             frame <- case untyped of
->                 UntypedCap {} | capBlockSize untyped == objBits pool -> do
->                     ensureNoChildren parentSlot
->                     return $ capPtr untyped
->                 _ -> throw $ InvalidCapability 1
->             destSlot <- lookupTargetSlot
->                 root (CPtr index) (fromIntegral depth)
->             ensureEmptySlot destSlot
->             return $ InvokeASIDControl $ MakePool {
->                 makePoolFrame = frame,
->                 makePoolSlot = destSlot,
->                 makePoolParent = parentSlot,
->                 makePoolBase = base }
->         (ARMASIDControlMakePool, _, _) -> throw TruncatedMessage
->         _ -> throw IllegalOperation
-
-ASID pool capabilities are used to allocate unique address space identifiers for virtual address spaces. They support the "Assign" method, which allocates an ASID for a given page directory capability. The directory must not already have an ASID. Page directories cannot be used until they have been allocated an ASID using this method.
-
-> decodeARMMMUInvocation label _ _ _ cap@(ASIDPoolCap {}) extraCaps =
->     case (invocationType label, extraCaps) of
->         (ARMASIDPoolAssign, (pdCap,pdCapSlot):_) ->
->             case pdCap of
->                 ArchObjectCap (PageDirectoryCap { capPDMappedASID = Nothing })
->                   -> do
->                     asidTable <- withoutFailure $ gets (armKSASIDTable . ksArchState)
->                     let base = capASIDBase cap
->                     let poolPtr = asidTable!(asidHighBitsOf base)
->                     when (isNothing poolPtr) $ throw $ FailedLookup False InvalidRoot
->                     let Just p = poolPtr
->                     when (p /= capASIDPool cap) $ throw $ InvalidCapability 0
->                     ASIDPool pool <- withoutFailure $ getObject $ p
->                     let free = filter (\(x,y) -> x <=  (1 `shiftL` asidLowBits) - 1
->                                                  && x + base /= 0 && isNothing y) $ assocs pool
->                     when (null free) $ throw DeleteFirst
->                     let asid = fst $ head free
->                     return $ InvokeASIDPool $ Assign {
->                         assignASID = asid + base,
->                         assignASIDPool = capASIDPool cap,
->                         assignASIDCTSlot = pdCapSlot }
->                 _ -> throw $ InvalidCapability 1
->         (ARMASIDPoolAssign, _) -> throw TruncatedMessage
->         _ -> throw IllegalOperation
-
-> decodeARMPageFlush :: Word -> [Word] -> ArchCapability ->
->                       KernelF SyscallError ArchInv.Invocation
-> decodeARMPageFlush label args cap = case (args, capVPMappedAddress cap) of
->     (start:end:_, Just (asid, vaddr)) -> do
->         pd <- lookupErrorOnFailure False $ findPDForASID asid
->         when (end <= start) $ 
->             throw $ InvalidArgument 1
->         let pageSize = 1 `shiftL` pageBitsForSize (capVPSize cap)
->         let pageBase = addrFromPPtr $ capVPBasePtr cap
->         when (start >= pageSize || end > pageSize) $
->             throw $ InvalidArgument 0
->         let pstart = pageBase + toPAddr start
->         let start' = start + fromVPtr vaddr
->         let end' = end + fromVPtr vaddr
->         return $ InvokePage $ PageFlush {
->               pageFlushType = labelToFlushType label,
->               pageFlushStart = VPtr $ start',
->               pageFlushEnd = VPtr $ end' - 1,
->               pageFlushPStart = pstart,
->               pageFlushPD = pd,
->               pageFlushASID = asid }
->     (_:_:_, Nothing) -> throw IllegalOperation     
->     _ -> throw TruncatedMessage
-
+> decodeX64MMUInvocation label args _ _ cap@(PDPointerTableCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ _ cap@(PageDirectoryCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PageCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = error "Not implemented"
+> decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) _ = error "Not implemented"
 
 Checking virtual address for page size dependent alignment:
 
@@ -700,66 +464,31 @@ Checking virtual address for page size dependent alignment:
 >     unless (w .&. mask (pageBitsForSize sz) == 0) $
 >            throw AlignmentError
 
-When we fetch a mapping in which to perform a page flush, we assert that its
-size is valid. This check is ignored in Haskell, but the Isabelle model has a
-notion of the largest permitted object size, and checks it appropriately.
-
 > checkValidMappingSize :: VMPageSize -> Kernel ()
 > checkValidMappingSize _ = return ()
 
 \subsection{Invocation Implementations}
 
-> performARMMMUInvocation :: ArchInv.Invocation -> KernelP [Word]
-> performARMMMUInvocation i = withoutPreemption $ do
+> performX64MMUInvocation :: ArchInv.Invocation -> KernelP [Word]
+> performX64MMUInvocation i = withoutPreemption $ do
 >     case i of
+>         InvokePDPT oper -> performPDPTInvocation oper
 >         InvokePageDirectory oper -> performPageDirectoryInvocation oper
 >         InvokePageTable oper -> performPageTableInvocation oper
 >         InvokePage oper -> performPageInvocation oper
 >         InvokeASIDControl oper -> performASIDControlInvocation oper
 >         InvokeASIDPool oper -> performASIDPoolInvocation oper
+>         _ -> error "Not implemented"
 >     return $ []
 
+> performPDPTInvocation :: PDPTInvocation -> Kernel ()
+> performPDPTInvocation _ = error "Not implemented"
+
 > performPageDirectoryInvocation :: PageDirectoryInvocation -> Kernel ()
-> performPageDirectoryInvocation (PageDirectoryFlush typ start end pstart pd asid) =
-
-Don't flush an empty range.
-
->     when (start < end) $ do
->         root_switched <- setVMRootForFlush pd asid
->         doMachineOp $ doFlush typ start end pstart
->         when root_switched $ do
->             tcb <- getCurThread
->             setVMRoot tcb
-
-> performPageDirectoryInvocation PageDirectoryNothing = return ()
+> performPageDirectoryInvocation _ = error "Not implemented"
 
 > performPageTableInvocation :: PageTableInvocation -> Kernel ()
-
-> performPageTableInvocation (PageTableMap cap ctSlot pde pdSlot) = do
->     updateCap ctSlot cap
->     storePDE pdSlot pde
->     doMachineOp $ cleanByVA_PoU (VPtr $ fromPPtr $ pdSlot) (addrFromPPtr pdSlot)
-
-> performPageTableInvocation (PageTableUnmap cap ctSlot) = do
->     case capPTMappedAddress cap of
->         Just (asid, vaddr) -> do
->             unmapPageTable asid vaddr (capPTBasePtr cap)
->             let ptr = capPTBasePtr cap
->             let pteBits = objBits InvalidPTE
->             let slots = [ptr, ptr + bit pteBits .. ptr + bit ptBits - 1]
->             mapM_ (flip storePTE InvalidPTE) slots
->             doMachineOp $
->                 cleanCacheRange_PoU (VPtr $ fromPPtr $ ptr)
->                                     (VPtr $ fromPPtr $ (ptr + (1 `shiftL` ptBits) - 1))
->                                     (addrFromPPtr ptr)
->         Nothing -> return ()
->     ArchObjectCap cap <- getSlotCap ctSlot
->     updateCap ctSlot (ArchObjectCap $
->                            cap { capPTMappedAddress = Nothing })
-
-When checking if there was already something mapped before a PageMap or PageRemap,
-we need only check the first slot because ensureSafeMapping tells us that
-the PT/PD is consistent.
+> performPageTableInvocation _ = error "Not implemented"
 
 > pteCheckIfMapped :: PPtr PTE -> Kernel Bool
 > pteCheckIfMapped slot = do
@@ -772,96 +501,16 @@ the PT/PD is consistent.
 >     return $ pd /= InvalidPDE
 
 > performPageInvocation :: PageInvocation -> Kernel ()
->
-> performPageInvocation (PageMap asid cap ctSlot entries) = do
->     updateCap ctSlot cap
->     case entries of
->         Left (pte, slots) -> do
->             tlbFlush <- pteCheckIfMapped (head slots)
->             mapM (flip storePTE pte) slots
->             doMachineOp $
->                 cleanCacheRange_PoU (VPtr $ fromPPtr $ head slots)
->                                     (VPtr $ (fromPPtr (last slots)) + (bit (objBits (undefined::PTE)) - 1))
->                                     (addrFromPPtr (head slots))
->             when tlbFlush $ invalidateTLBByASID asid
->         Right (pde, slots) -> do
->             tlbFlush <- pdeCheckIfMapped (head slots)
->             mapM (flip storePDE pde) slots
->             doMachineOp $
->                 cleanCacheRange_PoU (VPtr $ fromPPtr $ head slots)
->                                     (VPtr $ (fromPPtr (last slots)) + (bit (objBits (undefined::PDE)) - 1))
->                                     (addrFromPPtr (head slots))
->             when tlbFlush $ invalidateTLBByASID asid
->
-> performPageInvocation (PageRemap asid (Left (pte, slots))) = do
->     tlbFlush <- pteCheckIfMapped (head slots)
->     mapM (flip storePTE pte) slots
->     doMachineOp $
->         cleanCacheRange_PoU (VPtr $ fromPPtr $ head slots)
->                             (VPtr $ (fromPPtr (last slots)) + (bit (objBits (undefined::PTE)) - 1))
->                             (addrFromPPtr (head slots))
->     when tlbFlush $ invalidateTLBByASID asid
->
-> performPageInvocation (PageRemap asid (Right (pde, slots))) = do
->     tlbFlush <- pdeCheckIfMapped (head slots)
->     mapM (flip storePDE pde) slots
->     doMachineOp $
->         cleanCacheRange_PoU (VPtr $ fromPPtr $ head slots)
->                             (VPtr $ (fromPPtr (last slots)) + (bit (objBits (undefined::PDE)) - 1))
->                             (addrFromPPtr (head slots))
->     when tlbFlush $ invalidateTLBByASID asid
->
-> performPageInvocation (PageUnmap cap ctSlot) = do
->     case capVPMappedAddress cap of
->         Just (asid, vaddr) -> unmapPage (capVPSize cap) asid vaddr
->                                     (capVPBasePtr cap)
->         Nothing -> return ()
->     ArchObjectCap cap <- getSlotCap ctSlot
->     updateCap ctSlot (ArchObjectCap $
->                            cap { capVPMappedAddress = Nothing })
->
-> performPageInvocation (PageFlush typ start end pstart pd asid) = 
->     when (start < end) $ do
->         root_switched <- setVMRootForFlush pd asid
->         doMachineOp $ doFlush typ start end pstart
->         when root_switched $ do
->             tcb <- getCurThread
->             setVMRoot tcb
->
-> performPageInvocation (PageGetAddr ptr) = do
->     let paddr = fromPAddr $ addrFromPPtr ptr
->     ct <- getCurThread
->     msgTransferred <- setMRs ct Nothing [paddr]
->     msgInfo <- return $ MI {
->             msgLength = msgTransferred,
->             msgExtraCaps = 0,
->             msgCapsUnwrapped = 0,
->             msgLabel = 0 }
->     setMessageInfo ct msgInfo
+> performPageInvocation _ =
+>     error "Not implemented"
 
 > performASIDControlInvocation :: ASIDControlInvocation -> Kernel ()
-> performASIDControlInvocation (MakePool frame slot parent base) = do
->     deleteObjects frame pageBits
->     pcap <- getSlotCap parent
->     updateCap parent (pcap {capFreeIndex = maxFreeIndex (capBlockSize pcap) })
->     placeNewObject frame (makeObject :: ASIDPool) 0
->     let poolPtr = PPtr $ fromPPtr frame
->     cteInsert (ArchObjectCap $ ASIDPoolCap poolPtr base) parent slot
->     assert (base .&. mask asidLowBits == 0)
->         "ASID pool's base must be aligned"
->     asidTable <- gets (armKSASIDTable . ksArchState)
->     let asidTable' = asidTable//[(asidHighBitsOf base, Just poolPtr)]
->     modify (\s -> s {
->         ksArchState = (ksArchState s) { armKSASIDTable = asidTable' }})
+> performASIDControlInvocation _ =
+>     error "Not implemented"
 
 > performASIDPoolInvocation :: ASIDPoolInvocation -> Kernel ()
-> performASIDPoolInvocation (Assign asid poolPtr ctSlot) = do
->     oldcap <- getSlotCap ctSlot
->     ASIDPool pool <- getObject poolPtr
->     let ArchObjectCap cap = oldcap
->     updateCap ctSlot (ArchObjectCap $ cap { capPDMappedASID = Just asid })
->     let pool' = pool//[(asid .&. mask asidLowBits, Just $ capPDBasePtr cap)]
->     setObject poolPtr $ ASIDPool pool'
+> performASIDPoolInvocation (Assign asid poolPtr ctSlot) =
+>     error "Not implemented"
 
 \subsection{Simulator Support}
 

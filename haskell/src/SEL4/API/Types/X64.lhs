@@ -63,7 +63,7 @@ virtual pages, page tables, and page directories.
 > pageType = SmallPageObject
 
 > getObjectSize :: ObjectType -> Int -> Int
-> getObjectSize SmallPageObject _ = pageBitsForSize X64Page
+> getObjectSize SmallPageObject _ = pageBitsForSize X64SmallPage
 > getObjectSize LargePageObject _ = pageBitsForSize X64LargePage
 > getObjectSize HugePageObject _ = pageBitsForSize X64HugePage
 > getObjectSize PageTableObject _ = ptBits

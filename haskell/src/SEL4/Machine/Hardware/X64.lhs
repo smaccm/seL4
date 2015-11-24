@@ -112,72 +112,30 @@ Every table is one small page in size.
 > pageBitsForSize X64LargePage = pageBits + ptTranslationBits
 > pageBitsForSize X64HugePage = pageBits + ptTranslationBits + ptTranslationBits
 
-
-> getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
-> getMemoryRegions = do
->     cpbtr <- ask
->     liftIO $ Platform.getMemoryRegions cpbtr
-
-> getDeviceRegions :: MachineMonad [(PAddr, PAddr)]
-> getDeviceRegions = do
->     cbptr <- ask
->     liftIO $ Platform.getDeviceRegions cbptr
-
-> getKernelDevices :: MachineMonad [(PAddr, PPtr Word)]
-> getKernelDevices = do
->     cbptr <- ask
->     liftIO $ Platform.getKernelDevices cbptr
-
-> loadWord :: PPtr Word -> MachineMonad Word
-> loadWord ptr = do
->     cbptr <- ask
->     liftIO $ Platform.loadWordCallback cbptr $ addrFromPPtr ptr
-
-> storeWord :: PPtr Word -> Word -> MachineMonad ()
-> storeWord ptr val = do
->     cbptr <- ask
->     liftIO $ Platform.storeWordCallback cbptr (addrFromPPtr ptr) val
-
 > storeWordVM :: PPtr Word -> Word -> MachineMonad ()
 > storeWordVM ptr val = storeWord ptr val
+
+> ptBits :: Int
+> ptBits = ptTranslationBits + 3
+
+> pdBits :: Int
+> pdBits = ptTranslationBits + 3
+
+> pdptBits :: Int
+> pdptBits = ptTranslationBits + 3
+
+> pml4Bits :: Int
+> pml4Bits = ptTranslationBits + 3
 
 FIXME: Not on x64
 
 > pageColourBits :: Int
 > pageColourBits = Platform.pageColourBits
 
-> getActiveIRQ :: MachineMonad (Maybe IRQ)
-> getActiveIRQ = do
->     cbptr <- ask
->     liftIO $ Platform.getActiveIRQ cbptr
-
-> ackInterrupt :: IRQ -> MachineMonad ()
-> ackInterrupt irq = do
->     cbptr <- ask
->     liftIO $ Platform.ackInterrupt cbptr irq
-
-> maskInterrupt :: Bool -> IRQ -> MachineMonad ()
-> maskInterrupt maskI irq = do
->     cbptr <- ask
->     liftIO $ Platform.maskInterrupt cbptr maskI irq
-
 FIXME: IOAPIC: set\_mode\_config and map\_pin\_to\_vector equivalents?
 
 > setInterruptMode :: IRQ -> Bool -> Bool -> MachineMonad ()
 > setInterruptMode _ _ _ = return ()
-
-> configureTimer :: MachineMonad IRQ
-> configureTimer = do
->     cbptr <- ask
->     liftIO $ Platform.configureTimer cbptr
-
-> resetTimer :: MachineMonad ()
-> resetTimer = do
->     cbptr <- ask
->     liftIO $ Platform.resetTimer cbptr
-
-> debugPrint :: String -> MachineMonad ()
-> debugPrint str = liftIO $ putStrLn str
 
 > getRestartPC = getRegister (Register X64.FaultInstruction)
 > setNextPC = setRegister (Register X64.NextIP)
@@ -218,7 +176,7 @@ We just use it as a stub for the Isabelle formalization.
 
 Same as "clearMemory", but uses storeWordVM to write to memory.
 To be used when creating mapping objects (page tables and -dirs)
-Flushing the kernel's mapping from the virtually-indexed
+Flushing the kernel's mapping from TLBindexed
 caches must be done separately.
 
 > clearMemoryVM :: PPtr Word -> Int -> MachineMonad ()
@@ -232,39 +190,28 @@ caches must be done separately.
 
 
 > setCurrentCR3 :: CR3 -> MachineMonad ()
-> setCurrentCR3 cr3 = do
->     cbptr <- ask
->     liftIO $ Platform.writeCR3 cbptr cr3
+> setCurrentCR3 cr3 = Platform.writeCR3 cr3
 
 > getCurrentCR3 :: MachineMonad CR3
-> getCurrentCR3 cr3 = do
->     cbptr <- ask
->     liftIO $ Platform.readCR3 cbptr
+> getCurrentCR3 cr3 = Platform.readCR3 cbptr
 
 > setCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
 > setCurrentVSpaceRoot pd asid = 
->   setCurrentCR3 (Platform.X86CR3 { baseAddress = PAddr, pcid = Word })
+>   setCurrentCR3 (undefined { CR3BaseAddress = pd, CR3pcid = asid })
 
 \subsubsection{Memory Barriers}
 
-FIXME: does this have to be called dsb?
 
 > mfence :: MachineMonad ()
-> mfence = do
->     cbptr <- ask
->     liftIO $ Platform.mfenceCallback cbptr
+> mfence = Platform.mfence
 
 \subsubsection{Cache Cleaning and TLB Flushes}
 
 > invalidateTLB :: MachineMonad ()
-> invalidateTLB = do
->     cbptr <- ask
->     liftIO $ Platform.invalidateTLBCallback cbptr
+> invalidateTLB = Platform.invalidateTLB
 
 > invalidateTLBEntry :: VPtr -> MachineMonad ()
-> invalidateTLBEntry vptr = do
->     cbptr <- ask
->     liftIO $ Platform.invalidateTLBEntry cbptr vptr
+> invalidateTLBEntry vptr = Platform.invalidateTLB vptr
 
 > invalidatePageStructureCache :: MachineMonad ()
 > invalidatePageStructureCache = invalidateTLBEntry 0
@@ -283,7 +230,7 @@ FIXME: x64 has anything like this?
 >         pml4CacheDisabled :: Bool,
 >         pml4WriteThrough :: Bool,
 >         pml4ExecuteDisable :: Bool,
->         pdptRights :: VMRights }
+>         pml4eRights :: VMRights }
 >     deriving (Show, Eq)
 
 > wordFromPML4E :: PML4E -> Word
@@ -319,7 +266,7 @@ FIXME: x64 has anything like this?
 
 > wordFromPDPTE :: PDPTE -> Word
 > wordFromPDPTE InvalidPDPTE = 0
-> wordFromPDPTE (PageDirectoryPTE table accessed cd wt xd rights) = 1 .|.
+> wordFromPDPTE (PageDirectoryPDPTE table accessed cd wt xd rights) = 1 .|.
 >     (if xd then bit 63 else 0) .|.
 >     (fromIntegral table .&. 0x7fffffffff000) .|.
 >     (if accessed then bit 5 else 0) .|.
@@ -368,7 +315,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 > -- FIXME x64
 > wordFromPDE :: PDE -> Word
 > wordFromPDE InvalidPDE = 0
-> wordFromPDE (PageTablePTE table accessed cd wt xd rights) = 1 .|.
+> wordFromPDE (PageTablePDE table accessed cd wt xd rights) = 1 .|.
 >     (if xd then bit 63 else 0) .|.
 >     (fromIntegral table .&. 0x7fffffffff000) .|.
 >     (if accessed then bit 5 else 0) .|.
@@ -391,7 +338,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     | SmallPagePTE {
 >         pteFrame :: PAddr,
 >         pteGlobal :: Bool,
->         pdePAT :: Bool,
+>         ptePAT :: Bool,
 >         pteDirty :: Bool,
 >         pteAccessed :: Bool,
 >         pteCacheDisabled :: Bool,
@@ -459,9 +406,6 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 
 > data VMAttributes = VMAttributes {
 >     x64WriteThrough, x64PAT, x64CacheDisabled :: Bool }
-
-> ptBits :: Int
-> ptBits = ptTranslationBits + 3
 
 > cacheLineBits = Platform.cacheLineBits
 > cacheLine = Platform.cacheLine

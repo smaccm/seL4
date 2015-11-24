@@ -32,8 +32,16 @@ This module makes use of the GHC extension allowing data types with no construct
 
 There are five ARM-specific object types; however, only four of them may be invoked. These are the page table, page, ASID control, and ASID pool objects.
 
+FIXME x64: Arch-specific IRQ invocation. Not defined yet.
+
+> data IRQInvocation
+>         = NoArchIRQInvocationsYet
+>         deriving Show
+
 FIXME All object invocations implicitly involve a cap to some object and a slot?
 Presumably if we point at an object the kernel can figure out the cap and the slot?
+
+
 
 > data Invocation
 >     = InvokePDPT PDPTInvocation
@@ -85,6 +93,11 @@ VTD context as a VTD context table entry (IOCTE).  If the context table entry
 for a device does not have a page table entry, we must initialise that first to
 point to the invoked IO page table.
 
+FIXME x64: These need to be defined
+
+> newtype IOCTE = IOCTE { iocte :: Word}
+> newtype IOPTE = IOPTE { iopte :: Word}
+
 > data IOPageTableInvocation
 >     = IOPageTableUnmap {
 >         ioptUnmapCap :: ArchCapability,
@@ -112,10 +125,10 @@ point to the invoked IO page table.
 >         pageUnmapCap :: ArchCapability,
 >         pageUnmapCapSlot :: PPtr CTE }
 >     | PageIOMap {
->         pageMapASID :: ASID,
->         pageMapCap :: Capability,
->         pageMapCTSlot :: PPtr CTE,
->         pageMapEntries :: (IOPTE, [PPtr IOPTE]) } -- FIXME : IO Types here. there's no ASID we care about?
+>         pageIOMapASID :: ASID,
+>         pageIOMapCap :: Capability,
+>         pageIOMapCTSlot :: PPtr CTE,
+>         pageIOMapEntries :: (IOPTE, [PPtr IOPTE]) } -- FIXME : IO Types here. there's no ASID we care about?
 >     deriving Show
 
 > data ASIDControlInvocation
@@ -135,9 +148,13 @@ point to the invoked IO page table.
 
 \subsection{IO Ports}
 
+FIXME x64: What is a port?
+
+> newtype Port = Port { port :: Word}
+
 > data IOPortInvocationData
 >     = IOPortIn8 | IOPortIn16 | IOPortIn32
->     | IOPortOut8 Word8 | IOPortOut16 Word16 | IOPortIn32 Word32
+>     | IOPortOut8 Word8 | IOPortOut16 Word16 | IOPortOut32 Word32
 
 > data IOPortInvocation = IOPortInvocation Port IOPortInvocationData
 
