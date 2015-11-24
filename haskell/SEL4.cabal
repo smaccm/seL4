@@ -77,6 +77,7 @@ Library
 --                            SEL4.Machine.Hardware.ARM.Sabre
 
                             SEL4.API.Types.ARM
+                            SEL4.API.InvocationLabels.ARM
                             SEL4.API.Invocation.ARM
                             SEL4.Kernel.VSpace.ARM
                             SEL4.Kernel.Thread.ARM

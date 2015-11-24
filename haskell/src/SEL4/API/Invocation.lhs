@@ -191,7 +191,7 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 
 > instance Bounded InvocationLabel where
 >     minBound = InvalidInvocation
->     maxBound = maxBound ArchLabels.InvocationLabel
+>     maxBound = ArchInvocationLabel $ (maxBound :: ArchLabels.ArchInvocationLabel)
 
 > instance Enum InvocationLabel where
 >     fromEnum e = case e of

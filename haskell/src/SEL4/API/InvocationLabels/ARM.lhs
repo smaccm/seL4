@@ -39,6 +39,6 @@ This module makes use of the GHC extension allowing data types with no construct
 >         | ARMPageGetAddress
 >         | ARMASIDControlMakePool
 >         | ARMASIDPoolAssign
->         deriving (Eq, Enum, Bounded)
+>         deriving (Eq, Enum, Bounded, Show)
 
 
