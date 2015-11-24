@@ -1001,6 +1001,13 @@ unmapPageDirectory(asid_t asid, vptr_t vaddr, pde_t *pd)
         return;
     }
 
+    /* check if the PDPT has the PD */
+    if (! (pdpte_ptr_get_page_size(lu_ret.pdptSlot) == pdpte_pdpte_pd &&
+           pdpte_pdpte_pd_ptr_get_present(lu_ret.pdptSlot) &&
+           (pdpte_pdpte_pd_ptr_get_pd_base_address(lu_ret.pdptSlot) == pptr_to_paddr(pd)))) {
+        return;
+    }
+
     flushPD(find_ret.vspace_root, vaddr, pd);
 
     *lu_ret.pdptSlot = pdpte_pdpte_pd_new(
@@ -1154,7 +1161,13 @@ void unmapPDPT(asid_t asid, vptr_t vaddr, pdpte_t *pdpt)
     if (lu_ret.status != EXCEPTION_NONE) {
         return;
     }
-    
+
+    /* check if the PML4 has the PDPT */
+    if (! (pml4e_ptr_get_present(lu_ret.pml4Slot) &&
+           pml4e_ptr_get_pdpt_base_address(lu_ret.pml4Slot) == pptr_to_paddr(pdpt))) {
+        return;
+    }
+
     flushPDPT(find_ret.vspace_root, vaddr, pdpt);
 
     *lu_ret.pml4Slot = pml4e_new(

@@ -731,6 +731,13 @@ void unmapPageTable(asid_t asid, vptr_t vaddr, pte_t* pt)
         return;
     }
 
+    /* check if the PD actually refers to the PT */
+    if (! (pde_ptr_get_page_size(lu_ret.pdSlot) == pde_pde_small &&
+           pde_pde_small_ptr_get_present(lu_ret.pdSlot) &&
+           (pde_pde_small_ptr_get_pt_base_address(lu_ret.pdSlot) == pptr_to_paddr(pt)))) {
+        return;
+    }
+
     flushTable(find_ret.vspace_root, vaddr, pt);
 
     *lu_ret.pdSlot = makeUserPDEPageTableInvalid();
