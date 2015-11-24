@@ -112,6 +112,21 @@ Every table is one small page in size.
 > pageBitsForSize X64LargePage = pageBits + ptTranslationBits
 > pageBitsForSize X64HugePage = pageBits + ptTranslationBits + ptTranslationBits
 
+> getMemoryRegions :: MachineMonad [(PAddr, PAddr)]
+> getMemoryRegions = do
+>     cpbtr <- ask
+>     liftIO $ Platform.getMemoryRegions cpbtr
+
+> getDeviceRegions :: MachineMonad [(PAddr, PAddr)]
+> getDeviceRegions = do
+>     cbptr <- ask
+>     liftIO $ Platform.getDeviceRegions cbptr
+
+> getKernelDevices :: MachineMonad [(PAddr, PPtr Word)]
+> getKernelDevices = do
+>     cbptr <- ask
+>     liftIO $ Platform.getKernelDevices cbptr
+
 > storeWord :: PPtr Word -> Word -> MachineMonad ()
 > storeWord ptr val = do
 >     cbptr <- ask
@@ -119,6 +134,26 @@ Every table is one small page in size.
 
 > storeWordVM :: PPtr Word -> Word -> MachineMonad ()
 > storeWordVM ptr val = storeWord ptr val
+
+> loadWord :: PPtr Word -> MachineMonad Word
+> loadWord ptr = do
+>     cbptr <- ask
+>     liftIO $ Platform.loadWordCallback cbptr $ addrFromPPtr ptr
+
+> getActiveIRQ :: MachineMonad (Maybe IRQ)
+> getActiveIRQ = do
+>     cbptr <- ask
+>     liftIO $ Platform.getActiveIRQ cbptr
+
+> ackInterrupt :: IRQ -> MachineMonad ()
+> ackInterrupt irq = do
+>     cbptr <- ask
+>     liftIO $ Platform.ackInterrupt cbptr irq
+
+> maskInterrupt :: Bool -> IRQ -> MachineMonad ()
+> maskInterrupt maskI irq = do
+>     cbptr <- ask
+>     liftIO $ Platform.maskInterrupt cbptr maskI irq
 
 > ptBits :: Int
 > ptBits = ptTranslationBits + 3
@@ -141,6 +176,19 @@ FIXME: IOAPIC: set\_mode\_config and map\_pin\_to\_vector equivalents?
 
 > setInterruptMode :: IRQ -> Bool -> Bool -> MachineMonad ()
 > setInterruptMode _ _ _ = return ()
+
+> configureTimer :: MachineMonad IRQ
+> configureTimer = do
+>     cbptr <- ask
+>     liftIO $ Platform.configureTimer cbptr
+
+> resetTimer :: MachineMonad ()
+> resetTimer = do
+>     cbptr <- ask
+>     liftIO $ Platform.resetTimer cbptr
+
+> debugPrint :: String -> MachineMonad ()
+> debugPrint str = liftIO $ putStrLn str
 
 > getRestartPC = getRegister (Register X64.FaultInstruction)
 > setNextPC = setRegister (Register X64.NextIP)
@@ -205,6 +253,8 @@ caches must be done separately.
 > setCurrentVSpaceRoot pd asid =
 >   setCurrentCR3 (Platform.CR3 { Platform.cr3BaseAddress = pd
 >                               , Platform.cr3pcid = asid })
+
+> resetCR3 = error "Unimplemented"
 
 \subsubsection{Memory Barriers}
 
@@ -354,6 +404,13 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pteRights :: VMRights }
 >     deriving (Show, Eq)
 
+FIXME x64: These need to be defined
+
+> newtype IOCTE = IOCTE { iocte :: Word}
+>     deriving Show
+> newtype IOPTE = IOPTE { iopte :: Word}
+>     deriving Show
+
 > -- FIXME x64: word size?
 > wordFromPTE :: PTE -> Word
 > wordFromPTE InvalidPTE = 0
@@ -420,6 +477,7 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 > pptrBase :: VPtr
 > pptrBase = Platform.pptrBase
 
+> hwASIDInvalidate = error "Unimplemented"
 
 > -- FIXME x64: IOPTEs
 

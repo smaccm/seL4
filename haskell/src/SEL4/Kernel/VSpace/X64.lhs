@@ -33,7 +33,7 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import Data.Maybe
 > import Data.List
 > import Data.Array
-> import Data.Word
+> import Data.Word (Word8, Word16, Word32)
 
 \end{impdetails}
 
@@ -109,7 +109,7 @@ Locating the page directory for a given ASID is necessary when updating or delet
 > findVSpaceForASID asid = do
 >     assert (asid > 0) "ASID 0 is used for objects that are not mapped"
 >     assert (asid <= snd asidRange) "ASID out of range"
->     asidTable <- withoutFailure $ gets (x86KSASIDTable . ksArchState)
+>     asidTable <- withoutFailure $ gets (x64KSASIDTable . ksArchState)
 >     let poolPtr = asidTable!(asidHighBitsOf asid)
 >     ASIDPool pool <- case poolPtr of
 >         Just ptr -> withoutFailure $ getObject ptr
@@ -129,7 +129,7 @@ This version of findPDForASID will fail rather than raise an exception if the AS
 >         const (fail "findVSpaceForASIDAssert: pd not found")
 >     assert (pm .&. mask pdBits == 0)
 >         "findVSpaceForASIDAssert: page directory pointer alignment check"
->     asidMap <- gets (x86KSASIDMap . ksArchState)
+>     asidMap <- gets (x64KSASIDMap . ksArchState)
 >     flip assert "findVSpaceForASIDAssert: page directory map mismatch"
 >         $ case asidMap ! asid of
 >             Nothing -> True
@@ -137,7 +137,7 @@ This version of findPDForASID will fail rather than raise an exception if the AS
 >     return pm
 
 
-These checks are too expensive to run in haskell. The first funcion checks that the pointer is to a page directory, which would require testing that each entry of the table is present. The second checks that the page directory appears in x86KSASIDMap only on the ASIDs specified, which would require walking all possible ASIDs to test. In the formalisation of this specification, these functions are given alternative definitions that make the appropriate checks.
+These checks are too expensive to run in haskell. The first funcion checks that the pointer is to a page directory, which would require testing that each entry of the table is present. The second checks that the page directory appears in x64KSASIDMap only on the ASIDs specified, which would require walking all possible ASIDs to test. In the formalisation of this specification, these functions are given alternative definitions that make the appropriate checks.
 
 > checkPDAt :: PPtr PDE -> Kernel ()
 > checkPDAt _ = return ()
@@ -177,9 +177,9 @@ The "lookupPTSlot" function locates the page table slot that maps a given virtua
 >     pdpte <- withoutFailure $ getObject pdptSlot
 >     case pdpte of
 >         PageDirectoryPDPTE {} -> do
->             let pd = ptrFromPAddr $ pdpteTable pdpte
->             let pdIndex = getPDIndex vptr 
->             let pdSlot = pd + (PPtr $ ptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
+>             let pd = ptrFromPAddr $ pdptTable pdpte
+>             let pdIndex = getPDIndex vptr
+>             let pdSlot = pd + (PPtr $ pdIndex `shiftL` 3) -- FIXME x64: word_size_bits 
 >             return pdSlot
 >         _ -> throw $ MissingCapability (pageBits + ptBits)
 
@@ -191,7 +191,7 @@ The "lookupPTSlot" function locates the page table slot that maps a given virtua
 >         PDPointerTablePML4E {} -> do
 >             let pdpt = ptrFromPAddr $ pml4Table pml4e
 >             let pdptIndex = getPML4Index vptr 
->             let pdptSlot = pdpt + (PPtr $ ptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
+>             let pdptSlot = pdpt + (PPtr $ pdptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
 >             return pdptSlot
 
 Similarly, "lookupPDSlot" locates a slot in the top-level page directory. However, it does not access the kernel state and never throws a fault, so it is not in the kernel monad.
@@ -208,7 +208,7 @@ If the kernel receives a VM fault from the CPU, it must determine the address an
 > handleVMFault :: PPtr TCB -> VMFaultType -> KernelF Fault ()
 > handleVMFault thread f = do
 >     addr <- withoutFailure $ doMachineOp getFaultAddress -- FIXME x64: implement getFaultAddress = read_cr2
->     fault <- withoutFailure $ asUser thread $ getRegister ErrorRegister
+>     fault <- withoutFailure $ asUser thread $ getRegister undefined -- FIXME: what is ErrorRegister supposed to mean here?!
 >     case f of
 >         X64DataFault -> throw $ VMFault addr [0, fault .&. mask 5] -- FSR is 5 bits in x64
 >         X64InstructionFault -> throw $ VMFault addr [1, fault .&. mask 5]
@@ -223,11 +223,11 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 > deleteASIDPool base ptr = do
 >     assert (base .&. mask asidLowBits == 0)
 >         "ASID pool's base must be aligned"
->     asidTable <- gets (x86KSASIDTable . ksArchState)
+>     asidTable <- gets (x64KSASIDTable . ksArchState)
 >     when (asidTable!(asidHighBitsOf base) == Just ptr) $ do
 >         let asidTable' = asidTable//[(asidHighBitsOf base, Nothing)]
 >         modify (\s -> s {
->             ksArchState = (ksArchState s) { x86KSASIDTable = asidTable' }})
+>             ksArchState = (ksArchState s) { x64KSASIDTable = asidTable' }})
 >         tcb <- getCurThread
 >         setVMRoot tcb
 
@@ -235,7 +235,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 
 > deleteASID :: ASID -> PPtr PML4E -> Kernel ()
 > deleteASID asid pm = do
->     asidTable <- gets (x86KSASIDTable . ksArchState)
+>     asidTable <- gets (x64KSASIDTable . ksArchState)
 >     hwASIDInvalidate asid --FIXME x64: add to hardware functions
 >     case asidTable!(asidHighBitsOf asid) of
 >         Nothing -> return ()
@@ -256,7 +256,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     pml4e <- withoutFailure $ getObject pmSlot
 >     case pml4e of
 >         PDPointerTablePML4E { pml4Table = pt' } -> return $
->             if pt' = addrFromPPtr pdpt then return () else throw InvalidRoot
+>             if pt' == addrFromPPtr pdpt then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot
 >     flushPDPT vspace pdpt
 >     withoutFailure $ storePML4E pml4e InvalidPML4E
@@ -270,7 +270,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     pdpte <- withoutFailure $ getObject pdptSlot
 >     case pdpte of
 >         PageDirectoryPDPTE { pdptTable = pd' } -> return $
->             if pt' = addrFromPPtr pd then return () else throw InvalidRoot
+>             if pd' == addrFromPPtr pd then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot
 >     invalidatePageStructureCache -- FIXME x64: hardware implement
 >     withoutFailure $ storePDPTE pdpte InvalidPDPTE
@@ -284,7 +284,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     pde <- withoutFailure $ getObject pdSlot
 >     case pde of
 >         PageTablePDE { pdeTable = pt' } -> return $
->             if pt' = addrFromPPtr pt then return () else throw InvalidRoot
+>             if pt' == addrFromPPtr pt then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot -- FIXME x64: dummy throw
 >     flushTable vspace vaddr pt -- FIXME x64: implement
 >     withoutFailure $ storePDE pdSlot InvalidPDE
@@ -360,7 +360,7 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 >                     capPDMappedASID = Just _,
 >                     capPDBasePtr = pd }) -> checkPML4NotInASIDMap pd
 >                 _ -> return ()
->             globalPML4 <- gets (x86KSGlobalPML4 . ksArchState)
+>             globalPML4 <- gets (x64KSGlobalPML4 . ksArchState)
 >             doMachineOp $ setCurrentVSpaceRoot (addrFromKPPtr globalPML4, 0) )
 
 \subsection{Helper Functions}
@@ -426,7 +426,7 @@ X64UPDATE
 >         ArchObjectCap (PML4Cap {
 >               capPML4MappedASID = Just _,
 >               capPML4BasePtr = vspace'}) ->
->             when (vspace = vspace') $ do 
+>             when (vspace == vspace') $ do 
 >                 let pteBits = objBits (undefined :: PTE)
 >                 let ptSize = 1 `shiftL` ptTranslationBits
 >                 forM_ [0 .. ptSize - 1] $ \index -> do

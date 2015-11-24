@@ -27,7 +27,7 @@ There are presently no ARM-specific register subsets defined, but in future this
 \end{impdetails}
 
 > decodeTransfer :: Word8 -> KernelF SyscallError CopyRegisterSets
-> decodeTransfer _ = return ARMNoExtraRegisters
+> decodeTransfer _ = return X64NoExtraRegisters
 
 > performTransfer :: CopyRegisterSets -> PPtr TCB -> PPtr TCB -> Kernel ()
 > performTransfer _ _ _ = return ()

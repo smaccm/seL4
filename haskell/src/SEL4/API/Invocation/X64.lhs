@@ -23,8 +23,9 @@ This module makes use of the GHC extension allowing data types with no construct
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.Hardware.X64 hiding (PAddr)
+> import SEL4.Machine.Hardware.X64 hiding (PAddr, IRQ)
 > import SEL4.Object.Structures
+> import Data.Word (Word8, Word16, Word32)
 
 \end{impdetails}
 
@@ -40,8 +41,6 @@ FIXME x64: Arch-specific IRQ invocation. Not defined yet.
 
 FIXME All object invocations implicitly involve a cap to some object and a slot?
 Presumably if we point at an object the kernel can figure out the cap and the slot?
-
-
 
 > data Invocation
 >     = InvokePDPT PDPTInvocation
@@ -93,11 +92,6 @@ VTD context as a VTD context table entry (IOCTE).  If the context table entry
 for a device does not have a page table entry, we must initialise that first to
 point to the invoked IO page table.
 
-FIXME x64: These need to be defined
-
-> newtype IOCTE = IOCTE { iocte :: Word}
-> newtype IOPTE = IOPTE { iopte :: Word}
-
 > data IOPageTableInvocation
 >     = IOPageTableUnmap {
 >         ioptUnmapCap :: ArchCapability,
@@ -148,15 +142,13 @@ FIXME x64: These need to be defined
 
 \subsection{IO Ports}
 
-FIXME x64: What is a port?
-
-> newtype Port = Port { port :: Word}
-
 > data IOPortInvocationData
 >     = IOPortIn8 | IOPortIn16 | IOPortIn32
 >     | IOPortOut8 Word8 | IOPortOut16 Word16 | IOPortOut32 Word32
+>     deriving Show
 
-> data IOPortInvocation = IOPortInvocation Port IOPortInvocationData
+> data IOPortInvocation = IOPortInvocation IOPort IOPortInvocationData
+>     deriving Show
 
 \subsection{Interrupt Control}
 

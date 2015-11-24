@@ -53,5 +53,5 @@ FIXME: other things that don't exist: IOSpaceRemovePassthrough, IOSpaceUnmap
 >         | X64IOPortOut32
 >         | X64IRQIssueIRQHandlerIOAPIC
 >         | X64IRQIssueIRQHandlerMSI
->         deriving (Eq, Enum, Bounded)
+>         deriving (Show, Eq, Enum, Bounded)
 

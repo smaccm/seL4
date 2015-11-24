@@ -25,7 +25,7 @@ This module makes use of the GHC extension allowing declaration of types with no
 > import SEL4.Machine.RegisterSet
 > import SEL4.Machine.Hardware.X64
 > import Data.Array
-> import Data.Word
+> import Data.Word (Word16, Word64)
 > import Data.Bits
 
 \end{impdetails}
@@ -43,8 +43,8 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capASIDBase :: ASID }
 >     | ASIDControlCap
 >     | IOPortCap {
->         capIOPortFirstPort :: Word16, -- FIXME
->         capIOPortLastPort :: Word16 }
+>         capIOPortFirstPort :: IOPort,
+>         capIOPortLastPort :: IOPort }
 >     | IOSpaceCap {
 >         capIODomainID :: Word16, --FIXME types
 >         capIOPCIDevice :: Word16 }

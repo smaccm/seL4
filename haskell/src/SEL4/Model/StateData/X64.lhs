@@ -15,12 +15,14 @@ This module contains the architecture-specific kernel global data for the X86-64
 
 > import SEL4.Machine
 > import SEL4.Machine.Hardware.X64
->     (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
+>    (PML4E(..))
+> --   (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
 > import SEL4.Object.Structures.X64
 
 > import Data.Array
-> import Data.Bits
-> import Data.Helpers
+> import Data.Word (Word16, Word32)
+> -- import Data.Bits
+> -- import Data.Helpers
 
 \end{impdetails}
 
@@ -53,5 +55,5 @@ FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so 
 >     x64KSnumIODomainIDBits :: Word32 }
 
 > newKernelState :: PAddr -> (KernelState, [PAddr])
-> newKernelState data_start = error "No initial state defined for x64"
+> newKernelState _data_start = error "No initial state defined for x64"
 
