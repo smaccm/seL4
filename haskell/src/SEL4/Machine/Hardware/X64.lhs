@@ -24,7 +24,7 @@ This module defines the low-level ARM hardware interface.
 > import Foreign.Ptr
 > import Control.Monad.Reader
 > import Data.Bits
-> import Data.Word(Word8)
+> import Data.Word(Word8, Word16)
 > import Data.Ix
 
 \end{impdetails}
@@ -112,6 +112,11 @@ Every table is one small page in size.
 > pageBitsForSize X64LargePage = pageBits + ptTranslationBits
 > pageBitsForSize X64HugePage = pageBits + ptTranslationBits + ptTranslationBits
 
+> storeWord :: PPtr Word -> Word -> MachineMonad ()
+> storeWord ptr val = do
+>     cbptr <- ask
+>     liftIO $ Platform.storeWordCallback cbptr (addrFromPPtr ptr) val
+
 > storeWordVM :: PPtr Word -> Word -> MachineMonad ()
 > storeWordVM ptr val = storeWord ptr val
 
@@ -188,16 +193,18 @@ caches must be done separately.
 
 \subsubsection{Address Space Setup}
 
-
 > setCurrentCR3 :: CR3 -> MachineMonad ()
 > setCurrentCR3 cr3 = Platform.writeCR3 cr3
 
 > getCurrentCR3 :: MachineMonad CR3
-> getCurrentCR3 cr3 = Platform.readCR3 cbptr
+> getCurrentCR3 = do
+>     cbptr <- ask
+>     liftIO $ Platform.readCR3 cbptr
 
 > setCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
-> setCurrentVSpaceRoot pd asid = 
->   setCurrentCR3 (undefined { CR3BaseAddress = pd, CR3pcid = asid })
+> setCurrentVSpaceRoot pd asid =
+>   setCurrentCR3 (Platform.CR3 { Platform.cr3BaseAddress = pd
+>                               , Platform.cr3pcid = asid })
 
 \subsubsection{Memory Barriers}
 
@@ -390,7 +397,7 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     = VMPTE PTE
 >     | VMPDE PDE
 >     | VMPDPTE PDPTE
->     deriving (Show, Eq, Enum)
+>     deriving (Show, Eq)
 
 > data VMMapType
 >     = VMNoMap

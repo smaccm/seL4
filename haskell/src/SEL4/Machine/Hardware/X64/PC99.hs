@@ -133,55 +133,8 @@ foreign import ccall unsafe "qemu_tlb_flush_asid"
 foreign import ccall unsafe "qemu_tlb_flush_vptr"
     invalidateTLB_VAASIDCallback :: Ptr CallbackData -> Word -> IO ()
 
-isbCallback :: Ptr CallbackData -> IO ()
-isbCallback _ = return ()
-
-dsbCallback :: Ptr CallbackData -> IO ()
-dsbCallback _ = return ()
-
-dmbCallback :: Ptr CallbackData -> IO ()
-dmbCallback _ = return ()
-
-cacheCleanByVACallback :: Ptr CallbackData -> VPtr -> PAddr -> IO ()
-cacheCleanByVACallback _cptr _mva _pa = return ()
-
-cacheCleanByVA_PoUCallback :: Ptr CallbackData -> VPtr -> PAddr -> IO ()
-cacheCleanByVA_PoUCallback _cptr _mva _pa = return ()
-
-cacheInvalidateByVACallback :: Ptr CallbackData -> VPtr -> PAddr -> IO ()
-cacheInvalidateByVACallback _cptr _mva _pa = return ()
-
-cacheInvalidateByVA_ICallback :: Ptr CallbackData -> VPtr -> PAddr -> IO ()
-cacheInvalidateByVA_ICallback _cptr _mva _pa = return ()
-
-cacheInvalidate_I_PoUCallback :: Ptr CallbackData -> IO ()
-cacheInvalidate_I_PoUCallback _ = return ()
-
-cacheCleanInvalidateByVACallback ::
-    Ptr CallbackData -> VPtr -> PAddr -> IO ()
-cacheCleanInvalidateByVACallback _cptr _mva _pa = return ()
-
 branchFlushCallback :: Ptr CallbackData -> VPtr -> PAddr -> IO ()
 branchFlushCallback _cptr _mva _pa = return ()
-
-cacheClean_D_PoUCallback :: Ptr CallbackData -> IO ()
-cacheClean_D_PoUCallback _ = return ()
-
-cacheCleanInvalidate_D_PoCCallback :: Ptr CallbackData -> IO ()
-cacheCleanInvalidate_D_PoCCallback _ = return ()
-
-cacheCleanInvalidate_D_PoUCallback :: Ptr CallbackData -> IO ()
-cacheCleanInvalidate_D_PoUCallback _ = return ()
-
-cacheCleanInvalidateL2RangeCallback ::
-    Ptr CallbackData -> PAddr -> PAddr -> IO ()
-cacheCleanInvalidateL2RangeCallback _ _ _ = return ()
-
-cacheInvalidateL2RangeCallback :: Ptr CallbackData -> PAddr -> PAddr -> IO ()
-cacheInvalidateL2RangeCallback _ _ _ = return ()
-
-cacheCleanL2RangeCallback :: Ptr CallbackData -> PAddr -> PAddr -> IO ()
-cacheCleanL2RangeCallback _ _ _ = return ()
 
 -- For the ARM1136
 cacheLine :: Int
@@ -204,4 +157,15 @@ foreign import ccall unsafe "qemu_arm_get_dfsr"
 
 foreign import ccall unsafe "qemu_arm_get_far"
     getFAR :: Ptr CallbackData -> IO VPtr
+
+-- PC99 stubs
+
+data CR3 = CR3 { cr3BaseAddress :: PAddr, cr3pcid :: Word }
+writeCR3 = error "Unimplemented"
+readCR3 = error "Unimplemented"
+
+invalidateTLB = error "Unimplemented"
+mfence = error "Unimplemented"
+addrFromKPPtr = error "Unimplemented" -- FIXME how is this different to addrFromPPtr?!
+pptrBase = error "Unimplemented" -- FIXME how is this not physMappingOffset?!
 
