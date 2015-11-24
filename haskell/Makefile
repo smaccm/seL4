@@ -23,6 +23,12 @@ build: $(BOOT_FILES)
 	cabal configure --configure-option="arm-qemu"
 	cabal build
 
+build-x64: $(BOOT_FILES)
+	cabal sandbox init
+	cabal install --dependencies-only
+	cabal configure --configure-option="x64-pc99" --flags="-ArchArm"
+	cabal build
+
 pdf:
 	cd doc && make
 

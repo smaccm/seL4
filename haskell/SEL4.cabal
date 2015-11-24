@@ -21,11 +21,16 @@ Flag FFI
     description:        Include the C language bindings
     default:            True
 
+Flag ArchArm
+    description:        Include ARM modules and platforms (else x64)
+    default:            True
+
 Library
     exposed-modules:        SEL4
                             SEL4.Machine.Target
 
     build-depends:          mtl==2.1.3.1, base, array, containers
+
     if flag(FFI)
     -- be fixed.
         build-depends:      unix
@@ -71,10 +76,12 @@ Library
                             Data.BinaryTree
                             Data.Helpers
 
+    if flag(ArchArm)
+        other-modules:
                             SEL4.Machine.Hardware.ARM.QEmu
---                            SEL4.Machine.Hardware.ARM.KZM
---                            SEL4.Machine.Hardware.ARM.Exynos4210
---                            SEL4.Machine.Hardware.ARM.Sabre
+--                             SEL4.Machine.Hardware.ARM.KZM
+--                             SEL4.Machine.Hardware.ARM.Exynos4210
+--                             SEL4.Machine.Hardware.ARM.Sabre
 
                             SEL4.API.Types.ARM
                             SEL4.API.InvocationLabels.ARM
@@ -90,6 +97,27 @@ Library
                             SEL4.Machine.RegisterSet.ARM
                             SEL4.Machine.Hardware.ARM
 
+    else
+        -- FIXME: should be a flag also, or some other way to conditionally compile
+        -- Setup.hs hooks can handle this, but do we want to do that?
+        other-modules:
+
+                            SEL4.API.Types.X64
+                            SEL4.API.InvocationLabels.X64
+                            SEL4.API.Invocation.X64
+                            SEL4.Kernel.VSpace.X64
+                            SEL4.Kernel.Thread.X64
+                            SEL4.Object.ObjectType.X64
+                            SEL4.Object.Structures.X64
+                            SEL4.Object.Interrupt.X64
+                            SEL4.Object.Instances.X64
+                            SEL4.Object.TCB.X64
+                            SEL4.Model.StateData.X64
+                            SEL4.Machine.RegisterSet.X64
+                            SEL4.Machine.Hardware.X64
+
+                            SEL4.Machine.Hardware.X64.PC99
+
     hs-source-dirs:         src
     ghc-prof-options:       -auto-all -fprof-auto
     ghc-options:            -Wall -Werror -O2 -fno-warn-unused-do-bind
@@ -99,6 +127,7 @@ Library
                             -fno-warn-unused-binds
 
     cpp-options:
+                            -- set via Setup.hs hook
 
     Default-Language: Haskell98
 

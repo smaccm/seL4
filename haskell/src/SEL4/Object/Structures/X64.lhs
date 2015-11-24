@@ -105,7 +105,8 @@ An ASID is an unsigned word. Note that it is a \emph{virtual} address space iden
 >     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
 
 ASIDs are mapped to address space roots by a global two-level table. The actual ASID values are opaque to the user, as are the sizes of the levels of the tables; ASID allocation calls will simply return an error once the available ASIDs are exhausted.
-> -- FIXME x64: these need to be changed for 64bit
+
+FIXME x64: these need to be changed for 64bit
 
 > asidHighBits :: Int
 > asidHighBits = 8

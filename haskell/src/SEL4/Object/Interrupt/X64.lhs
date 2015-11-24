@@ -10,7 +10,7 @@
 
 This module defines the machine-specific interrupt handling routines for the ARM.
 
-> module SEL4.Object.Interrupt.ARM where
+> module SEL4.Object.Interrupt.X64 where
 
 \begin{impdetails}
 
@@ -18,7 +18,7 @@ This module defines the machine-specific interrupt handling routines for the ARM
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.API.Failures
-> import SEL4.API.Invocation.ARM
+> import SEL4.API.Invocation.X64
 
 \end{impdetails}
 
