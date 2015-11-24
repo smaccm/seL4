@@ -20,9 +20,15 @@ typedef enum _object {
     seL4_IA32_LargePage,
     seL4_IA32_PageTableObject,
     seL4_IA32_PageDirectoryObject,
+#ifdef CONFIG_PAE_PAGING
     seL4_IA32_PDPTObject,
+#endif
     seL4_IA32_IOPageTableObject,
     seL4_ObjectTypeCount
+#ifndef CONFIG_PAE_PAGING
+    ,
+    seL4_IA32PDPTObject
+#endif
 } seL4_ArchObjectType;
 
 typedef seL4_Uint32 object_t;

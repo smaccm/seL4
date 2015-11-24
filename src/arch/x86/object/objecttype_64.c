@@ -198,7 +198,6 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                 VMReadWrite         /* capFVMRights             */
                 );
 
-#ifdef CONFIG_HUGE_PAGE
     case seL4_IA32_HugePage:
         memzero(regionBase, 1 << pageBitsForSize(IA32_HugePage));
         return cap_frame_cap_new(
@@ -209,7 +208,6 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                 0,                  /* capFMappedAddress        */
                 VMReadWrite         /* capFVMRights             */
                 );
-#endif
 
     case seL4_IA32_PageTableObject:
         memzero(regionBase, 1 << PT_SIZE_BITS);

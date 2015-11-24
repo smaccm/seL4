@@ -18,13 +18,25 @@
 typedef enum _object {
     seL4_IA32_4K = seL4_NonArchObjectTypeCount,
     seL4_IA32_LargePage,
+#ifdef CONFIG_HUGE_PAGE
     seL4_IA32_HugePage,
+#endif
     seL4_IA32_PageTableObject,
     seL4_IA32_PageDirectoryObject,
+#if defined(CONFIG_PAE_PAGING) || defined(X86_64)
     seL4_IA32_PDPTObject,
+#endif
     seL4_IA32_PML4Object,
     seL4_IA32_IOPageTableObject,
     seL4_ObjectTypeCount
+#ifndef CONFIG_HUGE_PAGE
+    ,
+    seL4_IA32_HugePage
+#endif
+#if !defined(CONFIG_PAE_PAGING) && !defined(X86_64)
+    ,
+    seL4_IA32_PDPTObject
+#endif
 } seL4_ArchObjectType;
 typedef word_t object_t;
 

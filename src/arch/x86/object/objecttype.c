@@ -416,10 +416,8 @@ Arch_getObjectSize(word_t t)
     case seL4_IA32_LargePage:
         return pageBitsForSize(IA32_LargePage);
 
-#ifdef CONFIG_HUGE_PAGE
     case seL4_IA32_HugePage:
         return pageBitsForSize(IA32_HugePage);
-#endif
 
     case seL4_IA32_PageTableObject:
         return PT_SIZE_BITS;
