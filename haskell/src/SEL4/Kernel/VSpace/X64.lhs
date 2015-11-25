@@ -44,9 +44,8 @@ The ARM-specific invocations are imported with the "ArchInv" prefix. This is nec
 
 \subsection{Constants}
 
-All virtual addresses above "kernelBase" cannot be mapped by user-level tasks. With the exception of one page, at "globalsBase", they cannot be read; the globals page is mapped read-only.
+All virtual addresses above "pptrUserTop" cannot be mapped by user-level tasks. With the exception of one page, at "globalsBase", they cannot be read; the globals page is mapped read-only.
 
-> -- FIXME x64: do these exist?
 > kernelBase :: VPtr
 > kernelBase = VPtr 0xffffffff80000000
 
@@ -575,9 +574,87 @@ X64UPDATE
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
 
-> decodeX64MMUInvocation label args _ _ cap@(PDPointerTableCap {}) _ = error "Not implemented"
-> decodeX64MMUInvocation label args _ _ cap@(PageDirectoryCap {}) _ = error "Not implemented"
-> decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PDPointerTableCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PageDirectoryCap {}) extraCaps  = 
+>     case (invocationType label, args, extraCaps) of
+>         (ArchInvocationLabel X64PageDirectoryMap, vaddr:attr:_, (pml4Cap,_):_) -> do
+>             when (isJust $ capPTMappedAddress cap) $
+>                 throw $ InvalidCapability 0
+>             (pml,asid) <- case pml4Cap of
+>                 ArchObjectCap (PML4Cap {
+>                          capPML4MappedASID = Just asid,
+>                          capPML4BasePtr = pml })
+>                     -> return (pml,asid)
+>                 _ -> throw $ InvalidCapability 1
+>             when (VPtr vaddr >= kernelBase ) $
+>                 throw $ InvalidArgument 0
+>             pmlCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
+>             when (pmlCheck /= pml) $ throw $ InvalidCapability 1
+>             pdptSlot <- lookupErrorOnFailure False $ lookupPDPTSlot pml (VPtr vaddr)
+>             oldpde <- withoutFailure $ getObject pdptSlot
+>             unless (oldpde == InvalidPDPTE) $ throw DeleteFirst
+>             let pdpte = PageDirectoryPDPTE {
+>                     pdpteTable = addrFromPPtr $ capPTBasePtr cap,
+>                     pdpteAccessed = False,
+>                     pdpteCacheDisabled = x64CacheDisabled $ attribsFromWord attr,
+>                     pdpteWriteThrough = x64WriteThrough $ attribsFromWord attr,
+>                     pdpteExecuteDisable = False,
+>                     pdpteRights = VMReadWrite }
+>             return $ InvokePageDirectory $ PageDirectoryMap {
+>                 pdMapCap = ArchObjectCap cap,
+>                 pdMapCTSlot = cte,
+>                 pdMapPDPTE = pdpte,
+>                 pdMapPDPTSlot = pdptSlot }
+>         (ArchInvocationLabel X64PageDirectoryMap, _, _) -> throw TruncatedMessage
+>         (ArchInvocationLabel X64PageDirectoryUnmap, _, _) -> do
+>             cteVal <- withoutFailure $ getCTE cte
+>             final <- withoutFailure $ isFinalCapability cteVal
+>             unless final $ throw RevokeFirst
+>             return $ InvokePageDirectory $ PageDirectoryUnmap {
+>                 pdUnmapCap = cap,
+>                 pdUnmapCapSlot = cte }
+>         _ -> throw IllegalOperation
+
+> decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) extraCaps = 
+>    case (invocationType label, args, extraCaps) of
+>         (ArchInvocationLabel X64PageTableMap, vaddr:attr:_, (pml4Cap,_):_) -> do
+>             when (isJust $ capPTMappedAddress cap) $
+>                 throw $ InvalidCapability 0
+>             (pml,asid) <- case pml4Cap of
+>                 ArchObjectCap (PML4Cap {
+>                          capPML4MappedASID = Just asid,
+>                          capPML4BasePtr = pml })
+>                     -> return (pml,asid)
+>                 _ -> throw $ InvalidCapability 1
+>             when (VPtr vaddr >= kernelBase ) $
+>                 throw $ InvalidArgument 0
+>             pmlCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
+>             when (pmlCheck /= pml) $ throw $ InvalidCapability 1
+>             pdSlot <- lookupErrorOnFailure False $ lookupPDSlot pml (VPtr vaddr)
+>             oldpde <- withoutFailure $ getObject pdSlot
+>             unless (oldpde == InvalidPDE) $ throw DeleteFirst
+>             let pde = PageTablePDE {
+>                     pdeTable = addrFromPPtr $ capPTBasePtr cap,
+>                     pdeAccessed = False,
+>                     pdeCacheDisabled = x64CacheDisabled $ attribsFromWord attr,
+>                     pdeWriteThrough = x64WriteThrough $ attribsFromWord attr,
+>                     pdeExecuteDisable = False,
+>                     pdeRights = VMReadWrite}
+>             return $ InvokePageTable $ PageTableMap {
+>                 ptMapCap = ArchObjectCap cap,
+>                 ptMapCTSlot = cte,
+>                 ptMapPDE = pde,
+>                 ptMapPDSlot = pdSlot }
+>         (ArchInvocationLabel X64PageTableMap, _, _) -> throw TruncatedMessage
+>         (ArchInvocationLabel X64PageTableUnmap, _, _) -> do
+>             cteVal <- withoutFailure $ getCTE cte
+>             final <- withoutFailure $ isFinalCapability cteVal
+>             unless final $ throw RevokeFirst
+>             return $ InvokePageTable $ PageTableUnmap {
+>                 ptUnmapCap = cap,
+>                 ptUnmapCapSlot = cte }
+>         _ -> throw IllegalOperation
+
 > decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = decodeX64FrameInvocation label args cte cap extraCaps
 > decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) _ = error "Not implemented"
