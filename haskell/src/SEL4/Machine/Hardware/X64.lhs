@@ -282,11 +282,11 @@ FIXME: x64 has anything like this?
 > data PML4E
 >     = InvalidPML4E
 >     | PDPointerTablePML4E {
->         pml4Table :: PAddr,
->         pml4Accessed :: Bool,
->         pml4CacheDisabled :: Bool,
->         pml4WriteThrough :: Bool,
->         pml4ExecuteDisable :: Bool,
+>         pml4eTable :: PAddr,
+>         pml4eAccessed :: Bool,
+>         pml4eCacheDisabled :: Bool,
+>         pml4eWriteThrough :: Bool,
+>         pml4eExecuteDisable :: Bool,
 >         pml4eRights :: VMRights }
 >     deriving (Show, Eq)
 
@@ -303,22 +303,22 @@ FIXME: x64 has anything like this?
 > data PDPTE
 >     = InvalidPDPTE
 >     | PageDirectoryPDPTE {
->         pdptTable :: PAddr,
->         pdptAccessed :: Bool,
->         pdptCacheDisabled :: Bool,
->         pdptWriteThrough :: Bool,
->         pdptExecuteDisable :: Bool,
->         pdptRights :: VMRights }
+>         pdpteTable :: PAddr,
+>         pdpteAccessed :: Bool,
+>         pdpteCacheDisabled :: Bool,
+>         pdpteWriteThrough :: Bool,
+>         pdpteExecuteDisable :: Bool,
+>         pdpteRights :: VMRights }
 >     | HugePagePDPTE {
->         pdptFrame :: PAddr,
->         pdptGlobal :: Bool,
->         pdptPAT :: Bool,
->         pdptDirty :: Bool,
->         pdptAccessed :: Bool,
->         pdptCacheDisabled :: Bool,
->         pdptWriteThrough :: Bool,
->         pdptExecuteDisable :: Bool,
->         pdptRights :: VMRights }
+>         pdpteFrame :: PAddr,
+>         pdpteGlobal :: Bool,
+>         pdptePAT :: Bool,
+>         pdpteDirty :: Bool,
+>         pdpteAccessed :: Bool,
+>         pdpteCacheDisabled :: Bool,
+>         pdpteWriteThrough :: Bool,
+>         pdpteExecuteDisable :: Bool,
+>         pdpteRights :: VMRights }
 >     deriving (Show, Eq)
 
 > wordFromPDPTE :: PDPTE -> Word
@@ -454,13 +454,13 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     = VMPTE PTE
 >     | VMPDE PDE
 >     | VMPDPTE PDPTE
->     deriving (Show, Eq, Enum)
+>     deriving (Show, Eq)
 
 > data VMPageEntryPtr
 >     = VMPTEPtr (PPtr PTE)
 >     | VMPDEPtr (PPtr PDE)
 >     | VMPDPTEPtr (PPtr PDPTE)
->     deriving (Show, Eq, Enum)
+>     deriving (Show, Eq)
 
 > data VMMapType
 >     = VMNoMap

@@ -22,7 +22,8 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import SEL4.Object.Structures
 > import SEL4.Model.StateData.X64
 > import SEL4.Object.Instances()
-> import SEL4.API.Invocation()
+> import SEL4.API.Invocation
+> import SEL4.API.InvocationLabels.X64
 > import SEL4.Kernel.BootInfo()
 > import {-# SOURCE #-} SEL4.Object.CNode
 > import {-# SOURCE #-} SEL4.Object.TCB
@@ -30,7 +31,7 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import {-# SOURCE #-} SEL4.Kernel.CSpace()
 
 > import Data.Bits
-> import Data.Maybe()
+> import Data.Maybe
 > import Data.List()
 > import Data.Array
 > import Data.Word ()
@@ -78,6 +79,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 > createMappingEntries base vptr X64SmallPage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPTSlot vspace vptr
 >     return $ (VMPTE $ SmallPagePTE {
+>         pteExecuteDisable = False,
 >         pteFrame = base,
 >         pteGlobal = False,
 >         ptePAT = x64PAT attrib,
@@ -89,7 +91,8 @@ When a new page directory is created, the kernel copies all of the global mappin
 >
 > createMappingEntries base vptr X64LargePage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
->     return $ VMPDE $ LargePagePDE {
+>     return $ (VMPDE $ LargePagePDE {
+>         pdeExecuteDisable = False,
 >         pdeFrame = base,
 >         pdeGlobal = False,
 >         pdePAT = x64PAT attrib,
@@ -100,8 +103,9 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdeRights = vmRights }, VMPDEPtr p) -- this probably won't type check.
 >
 > createMappingEntries base vptr X64HugePage vmRights attrib vspace = do
->     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
->     return $ VMPDPTE $ HugePagePDPTE {
+>     p <- lookupErrorOnFailure False $ lookupPDPTSlot vspace vptr
+>     return $ (VMPDPTE $ HugePagePDPTE {
+>         pdpteExecuteDisable = False,
 >         pdpteFrame = base,
 >         pdpteGlobal = False,
 >         pdptePAT = False,
@@ -119,19 +123,19 @@ The following function is called before creating or modifying mappings in a page
 > ensureSafeMapping (VMPDE InvalidPDE, _) = return ()
 > ensureSafeMapping (VMPDPTE InvalidPDPTE, _) = return ()
 >
-> ensureSafeMapping (VMPTE $ SmallPagePTE {}, VMPTEPtr slot) = do
+> ensureSafeMapping (VMPTE (SmallPagePTE {}), VMPTEPtr slot) = do
 >         pte <- withoutFailure $ getObject slot
 >         case pte of
 >             InvalidPTE -> return ()
 >             _ -> throw DeleteFirst
 >
-> ensureSafeMapping (VMPDE $ LargePagePDE {}, VMPDEPtr slot) = do
+> ensureSafeMapping (VMPDE (LargePagePDE {}), VMPDEPtr slot) = do
 >         pde <- withoutFailure $ getObject slot
 >         case pde of
 >             InvalidPDE -> return ()
 >             _ -> throw DeleteFirst
 >
-> ensureSafeMapping (VMPDPTE $ HugePagePDPTE {}, VMPDPTEPtr slot) = do
+> ensureSafeMapping (VMPDPTE (HugePagePDPTE {}), VMPDPTEPtr slot) = do
 >         pdpte <- withoutFailure $ getObject slot
 >         case pdpte of
 >             InvalidPDPTE -> return ()
@@ -226,7 +230,7 @@ The "lookupPTSlot" function locates the page table slot that maps a given virtua
 >     pdpte <- withoutFailure $ getObject pdptSlot
 >     case pdpte of
 >         PageDirectoryPDPTE {} -> do
->             let pd = ptrFromPAddr $ pdptTable pdpte
+>             let pd = ptrFromPAddr $ pdpteTable pdpte
 >             let pdIndex = getPDIndex vptr
 >             let pdSlot = pd + (PPtr $ pdIndex `shiftL` 3) -- FIXME x64: word_size_bits 
 >             return pdSlot
@@ -238,7 +242,7 @@ The "lookupPTSlot" function locates the page table slot that maps a given virtua
 >     pml4e <- withoutFailure $ getObject pml4Slot
 >     case pml4e of
 >         PDPointerTablePML4E {} -> do
->             let pdpt = ptrFromPAddr $ pml4Table pml4e
+>             let pdpt = ptrFromPAddr $ pml4eTable pml4e
 >             let pdptIndex = getPML4Index vptr 
 >             let pdptSlot = pdpt + (PPtr $ pdptIndex `shiftL` 3) -- FIXME x64: word_size_bits 
 >             return pdptSlot
@@ -305,7 +309,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     let pmSlot = lookupPML4Slot vspace vaddr
 >     pml4e <- withoutFailure $ getObject pmSlot
 >     case pml4e of
->         PDPointerTablePML4E { pml4Table = pt' } ->
+>         PDPointerTablePML4E { pml4eTable = pt' } ->
 >             if pt' == addrFromPPtr pdpt then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot
 >     withoutFailure $ do 
@@ -320,7 +324,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >     pdptSlot <- lookupPDPTSlot vspace vaddr
 >     pdpte <- withoutFailure $ getObject pdptSlot
 >     case pdpte of
->         PageDirectoryPDPTE { pdptTable = pd' } ->
+>         PageDirectoryPDPTE { pdpteTable = pd' } ->
 >             if pd' == addrFromPPtr pd then return () else throw InvalidRoot
 >         _ -> throw InvalidRoot
 >     withoutFailure $ do
@@ -389,7 +393,7 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 >         _ -> throw InvalidRoot
 > checkMappingPPtr pptr (VMPDPTE pdpte) =
 >     case pdpte of
->         HugePagePDPTE { pdptFrame = base } ->
+>         HugePagePDPTE { pdpteFrame = base } ->
 >             unless (base == addrFromPPtr pptr) $ throw InvalidRoot
 >         _ -> throw InvalidRoot
 
@@ -482,13 +486,19 @@ X64UPDATE
 
 \subsection{Decoding ARM Invocations}
 
+> attribsFromWord :: Word -> VMAttributes
+> attribsFromWord w = VMAttributes {
+>     x64CacheDisabled = w `testBit` 1,
+>     x64PAT = w `testBit` 2,
+>     x64WriteThrough = w `testBit` 0 }
+
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
 
-> decodeX64FrameInvocation :: Word -> [Word] -> CPtr -> PPtr CTE -> 
+> decodeX64FrameInvocation :: Word -> [Word] -> PPtr CTE -> 
 >                    ArchCapability -> [(Capability, PPtr CTE)] ->
 >                    KernelF SyscallError ArchInv.Invocation
-> decodeX64FrameInvocation label args _ cte (cap@PageCap {}) extraCaps = 
+> decodeX64FrameInvocation label args cte (cap@PageCap {}) extraCaps = 
 >     case (invocationType label, args, extraCaps) of
 >         (ArchInvocationLabel X64PageMap, vaddr:rightsMask:attr:_, (vspaceCap,_):_) -> do
 >             when (isJust $ capVPMappedAddress cap) $ 
