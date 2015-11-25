@@ -301,7 +301,7 @@ FIXME: x64 has anything like this?
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 
 > data PDPTE
 >     = InvalidPDPTE
@@ -332,7 +332,7 @@ FIXME: x64 has anything like this?
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 > wordFromPDPTE (HugePagePDPTE frame global pat dirty accessed cd wt xd rights) = 1 .|. bit 7 .|.
 >     (if xd then bit 63 else 0) .|.
 >     (fromIntegral frame .&. 0x7ffffc0000000) .|.
@@ -342,7 +342,7 @@ FIXME: x64 has anything like this?
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 
 
          
@@ -381,7 +381,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 > wordFromPDE (LargePagePDE frame global pat dirty accessed cd wt xd rights) = 1 .|. bit 7 .|.
 >     (if xd then bit 63 else 0) .|.
 >     (fromIntegral frame .&. 0x7ffffffe00000) .|.
@@ -391,7 +391,7 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 
 > data PTE
 >     = InvalidPTE
@@ -426,7 +426,7 @@ FIXME x64: These need to be defined
 >     (if accessed then bit 5 else 0) .|.
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
->     (fromIntegral $ fromEnum rights `shiftL` 1)
+>     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 
 Pointer Accessor Functions FIXME x64 TYPES
 
@@ -477,13 +477,10 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     | VMReadWrite
 >     deriving (Show, Eq)
 
-> instance Enum VMRights where
->     toEnum 1 = VMKernelOnly
->     toEnum 2 = VMReadOnly
->     toEnum 3 = VMReadWrite
->     fromEnum VMKernelOnly = 1
->     fromEnum VMReadOnly = 2
->     fromEnum VMReadWrite = 3
+> vmRightsToBits :: VMRights -> Word
+> vmRightsToBits VMKernelOnly = 0x1
+> vmRightsToBits VMReadOnly = 0x10
+> vmRightsToBits VMReadWrite = 0x11
 
 > data VMAttributes = VMAttributes {
 >     x64WriteThrough, x64PAT, x64CacheDisabled :: Bool }
