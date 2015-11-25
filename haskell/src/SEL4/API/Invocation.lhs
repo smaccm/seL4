@@ -124,11 +124,10 @@ The following data type defines the parameters expected for invocations of Untyp
 
 The following data type defines the set of possible invocations for interrupt controller capabilities.
 
-FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones which are arch-specific and defined in InterruptControl
+FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones
 
 > data IRQControlInvocation
->         = InterruptControl { interruptControlArch :: Arch.InterruptControl }
->         | IssueIRQHandler {
+>         = IssueIRQHandler {
 >             issueHandlerIRQ :: IRQ,
 >             issueHandlerSlot, issueHandlerControllerSlot :: PPtr CTE }
 >         deriving Show
@@ -180,7 +179,6 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 >         | CNodeRotate
 >         | CNodeSaveCaller
 >         | IRQIssueIRQHandler
->         | IRQInterruptControl
 >         | IRQAckIRQ
 >         | IRQSetIRQHandler
 >         | IRQClearIRQHandler
@@ -218,14 +216,13 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 >          CNodeRotate -> 20
 >          CNodeSaveCaller -> 21
 >          IRQIssueIRQHandler -> 22
->          IRQInterruptControl -> 23
->          IRQAckIRQ -> 24
->          IRQSetIRQHandler -> 25
->          IRQClearIRQHandler -> 26
->          IRQSetMode -> 27
+>          IRQAckIRQ -> 23
+>          IRQSetIRQHandler -> 24
+>          IRQClearIRQHandler -> 25
+>          IRQSetMode -> 26
 >          DomainSetSet -> apiMax
 >          ArchInvocationLabel a -> apiMax + 1 + fromEnum a
->          where apiMax = 28
+>          where apiMax = 27
 >     toEnum n
 >         | n == 0 = InvalidInvocation
 >         | n == 1 = UntypedRetype
@@ -250,15 +247,14 @@ FIXME this is not quite accurate anymore, no one knows what the argument should 
 >         | n == 20 = CNodeRotate
 >         | n == 21 = CNodeSaveCaller
 >         | n == 22 = IRQIssueIRQHandler
->         | n == 23 = IRQInterruptControl
->         | n == 24 = IRQAckIRQ
->         | n == 25 = IRQSetIRQHandler
->         | n == 26 = IRQClearIRQHandler
->         | n == 27 = IRQSetMode
->         | n == 28 = DomainSetSet
+>         | n == 23 = IRQAckIRQ
+>         | n == 24 = IRQSetIRQHandler
+>         | n == 25 = IRQClearIRQHandler
+>         | n == 26 = IRQSetMode
+>         | n == 27 = DomainSetSet
 >         | n > apiMax = ArchInvocationLabel $ toEnum (n - 1 - apiMax)
 >         | otherwise = error "toEnum out of range for InvocationLabel"
->         where apiMax = 28
+>         where apiMax = 27
 
 Decode the invocation type requested by a particular message label.
 

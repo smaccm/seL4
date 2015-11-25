@@ -109,10 +109,6 @@ There are five ARM-specific object types; however, only four of them may be invo
 
 The ARM platform presently does not require any additional interrupt control calls.
 
-> data InterruptControl
-> instance Show InterruptControl
->     where show _ = "Uninhabited type: InterruptControl"
-
 \subsection{Additional Register Subsets}
 
 The ARM platform currently does not define any additional register sets for the "CopyRegisters" operation. This may be changed in future to support a floating point unit.

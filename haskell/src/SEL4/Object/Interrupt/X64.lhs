@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module defines the machine-specific interrupt handling routines for the ARM.
+This module defines the machine-specific interrupt handling routines for x64.
 
 > module SEL4.Object.Interrupt.X64 where
 
@@ -21,12 +20,4 @@ This module defines the machine-specific interrupt handling routines for the ARM
 > import SEL4.API.Invocation.X64
 
 \end{impdetails}
-
-> decodeInterruptControl :: [Word] -> [Capability] ->
->     KernelF SyscallError InterruptControl
-> decodeInterruptControl _ _ = throw IllegalOperation
-
-> invokeInterruptControl :: InterruptControl -> KernelP ()
-> invokeInterruptControl _ = fail "invokeInterruptControl: not defined"
-
 

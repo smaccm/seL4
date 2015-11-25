@@ -22,11 +22,4 @@ This module defines the machine-specific interrupt handling routines for the ARM
 
 \end{impdetails}
 
-> decodeInterruptControl :: [Word] -> [Capability] ->
->     KernelF SyscallError InterruptControl
-> decodeInterruptControl _ _ = throw IllegalOperation
-
-> invokeInterruptControl :: InterruptControl -> KernelP ()
-> invokeInterruptControl _ = fail "invokeInterruptControl: not defined"
-
 

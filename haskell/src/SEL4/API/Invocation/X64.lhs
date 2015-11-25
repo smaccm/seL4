@@ -46,6 +46,7 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >     | InvokeASIDControl ASIDControlInvocation
 >     | InvokeASIDPool ASIDPoolInvocation
 >     | InvokeIOPort IOPortInvocation
+>     | InvokeArchIRQControl ArchIRQControlInvocation
 >     deriving Show
 
 > data PDPTInvocation
@@ -150,7 +151,7 @@ FIXME TODO arguments to this plus decode
 FIXME Word may be too generic for some of these
 FIXME the kernel team is working on this currently, so it doesn't exactly match the C
 
-> data InterruptControl
+> data ArchIRQControlInvocation
 >     = IssueIRQHandlerIOAPIC {
 >         issueHandlerIOAPICIRQ :: IRQ,
 >         issueHandlerIOAPICSlot, issueHandlerIOAPICControllerSlot :: PPtr CTE,
