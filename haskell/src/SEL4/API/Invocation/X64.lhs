@@ -108,13 +108,12 @@ point to the invoked IO page table.
 >     = PageGetAddr {
 >         pageGetBasePtr :: PPtr Word }
 >     | PageRemap {
->         pageRemapASID :: ASID,
->         pageRemapEntries :: (VMPageEntry, [PPtr VMPageEntry]) }
+>         pageRemapEntries :: (VMPageEntry, VMPageEntryPtr) }
 >     | PageMap {
 >         pageMapASID :: ASID,
 >         pageMapCap :: Capability,
 >         pageMapCTSlot :: PPtr CTE,
->         pageMapEntries :: (VMPageEntry, [PPtr VMPageEntry]) }
+>         pageMapEntries :: (VMPageEntry, VMPageEntryPtr) }
 >     | PageUnmap {
 >         pageUnmapCap :: ArchCapability,
 >         pageUnmapCapSlot :: PPtr CTE }

@@ -47,7 +47,7 @@ All virtual addresses above "kernelBase" cannot be mapped by user-level tasks. W
 
 > -- FIXME x64: do these exist?
 > kernelBase :: VPtr
-> kernelBase = VPtr 0xf0000000
+> kernelBase = VPtr 0xffffffff80000000
 
 > globalsBase :: VPtr
 > globalsBase = VPtr 0xffffc000
@@ -72,7 +72,72 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pml4e <- getObject $ globalPM + offset
 >         storePML4E (newPM + offset) pml4e
 
-X64: Removed createMapping and checkSafeMapping. These seem to be baked into the decode function now.
+> createMappingEntries :: PAddr -> VPtr ->
+>     VMPageSize -> VMRights -> VMAttributes -> PPtr PML4E ->
+>     KernelF SyscallError (VMPageEntry, VMPageEntryPtr)
+> createMappingEntries base vptr X64SmallPage vmRights attrib vspace = do
+>     p <- lookupErrorOnFailure False $ lookupPTSlot vspace vptr
+>     return $ (VMPTE $ SmallPagePTE {
+>         pteFrame = base,
+>         pteGlobal = False,
+>         ptePAT = x64PAT attrib,
+>         pteDirty = False,
+>         pteAccessed = False,
+>         pteCacheDisabled = x64CacheDisabled attrib,
+>         pteWriteThrough = x64WriteThrough attrib,
+>         pteRights = vmRights }, VMPTEPtr p) -- this probably won't type check.
+>
+> createMappingEntries base vptr X64LargePage vmRights attrib vspace = do
+>     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
+>     return $ VMPDE $ LargePagePDE {
+>         pdeFrame = base,
+>         pdeGlobal = False,
+>         pdePAT = x64PAT attrib,
+>         pdeDirty = False,
+>         pdeAccessed = False,
+>         pdeCacheDisabled = x64CacheDisabled attrib,
+>         pdeWriteThrough = x64WriteThrough attrib,
+>         pdeRights = vmRights }, VMPDEPtr p) -- this probably won't type check.
+>
+> createMappingEntries base vptr X64HugePage vmRights attrib vspace = do
+>     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
+>     return $ VMPDPTE $ HugePagePDPTE {
+>         pdpteFrame = base,
+>         pdpteGlobal = False,
+>         pdptePAT = False,
+>         pdpteDirty = False,
+>         pdpteAccessed = False,
+>         pdpteCacheDisabled = x64CacheDisabled attrib,
+>         pdpteWriteThrough = x64WriteThrough attrib,
+>         pdpteRights = vmRights }, VMPDPTEPtr p) -- this probably won't type check.
+
+The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe --- that is, that inserting it will behave predictably and will not damage the hardware. The ARMv6 specifications require that there are never two mappings of different sizes at any virtual address in the active address space, so this function will throw a fault if the requested operation would change the size of the mapping of any existing valid entry.
+
+> ensureSafeMapping :: (VMPageEntry, VMPageEntryPtr) ->
+>     KernelF SyscallError ()
+> ensureSafeMapping (VMPTE InvalidPTE, _) = return ()
+> ensureSafeMapping (VMPDE InvalidPDE, _) = return ()
+> ensureSafeMapping (VMPDPTE InvalidPDPTE, _) = return ()
+>
+> ensureSafeMapping (VMPTE $ SmallPagePTE {}, VMPTEPtr slot) = do
+>         pte <- withoutFailure $ getObject slot
+>         case pte of
+>             InvalidPTE -> return ()
+>             _ -> throw DeleteFirst
+>
+> ensureSafeMapping (VMPDE $ LargePagePDE {}, VMPDEPtr slot) = do
+>         pde <- withoutFailure $ getObject slot
+>         case pde of
+>             InvalidPDE -> return ()
+>             _ -> throw DeleteFirst
+>
+> ensureSafeMapping (VMPDPTE $ HugePagePDPTE {}, VMPDPTEPtr slot) = do
+>         pdpte <- withoutFailure $ getObject slot
+>         case pdpte of
+>             InvalidPDPTE -> return ()
+>             _ -> throw DeleteFirst
+>
+> ensureSafeMapping _ = fail "This should never happen"
 
 \subsection{Lookups and Faults}
 
@@ -420,6 +485,81 @@ X64UPDATE
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
 
+> decodeX64FrameInvocation :: Word -> [Word] -> CPtr -> PPtr CTE -> 
+>                    ArchCapability -> [(Capability, PPtr CTE)] ->
+>                    KernelF SyscallError ArchInv.Invocation
+> decodeX64FrameInvocation label args _ cte (cap@PageCap {}) extraCaps = 
+>     case (invocationType label, args, extraCaps) of
+>         (ArchInvocationLabel X64PageMap, vaddr:rightsMask:attr:_, (vspaceCap,_):_) -> do
+>             when (isJust $ capVPMappedAddress cap) $ 
+>                 throw $ InvalidCapability 0
+>             (vspace,asid) <- case vspaceCap of
+>                 ArchObjectCap (PML4Cap {
+>                         capPML4MappedASID = Just asid,
+>                         capPML4BasePtr = vspace })
+>                     -> return (vspace, asid)
+>                 _ -> throw $ InvalidCapability 1 
+>             vspaceCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
+>             when (vspaceCheck /= vspace) $ throw $ InvalidCapability 1
+>             let vtop = vaddr + bit (pageBitsForSize $ capVPSize cap)
+>             when (VPtr vtop > kernelBase) $
+>                 throw $ InvalidArgument 0
+>             let vmRights = maskVMRights (capVPRights cap) $
+>                     rightsFromWord rightsMask 
+>             checkVPAlignment (capVPSize cap) (VPtr vaddr)
+>             entries <- createMappingEntries (addrFromPPtr $ capVPBasePtr cap)
+>                 (VPtr vaddr) (capVPSize cap) vmRights
+>                 (attribsFromWord attr) vspace
+>             ensureSafeMapping entries
+>             return $ InvokePage $ PageMap {
+>                 pageMapASID = asid,
+>                 pageMapCap = ArchObjectCap $ cap { capVPMappedAddress = Just (asid, VPtr vaddr) },
+>                 pageMapCTSlot = cte,
+>                 pageMapEntries = entries }
+>         (ArchInvocationLabel X64PageMap, _, _) -> throw TruncatedMessage        
+>         (ArchInvocationLabel X64PageRemap, rightsMask:attr:_, (vspaceCap,_):_) -> do
+>             when (capVPMapType cap == VMIOSpaceMap) $ throw IllegalOperation
+>             (vspace,asid) <- case vspaceCap of
+>                 ArchObjectCap (PML4Cap {
+>                         capPML4MappedASID = Just asid,
+>                         capPML4BasePtr = vspace })
+>                     -> return (vspace,asid)
+>                 _ -> throw $ InvalidCapability 1
+>             vspaceCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
+>             when (vspaceCheck /= vspace) $ throw $ InvalidCapability 1
+>             vaddr <- case capVPMappedAddress cap of
+>                 Just (_, v) -> return v
+>                 _ -> throw $ InvalidCapability 0
+>             -- asidCheck not required because ASIDs and HWASIDs are the same on x86
+>             let vmRights = maskVMRights (capVPRights cap) $
+>                     rightsFromWord rightsMask
+>             checkVPAlignment (capVPSize cap) vaddr
+>             entries <- createMappingEntries (addrFromPPtr $ capVPBasePtr cap)
+>                 vaddr (capVPSize cap) vmRights (attribsFromWord attr) vspace
+>             -- x64 allows arbitrary remapping, so no need to call ensureSafeMapping
+>             return $ InvokePage $ PageRemap {
+>                 pageRemapEntries = entries }
+>         (ArchInvocationLabel X64PageRemap, _, _) -> throw TruncatedMessage
+>         (ArchInvocationLabel X64PageUnmap, _, _) -> case capVPMapType cap of
+>             VMIOSpaceMap -> decodeX64IOUnmapInvocation label args cte cap extraCaps
+>             _ -> return $ InvokePage $ PageUnmap {
+>                 pageUnmapCap = cap,
+>                 pageUnmapCapSlot = cte }  
+>         (ArchInvocationLabel X64PageMapIO, _, _) -> decodeX64IOMapInvocation label args cte cap extraCaps
+>         (ArchInvocationLabel X64PageGetAddress, _, _) -> return $ InvokePage $ PageGetAddr (capVPBasePtr cap)
+>         _ -> throw IllegalOperation                                  
+
+> decodeX64IOMapInvocation :: Word -> [Word] -> PPtr CTE -> 
+>                    ArchCapability -> [(Capability, PPtr CTE)] ->
+>                    KernelF SyscallError ArchInv.Invocation
+> decodeX64IOMapInvocation label args cte cap extraCaps = error "Not implemented"
+
+> decodeX64IOUnmapInvocation :: Word -> [Word] -> PPtr CTE -> 
+>                    ArchCapability -> [(Capability, PPtr CTE)] ->
+>                    KernelF SyscallError ArchInv.Invocation
+> decodeX64IOUnmapInvocation label args cte cap extraCaps = error "Not implemented"
+
+
 
 > decodeX64MMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
@@ -428,7 +568,7 @@ X64UPDATE
 > decodeX64MMUInvocation label args _ _ cap@(PDPointerTableCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label args _ _ cap@(PageDirectoryCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) _ = error "Not implemented"
-> decodeX64MMUInvocation label args _ cte cap@(PageCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = decodeX64FrameInvocation label args cte cap extraCaps
 > decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(IOPortCap {}) _ = error "Not implemented"

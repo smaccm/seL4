@@ -454,7 +454,13 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     = VMPTE PTE
 >     | VMPDE PDE
 >     | VMPDPTE PDPTE
->     deriving (Show, Eq)
+>     deriving (Show, Eq, Enum)
+
+> data VMPageEntryPtr
+>     = VMPTEPtr (PPtr PTE)
+>     | VMPDEPtr (PPtr PDE)
+>     | VMPDPTEPtr (PPtr PDPTE)
+>     deriving (Show, Eq, Enum)
 
 > data VMMapType
 >     = VMNoMap
