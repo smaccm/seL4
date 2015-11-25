@@ -662,6 +662,7 @@ Checking virtual address for page size dependent alignment:
 >     case capVPMappedAddress cap of
 >         Just (asid, vaddr) -> unmapPage (capVPSize cap) asid vaddr
 >                                     (capVPBasePtr cap)
+>         _ -> return ()
 >     ArchObjectCap cap <- getSlotCap ctSlot
 >     updateCap ctSlot (ArchObjectCap $ 
 >                           cap { capVPMappedAddress = Nothing })
