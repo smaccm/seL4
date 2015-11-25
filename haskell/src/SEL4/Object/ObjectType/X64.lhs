@@ -23,6 +23,7 @@ This module contains operations on machine-specific object types for the ARM.
 > import SEL4.API.Invocation.X64 as ArchInv
 > import SEL4.Object.Structures
 > import SEL4.Kernel.VSpace.X64
+> import {-# SOURCE #-} SEL4.Object.IOPort.X64
 
 > import Data.Bits
 > import Data.Array
@@ -385,27 +386,11 @@ Create an architecture-specific object.
 >         KernelF SyscallError ArchInv.Invocation
 > decodeInvocation label args capIndex slot cap extraCaps = 
 >     if isIOCap cap
->      then decodeX64IOInvocation label args capIndex slot cap extraCaps
+>      then decodeX64PortInvocation label args capIndex slot cap extraCaps
 >      else decodeX64MMUInvocation label args capIndex slot cap extraCaps
 
-> isMMUInvocation :: ArchInv.Invocation -> Bool
-> isMMUInvocation x = case x of
->      InvokePDPT _ -> True
->      InvokePageDirectory _ -> True
->      InvokePageTable _ -> True
->      InvokeIOPageTable _ -> True
->      InvokePage _ -> True
->      InvokeASIDControl _ -> True
->      InvokeASIDPool _ -> True
->      _ -> False
-
-> isIOInvocation :: ArchInv.Invocation -> Bool
-> isIOInvocation x = case x of
->     InvokeIOPort _ -> True
->     _ -> False
-
 > performInvocation :: ArchInv.Invocation -> KernelP [Word]
-> performInvocation (InvokeIOPort oper) = performX64IOInvocation oper
+> performInvocation (oper@(InvokeIOPort _)) = performX64PortInvocation oper
 > performInvocation oper = performX64MMUInvocation oper 
 
 \subsection{Helper Functions}

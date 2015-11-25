@@ -663,15 +663,6 @@ X64UPDATE
 > decodeX64MMUInvocation _ _ _ _ _ _ = fail "Unreachable"
 
 
-> decodeX64IOInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
->         ArchCapability -> [(Capability, PPtr CTE)] ->
->         KernelF SyscallError ArchInv.Invocation
-
-> decodeX64IOInvocation _ _ _ _ cap@(IOPortCap {}) _ = error "Unimplemented"
-> decodeX64IOInvocation _ _ _ _ cap@(IOSpaceCap {}) _ = error "Unimplemented"
-> decodeX64IOInvocation _ _ _ _ _ _ = fail "Unreachable"
-
-
 Checking virtual address for page size dependent alignment:
 
 > checkVPAlignment :: VMPageSize -> VPtr -> KernelF SyscallError ()
@@ -765,9 +756,6 @@ Checking virtual address for page size dependent alignment:
 > performASIDPoolInvocation :: ASIDPoolInvocation -> Kernel ()
 > performASIDPoolInvocation (Assign asid poolPtr ctSlot) =
 >     error "Not implemented"
-
-> performX64IOInvocation :: IOPortInvocation -> KernelP [Word]
-> performX64IOInvocation _ = error "Unimplemented"
 
 \subsection{Simulator Support}
 

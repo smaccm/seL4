@@ -13,6 +13,10 @@ This module defines IO port routines, specific to x64.
 
 \begin{impdetails}
 
+> {-# BOOT-IMPORTS: SEL4.Machine SEL4.Model SEL4.Object.Structures SEL4.Object.Instances() SEL4.API.Types SEL4.API.Failures SEL4.API.Invocation.X64 SEL4.API.InvocationLabels.X64 #-}
+> {-# BOOT-EXPORTS: performX64PortInvocation decodeX64PortInvocation #-}
+
+> import SEL4.Machine
 > import SEL4.API.Types
 > import SEL4.API.Failures
 > import SEL4.Machine.RegisterSet
@@ -20,8 +24,7 @@ This module defines IO port routines, specific to x64.
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.Object.TCB
-> import SEL4.API.Invocation
-> import SEL4.API.Invocation.X64 as ArchInv
+> import SEL4.API.Invocation.X64
 > import SEL4.API.InvocationLabels.X64
 
 \end{impdetails}
@@ -42,7 +45,7 @@ FIXME kernel people need to fix the C here and not pack port and output data int
 
 > decodeX64PortInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
->         KernelF SyscallError ArchInv.Invocation
+>         KernelF SyscallError Invocation
 > decodeX64PortInvocation label args _ _ cap@(IOPortCap {}) _ = do
 >     case (invocationType label, args) of
 >         (X64IOPortIn8, port:_) -> do
@@ -74,7 +77,7 @@ FIXME kernel people need to fix the C here and not pack port and output data int
 >             return $ InvokeIOPort $ IOPortInvocation port $ IOPortOut32 output_data
 >         (_, _) -> throw TruncatedMessage
 
-> performX64PortInvocation :: ArchInv.Invocation -> KernelP [Word]
+> performX64PortInvocation :: Invocation -> KernelP [Word]
 > performX64PortInvocation (InvokeIOPort (IOPortInvocation port port_data)) =
 >     case port_data of
 >         IOPortIn8 -> portIn in8
