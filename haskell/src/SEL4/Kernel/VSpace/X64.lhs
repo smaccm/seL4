@@ -560,9 +560,6 @@ X64UPDATE
 >         _ -> throw IllegalOperation
 > decodeX64FrameInvocation _ _ _ _ _ = fail "Unreachable"
 
-
-
-
 > decodeX64IOMapInvocation :: Word -> [Word] -> PPtr CTE -> 
 >                    ArchCapability -> [(Capability, PPtr CTE)] ->
 >                    KernelF SyscallError ArchInv.Invocation
@@ -647,8 +644,41 @@ Checking virtual address for page size dependent alignment:
 >     return $ pd /= InvalidPDE
 
 > performPageInvocation :: PageInvocation -> Kernel ()
-> performPageInvocation _ =
->     error "Not implemented"
+> performPageInvocation (PageMap asid cap ctSlot entries) = do
+>     updateCap ctSlot cap
+>     case entries of
+>         (VMPTE pte, VMPTEPtr slot) -> storePTE slot pte
+>         (VMPDE pde, VMPDEPtr slot) -> storePDE slot pde
+>         (VMPDPTE pdpte, VMPDPTEPtr slot) -> storePDPTE slot pdpte
+>         _ -> fail "impossible"
+> 
+> performPageInvocation (PageRemap entries) = case entries of
+>     (VMPTE pte, VMPTEPtr slot) -> storePTE slot pte
+>     (VMPDE pde, VMPDEPtr slot) -> storePDE slot pde
+>     (VMPDPTE pdpte, VMPDPTEPtr slot) -> storePDPTE slot pdpte
+>     _ -> fail "impossible"
+> 
+> performPageInvocation (PageUnmap cap ctSlot) = do
+>     case capVPMappedAddress cap of
+>         Just (asid, vaddr) -> unmapPage (capVPSize cap) asid vaddr
+>                                     (capVPBasePtr cap)
+>     ArchObjectCap cap <- getSlotCap ctSlot
+>     updateCap ctSlot (ArchObjectCap $ 
+>                           cap { capVPMappedAddress = Nothing })
+> 
+> performPageInvocation (PageIOMap asid cap ctSlot entries) = error "Unimplemented"
+>
+> performPageInvocation (PageGetAddr ptr) = do
+>     let paddr = fromPAddr $ addrFromPPtr ptr
+>     ct <- getCurThread
+>     msgTransferred <- setMRs ct Nothing [paddr]
+>     msgInfo <- return $ MI {
+>             msgLength = msgTransferred,
+>             msgExtraCaps = 0,
+>             msgCapsUnwrapped = 0,
+>             msgLabel = 0 }
+>     setMessageInfo ct msgInfo
+
 
 > performASIDControlInvocation :: ASIDControlInvocation -> Kernel ()
 > performASIDControlInvocation _ =
