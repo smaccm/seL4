@@ -21,20 +21,20 @@ This module defines the handling of the ARM hardware-defined page tables.
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.Model.StateData.X64
-> import SEL4.Object.Instances()
+> import SEL4.Object.Instances
 > import SEL4.API.Invocation
 > import SEL4.API.InvocationLabels.X64
-> import SEL4.Kernel.BootInfo()
+> import SEL4.Kernel.BootInfo
 > import {-# SOURCE #-} SEL4.Object.CNode
 > import {-# SOURCE #-} SEL4.Object.TCB
-> import {-# SOURCE #-} SEL4.Kernel.Init()
-> import {-# SOURCE #-} SEL4.Kernel.CSpace()
+> import {-# SOURCE #-} SEL4.Kernel.Init
+> import {-# SOURCE #-} SEL4.Kernel.CSpace
 
 > import Data.Bits
 > import Data.Maybe
-> import Data.List()
+> import Data.List
 > import Data.Array
-> import Data.Word ()
+> import Data.Word (Word32)
 
 \end{impdetails}
 
@@ -728,3 +728,32 @@ The kernel model's ARM targets use an external simulation of the physical addres
 > unmapIOPage (PageCap { capVPMapType = VMIOSpaceMap }) = error "Unimplemented"
 > unmapIOPage _ = error "Not an IOPage capability"
 
+> mapKernelWindow :: Kernel ()
+> mapKernelWindow = error "Unimplemented -- init code"
+
+> activateGlobalVSpace :: Kernel ()
+> activateGlobalVSpace = error "Unimplemented -- init code"
+
+> createIPCBufferFrame :: Capability -> VPtr -> KernelInit Capability
+> createIPCBufferFrame = error "Unimplemented -- init code"
+
+> createBIFrame :: Capability -> VPtr -> Word32 -> Word32 -> KernelInit Capability
+> createBIFrame = error "Unimplemented -- init code"
+
+> createFramesOfRegion :: Capability -> Region -> Bool -> VPtr -> KernelInit () 
+> createFramesOfRegion = error "Unimplemented -- init code"
+
+> createITPDPTs :: Capability -> VPtr -> VPtr -> KernelInit Capability
+> createITPDPTs = error "Unimplemented -- init code" 
+
+> writeITPDPTs :: Capability -> Capability -> KernelInit ()
+> writeITPDPTs = error "Unimplemented -- init code"
+
+> createITASIDPool :: Capability -> KernelInit Capability
+> createITASIDPool = error "Unimplemented -- init code"
+
+> writeITASIDPool :: Capability -> Capability -> Kernel ()
+> writeITASIDPool = error "Unimplemented -- init code"
+
+> createDeviceFrames :: Capability -> KernelInit ()
+> createDeviceFrames = error "Unimplemented -- init code"
