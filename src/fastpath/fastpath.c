@@ -24,8 +24,8 @@ fastpath_call(word_t cptr, word_t msgInfo)
     word_t badge;
     cte_t *replySlot, *callerSlot;
     cap_t newVTable;
-#ifdef X86_64
-    pml4e_t *cap_vroot;
+#ifdef CONFIG_ARCH_X86
+    vspace_root_t *cap_vroot;
 #else
     pde_t *cap_vroot;
 #endif
@@ -69,12 +69,12 @@ fastpath_call(word_t cptr, word_t msgInfo)
     newVTable = TCB_PTR_CTE_PTR(dest, tcbVTable)->cap;
 
     /* Get vspace root. */
-#if defined(ARCH_ARM) || (!defined(CONFIG_PAE_PAGING) && defined(X86_32))
+#if defined(CONFIG_ARCH_ARM) || (!defined(CONFIG_PAE_PAGING) && defined(X86_32))
     cap_vroot = PDE_PTR(cap_page_directory_cap_get_capPDBasePtr(newVTable));
 #elif defined(X86_64)
     cap_vroot = PML4E_PTR(cap_pml4_cap_get_capPML4BasePtr(newVTable));
 #elif defined(CONFIG_PAE_PAGING)
-    cap_vroot = PDE_PTR(cap_pdpt_cap_get_capPDPTBasePtr(newVTable));
+    cap_vroot = PDPTE_PTR(cap_pdpt_cap_get_capPDPTBasePtr(newVTable));
 #else
 #error "Invalid vspace root"
 #endif
@@ -84,7 +84,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
         slowpath(SysCall);
     }
 
-#ifdef ARCH_ARM
+#ifdef CONFIG_ARCH_ARM
     /* Get HW ASID */
     stored_hw_asid = cap_vroot[PD_ASID_SLOT];
 #endif
@@ -105,7 +105,7 @@ fastpath_call(word_t cptr, word_t msgInfo)
         slowpath(SysCall);
     }
 
-#ifdef ARCH_ARM
+#ifdef CONFIG_ARCH_ARM
     if (unlikely(!pde_pde_invalid_get_stored_asid_valid(stored_hw_asid))) {
         slowpath(SysCall);
     }
@@ -179,8 +179,8 @@ fastpath_reply_recv(word_t cptr, word_t msgInfo)
     word_t fault_type;
 
     cap_t newVTable;
-#ifdef X86_64
-    pml4e_t *cap_vroot;
+#ifdef CONFIG_ARCH_X86
+    vspace_root_t *cap_vroot;
 #else
     pde_t *cap_vroot;
 #endif
@@ -243,12 +243,12 @@ fastpath_reply_recv(word_t cptr, word_t msgInfo)
     newVTable = TCB_PTR_CTE_PTR(caller, tcbVTable)->cap;
 
     /* Get vspace root. */
-#if defined(ARCH_ARM) || (!defined(CONFIG_PAE_PAGING) && defined(X86_32))
+#if defined(CONFIG_ARCH_ARM) || (!defined(CONFIG_PAE_PAGING) && defined(X86_32))
     cap_vroot = PDE_PTR(cap_page_directory_cap_get_capPDBasePtr(newVTable));
 #elif defined(X86_64)
     cap_vroot = PML4E_PTR(cap_pml4_cap_get_capPML4BasePtr(newVTable));
 #elif defined(CONFIG_PAE_PAGING)
-    cap_vroot = PDE_PTR(cap_pdpt_cap_get_capPDPTBasePtr(newVTable));
+    cap_vroot = PDPTE_PTR(cap_pdpt_cap_get_capPDPTBasePtr(newVTable));
 #else
 #error "Invalid vspace root"
 #endif
@@ -258,7 +258,7 @@ fastpath_reply_recv(word_t cptr, word_t msgInfo)
         slowpath(SysReplyRecv);
     }
 
-#ifdef ARCH_ARM
+#ifdef CONFIG_ARCH_ARM
     /* Get HWASID. */
     stored_hw_asid = cap_vroot[PD_ASID_SLOT];
 #endif
@@ -271,7 +271,7 @@ fastpath_reply_recv(word_t cptr, word_t msgInfo)
         slowpath(SysReplyRecv);
     }
 
-#ifdef ARCH_ARM
+#ifdef CONFIG_ARCH_ARM
     /* Ensure the HWASID is valid. */
     if (unlikely(!pde_pde_invalid_get_stored_asid_valid(stored_hw_asid))) {
         slowpath(SysReplyRecv);
