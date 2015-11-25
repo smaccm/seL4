@@ -23,10 +23,10 @@ void __attribute__((noreturn)) __attribute__((externally_visible)) restore_user_
     word_t context_base = ((word_t)ksCurThread) + (n_contextRegisters * sizeof(word_t));
     tss_ptr_set_rsp0_l(&x86KStss, (uint32_t)context_base);
     tss_ptr_set_rsp0_u(&x86KStss, (uint32_t)(context_base >> 32));
-    if (unlikely(ksCurThread == ia32KSfpuOwner)) {
+    if (unlikely(ksCurThread == x86KSfpuOwner)) {
         /* We are using the FPU, make sure it is enabled */
         enableFpu();
-    } else if (unlikely(ia32KSfpuOwner)) {
+    } else if (unlikely(x86KSfpuOwner)) {
         /* Someone is using the FPU and it might be enabled */
         disableFpu();
     } else {

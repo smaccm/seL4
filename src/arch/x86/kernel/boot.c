@@ -197,13 +197,13 @@ init_sys_state(
     /* allocate a large frame for logging */
     pde = pde_pde_large_new(
               paddr,                                   /* page_base_address    */
-              vm_attributes_get_ia32PATBit(buffer_attr),      /* pat                  */
+              vm_attributes_get_x86PATBit(buffer_attr),      /* pat                  */
               0,                                       /* avl_cte_depth        */
               1,                                       /* global               */
               0,                                       /* dirty                */
               0,                                       /* accessed             */
-              vm_attributes_get_ia32PCDBit(buffer_attr),      /* cache_disabled       */
-              vm_attributes_get_ia32PWTBit(buffer_attr),      /* write_through        */
+              vm_attributes_get_x86PCDBit(buffer_attr),      /* cache_disabled       */
+              vm_attributes_get_x86PWTBit(buffer_attr),      /* write_through        */
               0,                                       /* super_user           */
               1,                                       /* read_write           */
               1                                        /* present              */
@@ -302,8 +302,8 @@ init_sys_state(
      * the first thread is created.
      */
     resetFpu();
-    saveFpuState(&ia32KSnullFpuState);
-    ia32KSfpuOwner = NULL;
+    saveFpuState(&x86KSnullFpuState);
+    x86KSfpuOwner = NULL;
 
     /* create the idle thread */
     if (!create_idle_thread()) {
@@ -329,7 +329,7 @@ init_sys_state(
         }
 
         /* write number of IOMMU PT levels into bootinfo */
-        ndks_boot.bi_frame->num_iopt_levels = ia32KSnumIOPTLevels;
+        ndks_boot.bi_frame->num_iopt_levels = x86KSnumIOPTLevels;
 
         /* write IOSpace master cap */
         write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), BI_CAP_IO_SPACE), master_iospace_cap());

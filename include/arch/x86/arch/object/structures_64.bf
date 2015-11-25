@@ -203,9 +203,9 @@ block vm_attributes {
     -- TODO this is wrong and should not be padded like this
     padding     32
     padding 29
-    field ia32PATBit 1
-    field ia32PCDBit 1
-    field ia32PWTBit 1
+    field x86PATBit 1
+    field x86PCDBit 1
+    field x86PWTBit 1
 }
 
 ---- x86-64 specific object types

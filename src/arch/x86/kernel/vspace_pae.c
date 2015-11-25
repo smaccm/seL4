@@ -427,8 +427,8 @@ decodeIA32PageDirectoryInvocation(
     pdpte = pdpte_new(
                 paddr,                                      /* pd_base_address  */
                 0,                                          /* avl              */
-                vm_attributes_get_ia32PCDBit(attr),      /* cache_disabled   */
-                vm_attributes_get_ia32PWTBit(attr),      /* write_through    */
+                vm_attributes_get_x86PCDBit(attr),      /* cache_disabled   */
+                vm_attributes_get_x86PWTBit(attr),      /* write_through    */
                 1                                           /* present          */
             );
 

@@ -106,9 +106,9 @@ cap_t CONST Arch_updateCapData(bool_t preserve, word_t data, cap_t cap)
         uint16_t PCIDevice = io_space_capdata_get_PCIDevice(w);
         uint16_t domainID = io_space_capdata_get_domainID(w);
         if (!preserve && cap_io_space_cap_get_capPCIDevice(cap) == 0 &&
-                domainID >= ia32KSFirstValidIODomain &&
+                domainID >= x86KSFirstValidIODomain &&
                 domainID != 0                        &&
-                domainID <= MASK(ia32KSnumIODomainIDBits)) {
+                domainID <= MASK(x86KSnumIODomainIDBits)) {
             return cap_io_space_cap_new(domainID, PCIDevice);
         } else {
             return cap_null_cap_new();
