@@ -592,7 +592,6 @@ lookupPTSlot_ret_t lookupPTSlot(vspace_root_t *vspace, vptr_t vptr)
     if ((pde_ptr_get_page_size(pdSlot.pdSlot) != pde_pde_small) ||
             !pde_pde_small_ptr_get_present(pdSlot.pdSlot)) {
         current_lookup_fault = lookup_fault_missing_capability_new(PAGE_BITS + PT_BITS);
-
         ret.ptSlot = NULL;
         ret.status = EXCEPTION_LOOKUP_FAULT;
         return ret;
@@ -853,6 +852,11 @@ exception_t decodeX86FrameInvocation(
                 current_syscall_error.type = seL4_FailedLookup;
                 current_syscall_error.failedLookupWasSource = false;
                 /* current_lookup_fault will have been set by lookupPTSlot */
+                return EXCEPTION_SYSCALL_ERROR;
+            }
+
+            if (pte_ptr_get_present(lu_ret.ptSlot)) {
+                current_syscall_error.type = seL4_DeleteFirst;
                 return EXCEPTION_SYSCALL_ERROR;
             }
 
