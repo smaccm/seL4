@@ -496,3 +496,12 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 
 > -- FIXME x64: IOPTEs
 
+FIXME IO port input/output
+
+in8 = error "Unimplemented"
+in16 = error "Unimplemented"
+in32 = error "Unimplemented"
+out8 = error "Unimplemented"
+out16 = error "Unimplemented"
+out32 = error "Unimplemented"
+
