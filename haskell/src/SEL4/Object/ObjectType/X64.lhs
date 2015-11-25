@@ -88,25 +88,30 @@ X64 has two writable user data caps
 > ioPortGetLastPort :: Word -> Word16
 > ioPortGetLastPort dat = error "Not implemented"
    
-> updateCapData :: Bool -> Word -> ArchCapability -> Kernel Capability
-> updateCapData preserve newData (c@IOSpaceCap {}) = do
->     let pciDevice = ioSpaceGetPCIDevice newData
->     let domID = ioSpaceGetDomainID newData
->     fstValidDom <- gets (x64KSFirstValidIODomain . ksArchState)
->     domIDBits <- gets (x64KSnumIODomainIDBits . ksArchState)
->     return $ if (not preserve && capIOPCIDevice c == 0 && domID >= fstValidDom
+> updateCapData :: Bool -> Word -> ArchCapability -> Capability
+> updateCapData preserve newData (c@IOSpaceCap {}) =
+>     let
+>         pciDevice = ioSpaceGetPCIDevice newData
+>         domID = ioSpaceGetDomainID newData
+>         fstValidDom = firstValidIODomain
+>         domIDBits = numIODomainIDBits
+>     in
+>     if (not preserve && capIOPCIDevice c == 0 && domID >= fstValidDom
 >                     && domID /= 0 && domID <= mask domIDBits) 
 >                then (ArchObjectCap (IOSpaceCap domID pciDevice))
 >                else NullCap
-> updateCapData preserve newData (c@IOPortCap {}) = do
->     let firstPort = ioPortGetFirstPort newData
->     let lastPort = ioPortGetLastPort newData
->     assert (capIOPortFirstPort c <= capIOPortLastPort c) "first port must be less than last"
->     return $ if (firstPort <= lastPort && firstPort >= capIOPortFirstPort c
->                      && lastPort <= capIOPortLastPort c)
->               then (ArchObjectCap (IOPortCap firstPort lastPort))
->               else NullCap
-> updateCapData _ _ c = return (ArchObjectCap c)
+> updateCapData preserve newData (c@IOPortCap {}) =
+>     let 
+>         firstPort = ioPortGetFirstPort newData
+>         lastPort = ioPortGetLastPort newData
+>     in
+>     if (capIOPortFirstPort c <= capIOPortLastPort c)
+>      then if (firstPort <= lastPort && firstPort >= capIOPortFirstPort c
+>                       && lastPort <= capIOPortLastPort c)
+>                then (ArchObjectCap (IOPortCap firstPort lastPort))
+>                else NullCap
+>     else error "first port must be less than last"
+> updateCapData _ _ c = ArchObjectCap c
 
 Page capabilities have read and write permission bits, which are used to restrict virtual memory accesses to their contents. Note that the ability to map objects into a page table or page directory is granted by possession of a capability to it; there is no specific permission bit restricting this ability.
 
@@ -369,17 +374,6 @@ Create an architecture-specific object.
 
 \subsection{Capability Invocation}
 
-> isMMUCap :: ArchCapability -> Bool
-> isMMUCap c = case c of
->          (ASIDPoolCap {}) -> True
->          ASIDControlCap -> True
->          (IOPageTableCap {}) -> True
->          (PageCap {}) -> True
->          (PageTableCap {}) -> True
->          (PageDirectoryCap {}) -> True
->          (PDPointerTableCap {}) -> True
->          (PML4Cap {}) -> True
-
 > isIOCap :: ArchCapability -> Bool
 > isIOCap c = case c of
 >          (IOPortCap {}) -> True
@@ -390,11 +384,9 @@ Create an architecture-specific object.
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
 > decodeInvocation label args capIndex slot cap extraCaps = 
->     if isMMUCap cap
->      then decodeX64MMUInvocation label args capIndex slot cap extraCaps
->      else if isIOCap cap
->       then decodeX64IOInvocation label args capIndex slot cap extraCaps
->       else fail "Unreachable"
+>     if isIOCap cap
+>      then decodeX64IOInvocation label args capIndex slot cap extraCaps
+>      else decodeX64MMUInvocation label args capIndex slot cap extraCaps
 
 > isMMUInvocation :: ArchInv.Invocation -> Bool
 > isMMUInvocation x = case x of

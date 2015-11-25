@@ -486,6 +486,14 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 > pptrBase :: VPtr
 > pptrBase = Platform.pptrBase
 
+> -- This firstValidIODomain and numIODomainBits calculated as part of the boot code.
+> -- Right now, for simplicity, we assume it is constant
+> firstValidIODomain :: Word16
+> firstValidIODomain = Platform.firstValidIODomain
+
+> numIODomainIDBits :: Int
+> numIODomainIDBits = Platform.numIODomainIDBits
+
 > hwASIDInvalidate = error "Unimplemented"
 
 
@@ -493,6 +501,7 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 > getFaultAddress = do
 >     cbptr <- ask
 >     liftIO $ Platform.getFaultAddress cbptr
+
 
 > -- FIXME x64: IOPTEs
 

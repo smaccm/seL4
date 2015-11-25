@@ -50,9 +50,6 @@ FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so 
 > data KernelState = X64KernelState {
 >     x64KSGdt :: Array GdtSlot GdtEntry,
 >     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
->     x64KSNumIODomainBits :: Word16,
->     x64KSFirstValidIODomain :: Word16,
->     x64KSnumIODomainIDBits :: Int,
 >     x64KSGlobalPML4 :: PPtr PML4E}
 
 > newKernelState :: PAddr -> (KernelState, [PAddr])

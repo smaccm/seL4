@@ -17,7 +17,7 @@ module SEL4.Machine.Hardware.X64.PC99 where
 import SEL4.Machine.RegisterSet
 import Foreign.Ptr
 import Data.Bits
-import Data.Word(Word8)
+import Data.Word(Word8, Word16)
 import Data.Ix
 
 data CallbackData
@@ -171,3 +171,9 @@ pptrBase = error "Unimplemented" -- FIXME how is this not physMappingOffset?!
 
 getFaultAddress :: Ptr CallbackData -> IO VPtr
 getFaultAddress _ = error "Unimplemented"
+
+firstValidIODomain :: Word16
+firstValidIODomain = error "Unimplemented"
+
+numIODomainIDBits :: Int
+numIODomainIDBits = error "Unimplemented"

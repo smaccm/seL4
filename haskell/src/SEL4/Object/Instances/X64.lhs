@@ -13,7 +13,7 @@ This module defines instances of "PSpaceStorable" for X64-specific kernel object
 
 \begin{impdetails}
 
-> import SEL4.Machine.Hardware.X64(PTE(..), PDE(..), PDPTE(..), PML4E(..))
+> import SEL4.Machine.Hardware.X64(PTE(..), PDE(..), PDPTE(..), PML4E(..), IOPTE(..))
 > import SEL4.Object.Structures
 > import SEL4.Model
 > import Data.Helpers
@@ -58,3 +58,9 @@ FIXME x64: What is the max size of an asidpool?
 >         KOArch (KOASIDPool e) -> return e
 >         _ -> typeError "ASID pool" o
 
+> instance PSpaceStorable IOPTE where
+>     makeObject = InvalidIOPTE
+>     injectKO = KOArch . KOIOPTE
+>     projectKO o = case o of 
+>                 KOArch (KOIOPTE p) -> return p
+>                 _ -> typeError "IOPTE" o
