@@ -316,10 +316,9 @@ Creates a page-sized object that consists of plain words observable to the user.
 
 Create an architecture-specific object.
 
-> -- FIXME x64: WRITE THIS
 > createObject :: ObjectType -> PPtr () -> Int -> Kernel ArchCapability
-> createObject t regionBase _ = error "Unimplemented"
->{-    let funupd = (\f x v y -> if y == x then v else f y) in
+> createObject t regionBase _ = 
+>     let funupd = (\f x v y -> if y == x then v else f y) in
 >     let pointerCast = PPtr . fromPPtr
 >     in case t of
 >         Arch.Types.APIObjectType _ ->
@@ -328,50 +327,41 @@ Create an architecture-specific object.
 >             createPageObject regionBase 0
 >             modify (\ks -> ks { gsUserPages =
 >               funupd (gsUserPages ks)
->                      (fromPPtr regionBase) (Just ARMSmallPage)})
+>                      (fromPPtr regionBase) (Just X64SmallPage)})
 >             return $! PageCap (pointerCast regionBase)
->                   VMReadWrite ARMSmallPage Nothing
->         Arch.Types.LargePageObject -> do
->             createPageObject regionBase 4
+>                   VMReadWrite VMVSpaceMap X64SmallPage Nothing
+>         Arch.Types.LargePageObject -> do 
+>             createPageObject regionBase ptTranslationBits
 >             modify (\ks -> ks { gsUserPages =
 >               funupd (gsUserPages ks)
->                      (fromPPtr regionBase) (Just ARMLargePage)})
+>                      (fromPPtr regionBase) (Just X64LargePage)})
 >             return $! PageCap (pointerCast regionBase)
->                   VMReadWrite ARMLargePage Nothing
->         Arch.Types.SectionObject -> do
->             createPageObject regionBase 8
+>                   VMReadWrite VMVSpaceMap X64LargePage Nothing
+>         Arch.Types.HugePageObject -> do
+>             createPageObject regionBase (ptTranslationBits + ptTranslationBits)
 >             modify (\ks -> ks { gsUserPages =
 >               funupd (gsUserPages ks)
->                      (fromPPtr regionBase) (Just ARMSection)})
+>                      (fromPPtr regionBase) (Just X64HugePage)})
 >             return $! PageCap (pointerCast regionBase)
->                   VMReadWrite ARMSection Nothing
->         Arch.Types.SuperSectionObject -> do
->             createPageObject regionBase 12 
->             modify (\ks -> ks { gsUserPages =
->               funupd (gsUserPages ks)
->                      (fromPPtr regionBase) (Just ARMSuperSection)})
->             return $! PageCap (pointerCast regionBase)
->                   VMReadWrite ARMSuperSection Nothing
+>                   VMReadWrite VMVSpaceMap X64HugePage Nothing
 >         Arch.Types.PageTableObject -> do
 >             let ptSize = ptBits - objBits (makeObject :: PTE)
->             let regionSize = (1 `shiftL` ptBits)
 >             placeNewObject regionBase (makeObject :: PTE) ptSize
->             doMachineOp $
->                 cleanCacheRange_PoU (VPtr $ fromPPtr regionBase)
->                       (VPtr $ fromPPtr regionBase + regionSize - 1)
->                       (addrFromPPtr regionBase)
 >             return $! PageTableCap (pointerCast regionBase) Nothing
 >         Arch.Types.PageDirectoryObject -> do
 >             let pdSize = pdBits - objBits (makeObject :: PDE)
->             let regionSize = (1 `shiftL` pdBits)
 >             placeNewObject regionBase (makeObject :: PDE) pdSize
->             copyGlobalMappings (pointerCast regionBase)
->             doMachineOp $
->                 cleanCacheRange_PoU (VPtr $ fromPPtr regionBase)
->                       (VPtr $ fromPPtr regionBase + regionSize - 1)
->                       (addrFromPPtr regionBase)
 >             return $! PageDirectoryCap (pointerCast regionBase) Nothing
-> -}
+>         Arch.Types.PDPointerTableObject -> do
+>             let pdptSize = pdptBits - objBits (makeObject :: PDPTE)
+>             placeNewObject regionBase (makeObject :: PDPTE) pdptSize
+>             return $! PDPointerTableCap (pointerCast regionBase) Nothing
+>         Arch.Types.PML4Object -> do
+>             let pml4Size = pml4Bits - objBits (makeObject :: PML4E)
+>             placeNewObject regionBase (makeObject :: PML4E) pml4Size
+>             copyGlobalMappings (pointerCast regionBase)
+>             return $! PML4Cap (pointerCast regionBase) Nothing
+
 
 \subsection{Capability Invocation}
 
