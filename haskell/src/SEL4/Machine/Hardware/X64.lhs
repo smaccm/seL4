@@ -472,10 +472,18 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     deriving (Show, Eq, Enum)
 
 > data VMRights
->     = VMReadOnly
+>     = VMKernelOnly
+>     | VMReadOnly
 >     | VMReadWrite
->     | VMKernelOnly
->     deriving (Show, Eq, Enum)
+>     deriving (Show, Eq)
+
+> instance Enum VMRights where
+>     toEnum 1 = VMKernelOnly
+>     toEnum 2 = VMReadOnly
+>     toEnum 3 = VMReadWrite
+>     fromEnum VMKernelOnly = 1
+>     fromEnum VMReadOnly = 2
+>     fromEnum VMReadWrite = 3
 
 > data VMAttributes = VMAttributes {
 >     x64WriteThrough, x64PAT, x64CacheDisabled :: Bool }
