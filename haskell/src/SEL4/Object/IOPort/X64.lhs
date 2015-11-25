@@ -85,11 +85,17 @@ FIXME kernel people need to fix the C here and not pack port and output data int
 >         IOPortOut32 w -> portOut out32 w
 >     where
 >         portIn f = do
->             t <- getCurThread
+>             ct <- getCurThread
 >             res <- doMachineOp f
->             asUser t $ setRegister (ArchReg.msgRegisters !! 0) res
->             setMessageInfo $ MessageInfo 0 0 0 1
+>             setMRs ct Nothing [res]
+>             msgInfo <- return $ MI {
+>                 msgLength = 1,
+>                 msgExtraCaps = 0,
+>                 msgCapsUnwrapped = 0,
+>                 msgLabel = 0 }
+>             setMessageInfo ct msgInfo
 >         portOut f w = do
+>             ct <- getCurThread
 >             doMachineOp $ f port w
->             setMessageInfo $ MessageInfo 0 0 0 0
+>             setMessageInfo ct MI 0 0 0 0
 
