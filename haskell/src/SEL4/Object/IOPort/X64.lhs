@@ -13,21 +13,18 @@ This module defines IO port routines, specific to x64.
 
 \begin{impdetails}
 
-> import SEL4.Machine
+> import SEL4.API.Types
+> import SEL4.API.Failures
+> import SEL4.Machine.RegisterSet
+> import SEL4.Machine.Hardware.X64
 > import SEL4.Model
 > import SEL4.Object.Structures
-> import SEL4.API.Failures
-> import SEL4.API.Invocation.X64
+> import SEL4.Object.TCB
+> import SEL4.API.Invocation
+> import SEL4.API.Invocation.X64 as ArchInv
 > import SEL4.API.InvocationLabels.X64
-> import SEL4.Machine.Hardware.X64 as Arch
-> import SEL4.Machine.Hardware.RegisterSet.X64
 
 \end{impdetails}
-
-TODO:
-ensurePortOperationAllowed
-decodeX64PortInvocation
-performX64PortInvocation
 
 > ensurePortOperationAllowed :: ArchCapability -> IOPort -> Int ->
 >     KernelF SyscallError ()
@@ -38,7 +35,7 @@ performX64PortInvocation
 >     let end_port = start_port + fromIntegral size - 1
 >     assert (first_allowed <= last_allowed)
 >     assert (start_port <= end_port)
->     when ((start_port < first_allowed) || (end_port > last_allowed)))
+>     when ((start_port < first_allowed) || (end_port > last_allowed))
 >         throw IllegalOperation
 
 FIXME kernel people need to fix the C here and not pack port and output data into a single register
@@ -46,7 +43,7 @@ FIXME kernel people need to fix the C here and not pack port and output data int
 > decodeX64PortInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
-> decodeX64PortInvocation label args) _ _ cap@(IOPortCap {}) _ = do
+> decodeX64PortInvocation label args _ _ cap@(IOPortCap {}) _ = do
 >     case (invocationType label, args) of
 >         (X64IOPortIn8, port:_) -> do
 >             let port' = (fromIntegral port) :: IOPort
@@ -78,20 +75,19 @@ FIXME kernel people need to fix the C here and not pack port and output data int
 >         (_, _) -> throw TruncatedMessage
 
 > performX64PortInvocation :: ArchInv.Invocation -> KernelP [Word]
-> performX64PortInvocation (InvokeIOPort (IOPortInvocation port port_data) =
+> performX64PortInvocation (InvokeIOPort (IOPortInvocation port port_data)) =
 >     case port_data of
->         IOPortIn8 -> portIn Arch.in8
->         IOPortIn16 -> portIn Arch.in16
->         IOPortIn32 -> portIn Arch.in32
-msglen = 0 for these guys
->         IOPortOut8 w -> portOut Arch.out8 w
->         IOPortOut16 w -> portOut Arch.out16 w
->         IOPortOut32 w -> portOut Arch.out32 w
+>         IOPortIn8 -> portIn in8
+>         IOPortIn16 -> portIn in16
+>         IOPortIn32 -> portIn in32
+>         IOPortOut8 w -> portOut out8 w
+>         IOPortOut16 w -> portOut out16 w
+>         IOPortOut32 w -> portOut out32 w
 >     where
 >         portIn f = do
 >             t <- getCurThread
 >             res <- doMachineOp f
->             asUser t $ setRegister (msgRegisters !! 0) res
+>             asUser t $ setRegister (ArchReg.msgRegisters !! 0) res
 >             setMessageInfo $ MessageInfo 0 0 0 1
 >         portOut f w = do
 >             doMachineOp $ f port w

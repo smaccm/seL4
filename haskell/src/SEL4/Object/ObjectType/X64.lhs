@@ -23,7 +23,6 @@ This module contains operations on machine-specific object types for the ARM.
 > import SEL4.API.Invocation.X64 as ArchInv
 > import SEL4.Object.Structures
 > import SEL4.Kernel.VSpace.X64
-> import SEL4.Object.IOPort.X64
 
 > import Data.Bits
 > import Data.Array
