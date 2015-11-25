@@ -20,7 +20,7 @@ This module contains the architecture-specific kernel global data for the X86-64
 > import SEL4.Object.Structures.X64
 
 > import Data.Array
-> import Data.Word (Word16, Word32)
+> import Data.Word (Word16)
 > -- import Data.Bits
 > -- import Data.Helpers
 
@@ -52,7 +52,7 @@ FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so 
 >     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
 >     x64KSNumIODomainBits :: Word16,
 >     x64KSFirstValidIODomain :: Word16,
->     x64KSnumIODomainIDBits :: Word32,
+>     x64KSnumIODomainIDBits :: Int,
 >     x64KSGlobalPML4 :: PPtr PML4E}
 
 > newKernelState :: PAddr -> (KernelState, [PAddr])

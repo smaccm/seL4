@@ -557,7 +557,11 @@ X64UPDATE
 >                 pageUnmapCapSlot = cte }  
 >         (ArchInvocationLabel X64PageMapIO, _, _) -> decodeX64IOMapInvocation label args cte cap extraCaps
 >         (ArchInvocationLabel X64PageGetAddress, _, _) -> return $ InvokePage $ PageGetAddr (capVPBasePtr cap)
->         _ -> throw IllegalOperation                                  
+>         _ -> throw IllegalOperation
+> decodeX64FrameInvocation _ _ _ _ _ = fail "Unreachable"
+
+
+
 
 > decodeX64IOMapInvocation :: Word -> [Word] -> PPtr CTE -> 
 >                    ArchCapability -> [(Capability, PPtr CTE)] ->
@@ -570,7 +574,6 @@ X64UPDATE
 > decodeX64IOUnmapInvocation label args cte cap extraCaps = error "Not implemented"
 
 
-
 > decodeX64MMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
@@ -581,12 +584,18 @@ X64UPDATE
 > decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = decodeX64FrameInvocation label args cte cap extraCaps
 > decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) _ = error "Not implemented"
-> decodeX64MMUInvocation label _ _ _ cap@(IOPortCap {}) _ = error "Not implemented"
-> decodeX64MMUInvocation label _ _ _ cap@(IOSpaceCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(IOPageTableCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(PML4Cap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation _ _ _ _ _ _ = fail "Unreachable"
 
 
+> decodeX64IOInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64IOInvocation _ _ _ _ cap@(IOPortCap {}) _ = error "Unimplemented"
+> decodeX64IOInvocation _ _ _ _ cap@(IOSpaceCap {}) _ = error "Unimplemented"
+> decodeX64IOInvocation _ _ _ _ _ _ = fail "Unreachable"
 
 
 Checking virtual address for page size dependent alignment:
@@ -608,10 +617,11 @@ Checking virtual address for page size dependent alignment:
 >         InvokePDPT oper -> performPDPTInvocation oper
 >         InvokePageDirectory oper -> performPageDirectoryInvocation oper
 >         InvokePageTable oper -> performPageTableInvocation oper
+>         InvokeIOPageTable oper -> performIOPageTableInvocation oper
 >         InvokePage oper -> performPageInvocation oper
 >         InvokeASIDControl oper -> performASIDControlInvocation oper
 >         InvokeASIDPool oper -> performASIDPoolInvocation oper
->         _ -> error "Not implemented"
+>         _ -> fail "Unreachable"
 >     return $ []
 
 > performPDPTInvocation :: PDPTInvocation -> Kernel ()
@@ -622,6 +632,9 @@ Checking virtual address for page size dependent alignment:
 
 > performPageTableInvocation :: PageTableInvocation -> Kernel ()
 > performPageTableInvocation _ = error "Not implemented"
+
+> performIOPageTableInvocation :: IOPageTableInvocation -> Kernel ()
+> performIOPageTableInvocation _ = error "Unimplemented"
 
 > pteCheckIfMapped :: PPtr PTE -> Kernel Bool
 > pteCheckIfMapped slot = do
@@ -645,6 +658,9 @@ Checking virtual address for page size dependent alignment:
 > performASIDPoolInvocation (Assign asid poolPtr ctSlot) =
 >     error "Not implemented"
 
+> performX64IOInvocation :: IOPortInvocation -> KernelP [Word]
+> performX64IOInvocation _ = error "Unimplemented"
+
 \subsection{Simulator Support}
 
 The kernel model's ARM targets use an external simulation of the physical address space for user-level virtual memory, I/O devices and MMU data structures, separate from the "PSpace" which is used for kernel objects. However, "PDE" objects are accessed by the kernel, so they must be stored in both the external physical memory model and the internal "PSpace". To make verification simpler we do the same for "PTE" objects.
@@ -665,9 +681,20 @@ The kernel model's ARM targets use an external simulation of the physical addres
 >     setObject slot pde
 >     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPDE pde
 
+
 > storePTE :: PPtr PTE -> PTE -> Kernel ()
 > storePTE slot pte = do
 >     setObject slot pte
 >     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPTE pte
 
+> storeIOPTE :: PPtr IOPTE -> IOPTE -> Kernel ()
+> storeIOPTE slot pte = error "Unimplemented"
+
+> deleteIOPageTable :: ArchCapability -> Kernel ()
+> deleteIOPageTable (IOPageTableCap {}) = error "Unimplemented"
+> deleteIOPageTable _ = error "Not an IOPageTable capability"
+
+> unmapIOPage :: ArchCapability -> Kernel ()
+> unmapIOPage (PageCap { capVPMapType = VMIOSpaceMap }) = error "Unimplemented"
+> unmapIOPage _ = error "Not an IOPage capability"
 

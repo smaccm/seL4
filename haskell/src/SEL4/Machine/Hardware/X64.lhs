@@ -167,6 +167,9 @@ Every table is one small page in size.
 > pml4Bits :: Int
 > pml4Bits = ptTranslationBits + 3
 
+> ioptBits :: Int
+> ioptBits = ptTranslationBits + 3
+
 FIXME: Not on x64
 
 > pageColourBits :: Int
@@ -408,8 +411,8 @@ FIXME x64: These need to be defined
 
 > newtype IOCTE = IOCTE { iocte :: Word}
 >     deriving Show
-> newtype IOPTE = IOPTE { iopte :: Word}
->     deriving Show
+> data IOPTE = InvalidIOPTE
+>     deriving (Show, Eq)
 
 > -- FIXME x64: word size?
 > wordFromPTE :: PTE -> Word

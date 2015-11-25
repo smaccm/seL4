@@ -33,11 +33,6 @@ This module makes use of the GHC extension allowing data types with no construct
 
 There are five ARM-specific object types; however, only four of them may be invoked. These are the page table, page, ASID control, and ASID pool objects.
 
-FIXME x64: Arch-specific IRQ invocation. Not defined yet.
-
-> data IRQInvocation
->         = NoArchIRQInvocationsYet
->         deriving Show
 
 FIXME All object invocations implicitly involve a cap to some object and a slot?
 Presumably if we point at an object the kernel can figure out the cap and the slot?
@@ -51,7 +46,6 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >     | InvokeASIDControl ASIDControlInvocation
 >     | InvokeASIDPool ASIDPoolInvocation
 >     | InvokeIOPort IOPortInvocation
->     | InvokeIRQ IRQInvocation -- FIXME this used to be generic, but now we're adding arch-dependent functionality
 >     deriving Show
 
 > data PDPTInvocation

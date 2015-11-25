@@ -26,6 +26,7 @@ This module contains operations on machine-specific object types for the ARM.
 
 > import Data.Bits
 > import Data.Array
+> import Data.Word(Word16)
 
 \end{impdetails}
 
@@ -46,10 +47,10 @@ It is not possible to copy a page table or page directory capability unless it h
 > deriveCap _ (PageDirectoryCap { capPDMappedAddress = Nothing })
 >     = throw IllegalOperation
 > deriveCap _ (c@PDPointerTableCap { capPDPTMappedAddress = Just _ }) = return c
-> deriveCap _ (PDPointerTableCap { capPDPTMappedAddress = Nothing)
+> deriveCap _ (PDPointerTableCap { capPDPTMappedAddress = Nothing })
 >     = throw IllegalOperation
 > deriveCap _ (c@PML4Cap { capPML4MappedASID = Just _ }) = return c
-> deriveCap _ (PML4Cap { capPML4MappedASID = Nothing)
+> deriveCap _ (PML4Cap { capPML4MappedASID = Nothing })
 >     = throw IllegalOperation
 
 Page capabilities are copied without their mapping information, to allow them to be mapped in multiple locations.
@@ -93,7 +94,7 @@ X64 has two writable user data caps
 >     let domID = ioSpaceGetDomainID newData
 >     fstValidDom <- gets (x64KSFirstValidIODomain . ksArchState)
 >     domIDBits <- gets (x64KSnumIODomainIDBits . ksArchState)
->     return $ if (not preserve && capIOPCIDevice c = 0 && domID >= fstValidDom
+>     return $ if (not preserve && capIOPCIDevice c == 0 && domID >= fstValidDom
 >                     && domID /= 0 && domID <= mask domIDBits) 
 >                then (ArchObjectCap (IOSpaceCap domID pciDevice))
 >                else NullCap
@@ -204,7 +205,7 @@ FIXME x64: limitations in caseconvs makes this horrible
 > recycleCap is_final (cap@PageDirectoryCap { capPDBasePtr = ptr }) = do
 >     let pdeBits = objBits InvalidPDE
 >     let slots = [ptr, ptr + bit pdeBits .. ptr + bit pdBits - 1]
->     mapM_ (flip storePTE InvalidPDE) slots
+>     mapM_ (flip storePDE InvalidPDE) slots
 >     case capPDMappedAddress cap of
 >         Nothing -> return ()
 >         Just (a, v) -> unmapPageDirectory a v ptr
@@ -214,7 +215,7 @@ FIXME x64: limitations in caseconvs makes this horrible
 > recycleCap is_final (cap@PDPointerTableCap { capPDPTBasePtr = ptr }) = do
 >     let pdpteBits = objBits InvalidPDPTE
 >     let slots = [ptr, ptr + bit pdpteBits .. ptr + bit pdptBits - 1]
->     mapM_ (flip storePTE InvalidPDPTE) slots
+>     mapM_ (flip storePDPTE InvalidPDPTE) slots
 >     case capPDMappedAddress cap of
 >         Nothing -> return ()
 >         Just (a, v) -> unmapPDPT a v ptr
@@ -223,13 +224,13 @@ FIXME x64: limitations in caseconvs makes this horrible
 
 > recycleCap is_final (cap@PML4Cap { capPML4BasePtr = ptr }) = do
 >     let pmBits = objBits InvalidPML4E
->     let slots = [ptr, ptr + bit pmBits .. ptr + bit pml4bits - 1]
->     mapM_ (flip storePDE InvalidPML4E) slots
+>     let slots = [ptr, ptr + bit pmBits .. ptr + bit pml4Bits - 1]
+>     mapM_ (flip storePML4E InvalidPML4E) slots
 >     finaliseCap cap is_final
 >     return (if is_final then resetMemMapping cap else cap)  
 
 > recycleCap _ (cap@IOPortCap {}) = return cap
-> recycleCap is_final (cap@IOSpaceCap) = do
+> recycleCap is_final (cap@IOSpaceCap {}) = do
 >     finaliseCap cap is_final
 >     return cap
 
@@ -311,8 +312,8 @@ Create an architecture-specific object.
 
 > -- FIXME x64: WRITE THIS
 > createObject :: ObjectType -> PPtr () -> Int -> Kernel ArchCapability
-> createObject t regionBase _ =
->     let funupd = (\f x v y -> if y == x then v else f y) in
+> createObject t regionBase _ = error "Unimplemented"
+>{-    let funupd = (\f x v y -> if y == x then v else f y) in
 >     let pointerCast = PPtr . fromPPtr
 >     in case t of
 >         Arch.Types.APIObjectType _ ->
@@ -364,16 +365,56 @@ Create an architecture-specific object.
 >                       (VPtr $ fromPPtr regionBase + regionSize - 1)
 >                       (addrFromPPtr regionBase)
 >             return $! PageDirectoryCap (pointerCast regionBase) Nothing
+> -}
 
 \subsection{Capability Invocation}
+
+> isMMUCap :: ArchCapability -> Bool
+> isMMUCap c = case c of
+>          (ASIDPoolCap {}) -> True
+>          ASIDControlCap -> True
+>          (IOPageTableCap {}) -> True
+>          (PageCap {}) -> True
+>          (PageTableCap {}) -> True
+>          (PageDirectoryCap {}) -> True
+>          (PDPointerTableCap {}) -> True
+>          (PML4Cap {}) -> True
+
+> isIOCap :: ArchCapability -> Bool
+> isIOCap c = case c of
+>          (IOPortCap {}) -> True
+>          (IOSpaceCap {}) -> True
+>          _ -> False
 
 > decodeInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
-> decodeInvocation = decodeARMMMUInvocation
+> decodeInvocation label args capIndex slot cap extraCaps = 
+>     if isMMUCap cap
+>      then decodeX64MMUInvocation label args capIndex slot cap extraCaps
+>      else if isIOCap cap
+>       then decodeX64IOInvocation label args capIndex slot cap extraCaps
+>       else fail "Unreachable"
+
+> isMMUInvocation :: ArchInv.Invocation -> Bool
+> isMMUInvocation x = case x of
+>      InvokePDPT _ -> True
+>      InvokePageDirectory _ -> True
+>      InvokePageTable _ -> True
+>      InvokeIOPageTable _ -> True
+>      InvokePage _ -> True
+>      InvokeASIDControl _ -> True
+>      InvokeASIDPool _ -> True
+>      _ -> False
+
+> isIOInvocation :: ArchInv.Invocation -> Bool
+> isIOInvocation x = case x of
+>     InvokeIOPort _ -> True
+>     _ -> False
 
 > performInvocation :: ArchInv.Invocation -> KernelP [Word]
-> performInvocation = performARMMMUInvocation
+> performInvocation (InvokeIOPort oper) = performX64IOInvocation oper
+> performInvocation oper = performX64MMUInvocation oper 
 
 \subsection{Helper Functions}
 
