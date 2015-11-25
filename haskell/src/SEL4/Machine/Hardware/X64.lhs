@@ -249,8 +249,8 @@ caches must be done separately.
 >     cbptr <- ask
 >     liftIO $ Platform.readCR3 cbptr
 
-> setCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
-> setCurrentVSpaceRoot pd asid =
+> archSetCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
+> archSetCurrentVSpaceRoot pd asid =
 >   setCurrentCR3 (Platform.CR3 { Platform.cr3BaseAddress = pd
 >                               , Platform.cr3pcid = asid })
 
@@ -478,6 +478,12 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 > pptrBase = Platform.pptrBase
 
 > hwASIDInvalidate = error "Unimplemented"
+
+
+> getFaultAddress :: MachineMonad VPtr
+> getFaultAddress = do
+>     cbptr <- ask
+>     liftIO $ Platform.getFaultAddress cbptr
 
 > -- FIXME x64: IOPTEs
 

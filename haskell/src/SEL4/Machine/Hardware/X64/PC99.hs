@@ -169,3 +169,5 @@ mfence = error "Unimplemented"
 addrFromKPPtr = error "Unimplemented" -- FIXME how is this different to addrFromPPtr?!
 pptrBase = error "Unimplemented" -- FIXME how is this not physMappingOffset?!
 
+getFaultAddress :: Ptr CallbackData -> IO VPtr
+getFaultAddress _ = error "Unimplemented"

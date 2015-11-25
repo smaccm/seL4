@@ -96,7 +96,7 @@ The ARM kernel stores one ARM-specific type of object in the PSpace: ASID pools,
 
 An ASID pool is an array of pointers to page directories. This is used to implement virtual ASIDs on ARM; it is not accessed by the hardware.
 
-> newtype ASIDPool = ASIDPool (Array ASID (Maybe (PPtr PDE)))
+> newtype ASIDPool = ASIDPool (Array ASID (Maybe (PPtr PML4E)))
 >     deriving Show
 
 An ASID is an unsigned word. Note that it is a \emph{virtual} address space identifier, and may not correspond to any hardware-defined identifier --- especially on ARMv5 and earlier, where the only identifier implemented in hardware is the 4-bit domain number.

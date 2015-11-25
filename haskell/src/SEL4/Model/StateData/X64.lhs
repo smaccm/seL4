@@ -52,7 +52,8 @@ FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so 
 >     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
 >     x64KSNumIODomainBits :: Word16,
 >     x64KSFirstValidIODomain :: Word16,
->     x64KSnumIODomainIDBits :: Word32 }
+>     x64KSnumIODomainIDBits :: Word32,
+>     x64KSGlobalPML4 :: PPtr PML4E}
 
 > newKernelState :: PAddr -> (KernelState, [PAddr])
 > newKernelState _data_start = error "No initial state defined for x64"
