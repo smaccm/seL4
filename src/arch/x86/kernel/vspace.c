@@ -880,8 +880,17 @@ exception_t decodeX86FrameInvocation(
             }
             pdeSlot = lu_ret.pdSlot;
 
+            /* check for existing page table */
             if ((pde_ptr_get_page_size(pdeSlot) == pde_pde_small) &&
                     (pde_pde_small_ptr_get_present(pdeSlot))) {
+                current_syscall_error.type = seL4_DeleteFirst;
+
+                return EXCEPTION_SYSCALL_ERROR;
+            }
+
+            /* check for existing large page */
+            if ((pde_ptr_get_page_size(pdeSlot) == pde_pde_large) &&
+                (pde_pde_large_ptr_get_present(pdeSlot))) {
                 current_syscall_error.type = seL4_DeleteFirst;
 
                 return EXCEPTION_SYSCALL_ERROR;
@@ -894,7 +903,7 @@ exception_t decodeX86FrameInvocation(
         }
 
         default: {
-            exception_t ret = modeMapRemapPage(frameSize, vspace, vaddr, paddr, vmRights, vmAttr);
+            exception_t ret = modeMapRemapPage(label, frameSize, vspace, vaddr, paddr, vmRights, vmAttr);
             if (ret != EXCEPTION_NONE) {
                 return ret;
             }
@@ -1030,7 +1039,7 @@ exception_t decodeX86FrameInvocation(
         }
 
         default: {
-            exception_t ret = modeMapRemapPage(frameSize, vspace, vaddr, paddr, vmRights, vmAttr);
+            exception_t ret = modeMapRemapPage(label, frameSize, vspace, vaddr, paddr, vmRights, vmAttr);
             if (ret != EXCEPTION_NONE) {
                 return ret;
             }

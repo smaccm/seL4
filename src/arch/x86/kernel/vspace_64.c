@@ -1354,7 +1354,7 @@ void modeUnmapPage(vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr,
 
 }
 
-exception_t modeMapRemapPage(vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr, paddr_t paddr, vm_rights_t vm_rights, vm_attributes_t vm_attr)
+exception_t modeMapRemapPage(word_t label, vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr, paddr_t paddr, vm_rights_t vm_rights, vm_attributes_t vm_attr)
 {
     if (config_set(CONFIG_HUGE_PAGE) && page_size == IA32_HugePage) {
         pdpte_t *pdpteSlot;
@@ -1367,10 +1367,36 @@ exception_t modeMapRemapPage(vm_page_size_t page_size, vspace_root_t *vroot, vpt
             return EXCEPTION_SYSCALL_ERROR;
         }
         pdpteSlot = lu_ret.pdptSlot;
-        if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_pd)  &&
-            (pdpte_pdpte_pd_ptr_get_present(pdpteSlot))) {
-            current_syscall_error.type = seL4_DeleteFirst;
-            return EXCEPTION_SYSCALL_ERROR;
+        switch (label) {
+            case IA32PageMap:
+                /* check for existing page directory */
+                if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_pd)  &&
+                    (pdpte_pdpte_pd_ptr_get_present(pdpteSlot))) {
+                    current_syscall_error.type = seL4_DeleteFirst;
+                    return EXCEPTION_SYSCALL_ERROR;
+                }
+                /* check for existing huge page */
+                if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_1g) &&
+                    (pdpte_pdpte_1g_ptr_get_present(pdpteSlot))) {
+                    current_syscall_error.type = seL4_DeleteFirst;
+                    return EXCEPTION_SYSCALL_ERROR;
+                }
+                break;
+
+            case IA32PageRemap: {
+                /* check for existing page directory */
+                if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_pd)  &&
+                    (pdpte_pdpte_pd_ptr_get_present(pdpteSlot))) {
+                    current_syscall_error.type = seL4_DeleteFirst;
+                    return EXCEPTION_SYSCALL_ERROR;
+                }
+                break;
+            }
+
+            default: {
+                current_syscall_error.type = seL4_IllegalOperation;
+                return EXCEPTION_SYSCALL_ERROR;
+            }
         }
 
         *pdpteSlot = makeUserPDPTEHugePage(paddr, vm_attr, vm_rights);
