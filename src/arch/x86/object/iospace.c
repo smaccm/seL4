@@ -459,15 +459,6 @@ decodeIA32IOUnMapInvocation(
 
 exception_t decodeIA32IOSpaceInvocation(word_t label, cap_t cap)
 {
-    vtd_cte_t *cte;
-    if (label != IA32IOSpaceRemovePassthrough) {
-        current_syscall_error.type = seL4_IllegalOperation;
-        return EXCEPTION_SYSCALL_ERROR;
-    }
-    cte = lookup_vtd_context_slot(cap);
-    *cte = vtd_cte_set_translation_type(*cte, 0);
-    flushCacheRange(cte, VTD_CTE_SIZE_BITS);
-    invalidate_iotlb();
-    setThreadState(ksCurThread, ThreadState_Restart);
-    return EXCEPTION_NONE;
+    current_syscall_error.type = seL4_IllegalOperation;
+    return EXCEPTION_SYSCALL_ERROR;
 }

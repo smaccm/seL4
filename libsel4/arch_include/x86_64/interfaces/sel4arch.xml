@@ -33,13 +33,6 @@
         <member name="gs"/>
     </struct>
 
-    <interface name="seL4_IA32_PML4">
-        <method id="IA32PML4Map" name="Map">
-        </method>
-        <method id="IA32PML4Unmap" name="Unmap">
-        </method>
-    </interface>
-
     <interface name="seL4_IA32_PDPT">
         <method id="IA32PDPTMap" name="Map">
             <param dir="in" name="pml4" type="seL4_IA32_PML4"/>
@@ -142,11 +135,6 @@
             <param dir="in" name="port" type="seL4_Uint16"/>
             <param dir="in" name="data" type="seL4_Uint32"/>
         </method>
-    </interface>
-
-    <interface name="seL4_IA32_IOSpace">
-        <method id="IA32IOSpaceRemovePassthrough" name="RemovePassthrough"/>
-        <method id="IA32IOSpaceUnmap" name="Unmap"/>
     </interface>
 
     <interface name="seL4_IRQControl">

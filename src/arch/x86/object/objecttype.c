@@ -193,12 +193,6 @@ cap_t Arch_finaliseCap(cap_t cap, bool_t final)
     case cap_io_port_cap:
         break;
 
-    case cap_io_space_cap:
-        if (final) {
-            decodeIA32IOSpaceInvocation(IA32IOSpaceUnmap, cap);
-        }
-        break;
-
     case cap_io_page_table_cap:
         if (final && cap_io_page_table_cap_get_capIOPTIsMapped(cap)) {
             deleteIOPageTable(cap);
@@ -292,7 +286,6 @@ cap_t Arch_recycleCap(bool_t is_final, cap_t cap)
         return cap;
 
     case cap_io_space_cap:
-        Arch_finaliseCap(cap, is_final);
         return cap;
 
     case cap_io_page_table_cap:
