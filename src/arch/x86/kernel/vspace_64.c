@@ -131,6 +131,7 @@ map_kernel_window(
                       1, /* read_write */
                       1  /* present */
                       );
+
 #else
 
     int pd_index = 0;
@@ -230,6 +231,14 @@ map_kernel_window(
                       1, /* read_write */
                       1  /* present */
                       );
+#endif
+
+
+#if CONFIG_MAX_NUM_TRACE_POINTS > 0
+    /* use the last PD entry as the benchmark log storage.
+     * the actual backing physical memory will be filled
+     * later by using alloc_region */
+    ksLog = (ks_log_entry_t *)(PPTR_KDEV + 0x200000 * (BIT(PD_BITS) - 1));  
 #endif
 
     /* now map in the kernel devices */

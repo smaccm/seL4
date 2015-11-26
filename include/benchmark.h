@@ -65,6 +65,18 @@ trace_point_stop(word_t id)
     assert(ksLogIndex > 0);
 }
 
+static inline void
+trace_point_test(void)
+{
+    int i = 0;
+    for (i = 0; i < MAX_LOG_SIZE; i++) {
+        ksLog[i].key = i;
+        ksLog[i].data = 0xdeadbeaf + i;
+        assert(ksLog[i].key == i);
+        assert(ksLog[i].data == 0xdeadbeaf + i);
+    }
+}
+
 #else
 
 #define TRACE_POINT_START(x)

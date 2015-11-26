@@ -192,7 +192,29 @@ init_sys_state(
     /* allocate and create the log buffer */
     buffer_attr.words[0] = IA32_PAT_MT_WRITE_THROUGH;
 
-    paddr = pptr_to_paddr((void *) alloc_region(pageBitsForSize(IA32_LargePage)));
+    paddr = pptr_to_paddr((void *) alloc_region(pageBitsForSize(X86_LargePage)));
+
+#ifdef X86_64
+    pde = pde_pde_large_new(
+            0,
+            paddr,
+            vm_attributes_get_x86PATBit(buffer_attr),
+            1,
+            0,
+            0,
+            vm_attributes_get_x86PCDBit(buffer_attr),
+            vm_attributes_get_x86PWTBit(buffer_attr),
+            0,
+            1,
+            1
+            );
+#ifdef CONFIG_HUGE_PAGE
+        x64KSGlobalPD[BIT(PD_BITS) - 1] = pde;
+#else
+        x64KSGlobalPDs[BIT(PDPT_BITS) - 1][BIT(PD_BITS) - 1] = pde;
+#endif
+
+#else
 
     /* allocate a large frame for logging */
     pde = pde_pde_large_new(
@@ -208,9 +230,9 @@ init_sys_state(
               1,                                       /* read_write           */
               1                                        /* present              */
           );
-
     /* TODO this shouldn't be hardcoded */
     ia32KSGlobalPD[IA32_KSLOG_IDX] = pde;
+#endif
 
 
     /* flush the tlb */
@@ -222,6 +244,7 @@ init_sys_state(
     ksLog[0].data = 0xdeadbeef;
     printf("Wrote to ksLog %x\n", ksLog[0].data);
     assert(ksLog[0].data == 0xdeadbeef);
+    trace_point_test();
 #endif /* CONFIG_DEBUG_BUILD */
 #endif /* CONFIG_MAX_NUM_TRACE_POINTS > 0 */
 
