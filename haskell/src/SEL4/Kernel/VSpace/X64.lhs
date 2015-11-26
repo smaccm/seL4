@@ -702,8 +702,57 @@ X64UPDATE
 >         _ -> throw IllegalOperation
 
 > decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = decodeX64FrameInvocation label args cte cap extraCaps
-> decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = error "Not implemented"
-> decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) _ = error "Not implemented"
+
+> decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = 
+>     case (invocationType label, args, extraCaps) of
+>         (ArchInvocationLabel X64ASIDControlMakePool, index:depth:_,
+>                         (untyped,parentSlot):(root,_):_) -> do
+>             asidTable <- withoutFailure $ gets (x64KSASIDTable . ksArchState)
+>             let free = filter (\(x,y) -> x <= (1 `shiftL` asidHighBits) - 1 && isNothing y) $ assocs asidTable
+>             when (null free) $ throw DeleteFirst
+>             let base = (fst $ head free) `shiftL` asidLowBits
+>             let pool = makeObject :: ASIDPool
+>             frame <- case untyped of
+>                 UntypedCap {} | capBlockSize untyped == objBits pool -> do
+>                     ensureNoChildren parentSlot
+>                     return $ capPtr untyped
+>                 _ -> throw $ InvalidCapability 1
+>             destSlot <- lookupTargetSlot root (CPtr index) (fromIntegral depth)
+>             ensureEmptySlot destSlot
+>             return $ InvokeASIDControl $ MakePool {
+>                 makePoolFrame = frame,
+>                 makePoolSlot = destSlot,
+>                 makePoolParent = parentSlot,
+>                 makePoolBase = base }
+>         (ArchInvocationLabel X64ASIDControlMakePool, _, _) -> throw TruncatedMessage
+>         _ -> throw IllegalOperation
+
+> decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) extraCaps =
+>     case (invocationType label, extraCaps) of
+>         (ArchInvocationLabel X64ASIDPoolAssign, (vspaceCap,vspaceCapSlot):_) ->
+>             case vspaceCap of
+>                 ArchObjectCap (PML4Cap { capPML4MappedASID = Nothing })
+>                   -> do
+>                     asidTable <- withoutFailure $ gets (x64KSASIDTable . ksArchState)
+>                     let base = capASIDBase cap
+>                     let poolPtr = asidTable!(asidHighBitsOf base)
+>                     when (isNothing poolPtr) $ throw $ FailedLookup False InvalidRoot
+>                     let Just p = poolPtr
+>                     when (p /= capASIDPool cap) $ throw $ InvalidCapability 0
+>                     ASIDPool pool <- withoutFailure $ getObject $ p
+>                     let free = filter (\(x,y) -> x <=  (1 `shiftL` asidLowBits) - 1
+>                                                  && x + base /= 0 && isNothing y) $ assocs pool
+>                     when (null free) $ throw DeleteFirst
+>                     let asid = fst $ head free
+>                     return $ InvokeASIDPool $ Assign {
+>                         assignASID = asid + base,
+>                         assignASIDPool = capASIDPool cap,
+>                         assignASIDCTSlot = vspaceCapSlot }
+>                 _ -> throw $ InvalidCapability 1
+>         (ArchInvocationLabel X64ASIDPoolAssign, _) -> throw TruncatedMessage
+>         _ -> throw IllegalOperation
+
+
 > decodeX64MMUInvocation label _ _ _ cap@(IOPageTableCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(PML4Cap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation _ _ _ _ _ _ = fail "Unreachable"
@@ -842,12 +891,29 @@ Checking virtual address for page size dependent alignment:
 
 
 > performASIDControlInvocation :: ASIDControlInvocation -> Kernel ()
-> performASIDControlInvocation _ =
->     error "Not implemented"
+> performASIDControlInvocation (MakePool frame slot parent base) = do
+>     deleteObjects frame pageBits
+>     pcap <- getSlotCap parent
+>     updateCap parent (pcap {capFreeIndex = maxFreeIndex (capBlockSize pcap) })
+>     placeNewObject frame (makeObject :: ASIDPool) 0
+>     let poolPtr = PPtr $ fromPPtr frame
+>     cteInsert (ArchObjectCap $ ASIDPoolCap poolPtr base) parent slot
+>     assert (base .&. mask asidLowBits == 0)
+>         "ASID pool's base must be aligned"
+>     asidTable <- gets (x64KSASIDTable . ksArchState)
+>     let asidTable' = asidTable//[(asidHighBitsOf base, Just poolPtr)]
+>     modify (\s -> s {
+>         ksArchState = (ksArchState s) { x64KSASIDTable = asidTable' }})
+
 
 > performASIDPoolInvocation :: ASIDPoolInvocation -> Kernel ()
-> performASIDPoolInvocation (Assign asid poolPtr ctSlot) =
->     error "Not implemented"
+> performASIDPoolInvocation (Assign asid poolPtr ctSlot) = do
+>     oldcap <- getSlotCap ctSlot
+>     ASIDPool pool <- getObject poolPtr
+>     let ArchObjectCap cap = oldcap
+>     updateCap ctSlot (ArchObjectCap $ cap { capPML4MappedASID = Just asid })
+>     let pool' = pool//[(asid .&. mask asidLowBits, Just $ capPML4BasePtr cap)]
+>     setObject poolPtr $ ASIDPool pool'
 
 \subsection{Simulator Support}
 
