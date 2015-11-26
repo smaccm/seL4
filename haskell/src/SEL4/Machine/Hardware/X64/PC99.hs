@@ -179,3 +179,16 @@ firstValidIODomain = error "Unimplemented"
 
 numIODomainIDBits :: Int
 numIODomainIDBits = error "Unimplemented"
+
+irqIntOffset :: Word
+irqIntOffset = 0x20 -- IRQ_INT_OFFSET in C
+
+maxPCIBus :: Word
+maxPCIBus = 255
+
+maxPCIDev :: Word
+maxPCIDev = 31
+
+maxPCIFunc :: Word
+maxPCIFunc = 7
+

@@ -105,7 +105,7 @@ An IRQ handler capability allows a thread possessing it to set an endpoint which
 > toBool :: Word -> Bool
 > toBool w = w /= 0
 
-FIXME: this should be called perform, not invoke
+FIXME: this should be called perform, not invoke, same for CNode
 
 > invokeIRQHandler :: IRQHandlerInvocation -> Kernel ()
 > invokeIRQHandler (AckIRQ irq) =

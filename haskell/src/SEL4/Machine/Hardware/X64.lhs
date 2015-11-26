@@ -523,3 +523,17 @@ FIXME IO port input/output
 > out32 :: IOPort -> Word32 -> MachineMonad ()
 > out32 = error "Unimplemented"
 
+IRQ parameters
+
+> irqIntOffset :: Word
+> irqIntOffset = Platform.irqIntOffset
+
+> maxPCIBus :: Word
+> maxPCIBus = Platform.maxPCIBus
+
+> maxPCIDev :: Word
+> maxPCIDev = Platform.maxPCIDev
+
+> maxPCIFunc :: Word
+> maxPCIFunc = Platform.maxPCIFunc
+
