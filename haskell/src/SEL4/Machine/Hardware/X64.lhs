@@ -445,6 +445,8 @@ Pointer Accessor Functions FIXME x64 TYPES
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdptBits
 
+
+> -- FIXME x64: Check this
 > getPML4Index :: VPtr -> Word
 > getPML4Index vptr = 
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits 
