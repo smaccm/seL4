@@ -129,8 +129,10 @@ FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-spec
 > data IRQControlInvocation
 >         = IssueIRQHandler {
 >             issueHandlerIRQ :: IRQ,
->             issueHandlerSlot, issueHandlerControllerSlot :: PPtr CTE }
->         | ArchInvokeIRQControl Arch.IRQControlInvocation
+>             issueHandlerSlot,
+>             issueHandlerControllerSlot :: PPtr CTE }
+>         | ArchInvokeIRQControl {
+>             archIRQControlInvocation :: Arch.IRQControlInvocation }
 >         deriving Show
 
 \subsubsection{IRQ Handler Invocations}
