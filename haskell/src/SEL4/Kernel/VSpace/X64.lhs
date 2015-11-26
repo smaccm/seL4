@@ -574,11 +574,53 @@ X64UPDATE
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
 
-> decodeX64MMUInvocation label args _ cte cap@(PDPointerTableCap {}) _ = error "Not implemented"
+> decodeX64MMUInvocation label args _ cte cap@(PDPointerTableCap {}) extraCaps = do
+>     case (invocationType label, args, extraCaps) of
+>         (ArchInvocationLabel X64PDPTMap, vaddr':attr:_, (vspaceCap,_):_) -> do
+>             when (isJust $ capPDPTMappedAddress cap) $
+>                 throw $ InvalidCapability 0
+>             (vspace,asid) <- case vspaceCap of
+>                 ArchObjectCap (PML4Cap {
+>                          capPML4MappedASID = Just asid,
+>                          capPML4BasePtr = vspace })
+>                     -> return (vspace,asid)
+>                 _ -> throw $ InvalidCapability 1
+>             let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits
+>             let vaddr = vaddr' .&. complement (mask shiftBits)
+>             when (VPtr vaddr >= kernelBase ) $
+>                 throw $ InvalidArgument 0
+>             vspaceCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
+>             when (vspaceCheck /= vspace) $ throw $ InvalidCapability 1
+>             let pml4Slot = lookupPML4Slot vspace (VPtr vaddr)
+>             oldpml4e <- withoutFailure $ getObject pml4Slot
+>             unless (oldpml4e == InvalidPML4E) $ throw DeleteFirst
+>             let pml4e = PDPointerTablePML4E {
+>                     pml4eTable = addrFromPPtr $ capPTBasePtr cap,
+>                     pml4eAccessed = False,
+>                     pml4eCacheDisabled = x64CacheDisabled $ attribsFromWord attr,
+>                     pml4eWriteThrough = x64WriteThrough $ attribsFromWord attr,
+>                     pml4eExecuteDisable = False,
+>                     pml4eRights = VMReadWrite }
+>             return $ InvokePDPT $ PDPTMap {
+>                 pdptMapCap = ArchObjectCap $ cap { capPDPTMappedAddress = Just (asid, (VPtr vaddr)) },
+>                 pdptMapCTSlot = cte,
+>                 pdptMapPML4E = pml4e,
+>                 pdptMapPML4Slot = pml4Slot }
+>         (ArchInvocationLabel X64PageDirectoryMap, _, _) -> throw TruncatedMessage
+>         (ArchInvocationLabel X64PageDirectoryUnmap, _, _) -> do
+>             cteVal <- withoutFailure $ getCTE cte
+>             final <- withoutFailure $ isFinalCapability cteVal
+>             unless final $ throw RevokeFirst
+>             return $ InvokePDPT $ PDPTUnmap {
+>                 pdptUnmapCap = cap,
+>                 pdptUnmapCapSlot = cte }
+>         _ -> throw IllegalOperation
+
+
 > decodeX64MMUInvocation label args _ cte cap@(PageDirectoryCap {}) extraCaps  = 
 >     case (invocationType label, args, extraCaps) of
->         (ArchInvocationLabel X64PageDirectoryMap, vaddr:attr:_, (pml4Cap,_):_) -> do
->             when (isJust $ capPTMappedAddress cap) $
+>         (ArchInvocationLabel X64PageDirectoryMap, vaddr':attr:_, (pml4Cap,_):_) -> do
+>             when (isJust $ capPDMappedAddress cap) $
 >                 throw $ InvalidCapability 0
 >             (pml,asid) <- case pml4Cap of
 >                 ArchObjectCap (PML4Cap {
@@ -586,6 +628,8 @@ X64UPDATE
 >                          capPML4BasePtr = pml })
 >                     -> return (pml,asid)
 >                 _ -> throw $ InvalidCapability 1
+>             let shiftBits = pageBits + ptTranslationBits + ptTranslationBits
+>             let vaddr = vaddr' .&. complement (mask shiftBits)
 >             when (VPtr vaddr >= kernelBase ) $
 >                 throw $ InvalidArgument 0
 >             pmlCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
@@ -601,7 +645,7 @@ X64UPDATE
 >                     pdpteExecuteDisable = False,
 >                     pdpteRights = VMReadWrite }
 >             return $ InvokePageDirectory $ PageDirectoryMap {
->                 pdMapCap = ArchObjectCap cap,
+>                 pdMapCap = ArchObjectCap $ cap { capPDMappedAddress = Just (asid, (VPtr vaddr)) },
 >                 pdMapCTSlot = cte,
 >                 pdMapPDPTE = pdpte,
 >                 pdMapPDPTSlot = pdptSlot }
@@ -617,7 +661,7 @@ X64UPDATE
 
 > decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) extraCaps = 
 >    case (invocationType label, args, extraCaps) of
->         (ArchInvocationLabel X64PageTableMap, vaddr:attr:_, (pml4Cap,_):_) -> do
+>         (ArchInvocationLabel X64PageTableMap, vaddr':attr:_, (pml4Cap,_):_) -> do
 >             when (isJust $ capPTMappedAddress cap) $
 >                 throw $ InvalidCapability 0
 >             (pml,asid) <- case pml4Cap of
@@ -626,6 +670,8 @@ X64UPDATE
 >                          capPML4BasePtr = pml })
 >                     -> return (pml,asid)
 >                 _ -> throw $ InvalidCapability 1
+>             let shiftBits = pageBits + ptTranslationBits
+>             let vaddr = vaddr' .&. complement (mask shiftBits)
 >             when (VPtr vaddr >= kernelBase ) $
 >                 throw $ InvalidArgument 0
 >             pmlCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
@@ -641,7 +687,7 @@ X64UPDATE
 >                     pdeExecuteDisable = False,
 >                     pdeRights = VMReadWrite}
 >             return $ InvokePageTable $ PageTableMap {
->                 ptMapCap = ArchObjectCap cap,
+>                 ptMapCap = ArchObjectCap $ cap { capPTMappedAddress = Just (asid, (VPtr vaddr)) },
 >                 ptMapCTSlot = cte,
 >                 ptMapPDE = pde,
 >                 ptMapPDSlot = pdSlot }
@@ -690,13 +736,59 @@ Checking virtual address for page size dependent alignment:
 >     return $ []
 
 > performPDPTInvocation :: PDPTInvocation -> Kernel ()
-> performPDPTInvocation _ = error "Not implemented"
+> performPDPTInvocation (PDPTMap cap ctSlot pml4e pml4Slot) = do
+>     updateCap ctSlot cap
+>     storePML4E pml4Slot pml4e
+>     doMachineOp invalidatePageStructureCache
+>
+> performPDPTInvocation (PDPTUnmap cap ctSlot) = do
+>     case capPDPTMappedAddress cap of
+>         Just (asid, vaddr) -> do
+>             unmapPDPT asid vaddr (capPDPTBasePtr cap)
+>             let ptr = capPDPTBasePtr cap
+>             let pdpteBits = objBits InvalidPDPTE
+>             let slots = [ptr, ptr + bit pdpteBits .. ptr + bit pdptBits - 1]
+>             mapM_ (flip storePDPTE InvalidPDPTE) slots
+>         _ -> return ()
+>     ArchObjectCap cap <- getSlotCap ctSlot
+>     updateCap ctSlot (ArchObjectCap $ cap { capPDPTMappedAddress = Nothing })
 
 > performPageDirectoryInvocation :: PageDirectoryInvocation -> Kernel ()
-> performPageDirectoryInvocation _ = error "Not implemented"
+> performPageDirectoryInvocation (PageDirectoryMap cap ctSlot pdpte pdptSlot) = do
+>     updateCap ctSlot cap
+>     storePDPTE pdptSlot pdpte
+>     doMachineOp invalidatePageStructureCache
+>
+> performPageDirectoryInvocation (PageDirectoryUnmap cap ctSlot) = do
+>     case capPDMappedAddress cap of
+>         Just (asid, vaddr) -> do
+>             unmapPageDirectory asid vaddr (capPDBasePtr cap)
+>             let ptr = capPDBasePtr cap
+>             let pdeBits = objBits InvalidPDE
+>             let slots = [ptr, ptr + bit pdeBits .. ptr + bit pdBits - 1]
+>             mapM_ (flip storePDE InvalidPDE) slots
+>         _ -> return ()
+>     ArchObjectCap cap <- getSlotCap ctSlot
+>     updateCap ctSlot (ArchObjectCap $ cap { capPDMappedAddress = Nothing })
+
 
 > performPageTableInvocation :: PageTableInvocation -> Kernel ()
-> performPageTableInvocation _ = error "Not implemented"
+> performPageTableInvocation (PageTableMap cap ctSlot pde pdSlot) = do
+>     updateCap ctSlot cap
+>     storePDE pdSlot pde
+>     doMachineOp invalidatePageStructureCache
+>
+> performPageTableInvocation (PageTableUnmap cap slot) = do
+>     case capPTMappedAddress cap of
+>         Just (asid, vaddr) -> do
+>             unmapPageTable asid vaddr (capPTBasePtr cap)
+>             let ptr = capPTBasePtr cap
+>             let pteBits = objBits InvalidPTE
+>             let slots = [ptr, ptr + bit pteBits .. ptr + bit ptBits - 1]
+>             mapM_ (flip storePTE InvalidPTE) slots
+>         _ -> return ()
+>     ArchObjectCap cap <- getSlotCap slot
+>     updateCap slot (ArchObjectCap $ cap { capPTMappedAddress = Nothing })
 
 > performIOPageTableInvocation :: IOPageTableInvocation -> Kernel ()
 > performIOPageTableInvocation _ = error "Unimplemented"

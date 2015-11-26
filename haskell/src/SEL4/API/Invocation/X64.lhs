@@ -56,8 +56,8 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >     | PDPTMap {
 >         pdptMapCap :: Capability,
 >         pdptMapCTSlot :: PPtr CTE,
->         pdptMapPDPTE :: PML4E,
->         pdptMapPDPTSlot :: PPtr PML4E }
+>         pdptMapPML4E :: PML4E,
+>         pdptMapPML4Slot :: PPtr PML4E }
 >     deriving Show
 
 > data PageDirectoryInvocation
