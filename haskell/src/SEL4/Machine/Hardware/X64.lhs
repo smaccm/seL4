@@ -433,24 +433,24 @@ Pointer Accessor Functions FIXME x64 TYPES
 > getPTIndex :: VPtr -> Word
 > getPTIndex vptr = 
 >     let shiftBits = pageBits 
->     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptBits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptTranslationBits
 
 > getPDIndex :: VPtr -> Word
 > getPDIndex vptr = 
 >     let shiftBits = pageBits + ptTranslationBits 
->     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdBits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptTranslationBits
 
 > getPDPTIndex :: VPtr -> Word
 > getPDPTIndex vptr = 
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits
->     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pdptBits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptTranslationBits
 
 
 > -- FIXME x64: Check this
 > getPML4Index :: VPtr -> Word
 > getPML4Index vptr = 
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits 
->     in fromVPtr $ vptr `shiftR` shiftBits .&. mask pml4Bits
+>     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptTranslationBits
 
 Page entries - could be either PTEs, PDEs or PDPTEs.
 
