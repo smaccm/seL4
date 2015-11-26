@@ -537,3 +537,25 @@ IRQ parameters
 > maxPCIFunc :: Word
 > maxPCIFunc = Platform.maxPCIFunc
 
+> numIOAPICs :: Word
+> numIOAPICs = error "Unimplemented . boot code"
+
+> ioapicIRQLines :: Word
+> ioapicIRQLines = Platform.ioapicIRQLines
+
+> ioapicMapPinToVector :: Word -> Word -> Word -> Word -> Word -> MachineMonad ()
+> ioapicMapPinToVector ioapic pin level polarity vector = do
+>     cbptr <- ask
+>     liftIO $ Platform.ioapicMapPinToVector cbptr ioapic pin level polarity vector
+
+FIXME: how deeply are we supposed to model this?
+
+> data X64IRQState = X64IRQState
+
+> irqStateIRQIOAPICNew = error "Unimplemented . FIXME see structures.bf"
+
+> irqStateIRQMSINew = error "Unimplemented . FIXME see structures.bf"
+
+> updateIRQState :: IRQ -> X64IRQState -> MachineMonad ()
+> updateIRQState _ _ = error "Unimplemented"
+

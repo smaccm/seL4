@@ -184,11 +184,18 @@ irqIntOffset :: Word
 irqIntOffset = 0x20 -- IRQ_INT_OFFSET in C
 
 maxPCIBus :: Word
-maxPCIBus = 255
+maxPCIBus = 255 -- PCI_BUS_MAX
 
 maxPCIDev :: Word
-maxPCIDev = 31
+maxPCIDev = 31 -- PCI_DEV_MAX
 
 maxPCIFunc :: Word
-maxPCIFunc = 7
+maxPCIFunc = 7 -- PCI_FUNC_MAX
+
+ioapicIRQLines :: Word
+ioapicIRQLines = 24 -- IOAPIC_IRQ_LINES
+
+-- error checks this performs moved out to x64 decodeIRQControl
+ioapicMapPinToVector :: Ptr CallbackData -> Word -> Word -> Word -> Word -> Word -> IO ()
+ioapicMapPinToVector = error "Unimplemented"
 

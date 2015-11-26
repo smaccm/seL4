@@ -23,7 +23,7 @@ This module makes use of the GHC extension allowing data types with no construct
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.Hardware.X64 hiding (PAddr, IRQ)
+> import SEL4.Machine.Hardware.X64 as Arch hiding (PAddr, IRQ)
 > import SEL4.Object.Structures
 > import Data.Word (Word8, Word16, Word32)
 
@@ -158,7 +158,7 @@ There are two invocation labels corresponding to these, but no separate arch inv
 >         issueHandlerIOAPICSlot, issueHandlerIOAPICControllerSlot :: PPtr CTE,
 >         issueHandlerIOAPICIOAPIC :: Word,
 >         issueHandlerIOAPICPin :: Word,
->         issueHandlerIOAPICLevel, issueHandlerIOAPICPolarity :: Bool,
+>         issueHandlerIOAPICLevel, issueHandlerIOAPICPolarity :: Word,
 >         issueHandlerIOAPICVector :: Word }
 >     | IssueIRQHandlerMSI {
 >         issueHandlerMSIIRQ :: IRQ,

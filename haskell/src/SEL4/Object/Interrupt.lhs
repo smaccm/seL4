@@ -22,8 +22,12 @@ We use the C preprocessor to select a target architecture.
 >     decodeIRQControlInvocation, decodeIRQHandlerInvocation,
 >     performIRQControl, invokeIRQHandler,
 >     deletingIRQHandler, deletedIRQHandler,
->     initInterruptController, handleInterrupt
+>     initInterruptController, handleInterrupt,
+>     setIRQState
 >   ) where
+
+> {-# BOOT-IMPORTS: SEL4.Machine SEL4.API.Types SEL4.Model SEL4.Object.Structures #-}     
+> {-# BOOT-EXPORTS: setIRQState #-}
 
 The architecture-specific definitions are imported qualified with the "Arch" prefix.
 
