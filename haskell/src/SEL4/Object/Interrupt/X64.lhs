@@ -17,7 +17,14 @@ This module defines the machine-specific interrupt handling routines for x64.
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.API.Failures
-> import SEL4.API.Invocation.X64
+> import SEL4.API.Invocation.X64 as Arch
 
 \end{impdetails}
+
+> decodeIRQControl :: Word -> [Word] -> PPtr CTE -> [Capability] ->
+>         KernelF SyscallError Arch.IRQControlInvocation
+> decodeIRQControl _ _ _ _ = throw IllegalOperation -- FIXME IMPLEMENT
+
+> performIRQControl :: Arch.IRQControlInvocation -> KernelP ()
+> performIRQControl _ = fail "FIXME X64 IMPLEMENT"
 

@@ -154,8 +154,8 @@ Any IO devices used directly by the kernel --- generally including the interrupt
 >     mapKernelFrame addr vptr VMKernelOnly $ VMAttributes False False True
 
 
-> activateGlobalPD :: Kernel ()
-> activateGlobalPD = do
+> activateGlobalVSpace :: Kernel ()
+> activateGlobalVSpace = do
 >     globalPD <- gets $ armKSGlobalPD . ksArchState
 >     doMachineOp $ do
 >         setCurrentPD $ addrFromPPtr globalPD

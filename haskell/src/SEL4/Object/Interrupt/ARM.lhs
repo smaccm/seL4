@@ -9,6 +9,7 @@
 %
 
 This module defines the machine-specific interrupt handling routines for the ARM.
+Apparently ARM does not have any.
 
 > module SEL4.Object.Interrupt.ARM where
 
@@ -18,8 +19,14 @@ This module defines the machine-specific interrupt handling routines for the ARM
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.API.Failures
-> import SEL4.API.Invocation.ARM
+> import SEL4.API.Invocation.ARM as Arch
 
 \end{impdetails}
 
+> decodeIRQControl :: Word -> [Word] -> PPtr CTE -> [Capability] ->
+>         KernelF SyscallError Arch.IRQControlInvocation
+> decodeIRQControl _ _ _ _ = throw IllegalOperation
+
+> performIRQControl :: Arch.IRQControlInvocation -> KernelP ()
+> performIRQControl _ = fail "performIRQControl: not defined"
 
