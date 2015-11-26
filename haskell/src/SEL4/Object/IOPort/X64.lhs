@@ -32,10 +32,7 @@ This module defines IO port routines, specific to x64.
 
 > ensurePortOperationAllowed :: ArchCapability -> IOPort -> Int ->
 >     KernelF SyscallError ()
-> ensurePortOperationAllowed
->     cap@(IOPortCap { capIOPortFirstPort = first_allowed,
->                      capIOPortLastPort = last_allowed })
->     start_port size = do
+> ensurePortOperationAllowed (cap@(IOPortCap { capIOPortFirstPort = first_allowed, capIOPortLastPort = last_allowed })) start_port size = do
 >     let end_port = start_port + fromIntegral size - 1
 >     assert (first_allowed <= last_allowed) "first allowed must be less than last allowed"
 >     assert (start_port <= end_port) "start port must be less than end port"

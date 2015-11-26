@@ -24,8 +24,7 @@ This module defines the low-level ARM hardware interface.
 > import Foreign.Ptr
 > import Control.Monad.Reader
 > import Data.Bits
-> import Data.Word(Word8, Word16, Word32)
-> import Data.Ix
+> import Data.Word(Word8, Word16, Word32, Word64)
 
 \end{impdetails}
 
@@ -47,11 +46,6 @@ The machine monad contains a platform-specific opaque pointer, used by the exter
 > type CR3 = Platform.CR3
 
 > type IOPort = Word16
-
-FIXME there is a 1-to-1 correspondence between hardware and software ASIDs on x64
-
-> newtype HardwareASID = HardwareASID { fromHWASID :: Word8 }
->     deriving (Num, Enum, Bounded, Ord, Ix, Eq, Show)
 
 > toPAddr = Platform.PAddr
 
@@ -254,8 +248,7 @@ caches must be done separately.
 
 > archSetCurrentVSpaceRoot :: PAddr -> Word -> MachineMonad ()
 > archSetCurrentVSpaceRoot pd asid =
->   setCurrentCR3 (Platform.CR3 { Platform.cr3BaseAddress = pd
->                               , Platform.cr3pcid = asid })
+>   setCurrentCR3 $ Platform.X64CR3 pd asid
 
 > resetCR3 = error "Unimplemented"
 
@@ -501,7 +494,10 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 > numIODomainIDBits :: Int
 > numIODomainIDBits = Platform.numIODomainIDBits
 
-> hwASIDInvalidate = error "Unimplemented"
+> hwASIDInvalidate :: Word64 -> MachineMonad ()
+> hwASIDInvalidate asid = do
+>     cbptr <- ask
+>     liftIO $ Platform.hwASIDInvalidate cbptr asid
 
 
 > getFaultAddress :: MachineMonad VPtr

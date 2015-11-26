@@ -92,9 +92,9 @@ X64 has two writable user data caps
 > updateCapData :: Bool -> Word -> ArchCapability -> Capability
 > updateCapData preserve newData (c@IOSpaceCap {}) =
 >     let
->         pciDevice = ioSpaceGetPCIDevice newData
->         domID = ioSpaceGetDomainID newData
->         fstValidDom = firstValidIODomain
+>         pciDevice = ioSpaceGetPCIDevice newData;
+>         domID = ioSpaceGetDomainID newData;
+>         fstValidDom = firstValidIODomain;
 >         domIDBits = numIODomainIDBits
 >     in
 >     if (not preserve && capIOPCIDevice c == 0 && domID >= fstValidDom
@@ -103,7 +103,7 @@ X64 has two writable user data caps
 >                else NullCap
 > updateCapData preserve newData (c@IOPortCap {}) =
 >     let 
->         firstPort = ioPortGetFirstPort newData
+>         firstPort = ioPortGetFirstPort newData;
 >         lastPort = ioPortGetLastPort newData
 >     in
 >     if (capIOPortFirstPort c <= capIOPortLastPort c)
@@ -361,7 +361,6 @@ Create an architecture-specific object.
 >             placeNewObject regionBase (makeObject :: PML4E) pml4Size
 >             copyGlobalMappings (pointerCast regionBase)
 >             return $! PML4Cap (pointerCast regionBase) Nothing
-
 
 \subsection{Capability Invocation}
 

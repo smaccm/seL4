@@ -160,7 +160,7 @@ foreign import ccall unsafe "qemu_arm_get_far"
 
 -- PC99 stubs
 
-data CR3 = CR3 { cr3BaseAddress :: PAddr, cr3pcid :: Word }
+data CR3 = X64CR3 { cr3BaseAddress :: PAddr, cr3pcid :: Word }
 writeCR3 = error "Unimplemented"
 readCR3 = error "Unimplemented"
 
@@ -168,6 +168,8 @@ invalidateTLB = error "Unimplemented"
 mfence = error "Unimplemented"
 addrFromKPPtr = error "Unimplemented" -- FIXME how is this different to addrFromPPtr?!
 pptrBase = error "Unimplemented" -- FIXME how is this not physMappingOffset?!
+hwASIDInvalidate = error "Unimplemented"
+
 
 getFaultAddress :: Ptr CallbackData -> IO VPtr
 getFaultAddress _ = error "Unimplemented"

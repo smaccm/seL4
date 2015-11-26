@@ -78,7 +78,6 @@ When a new page directory is created, the kernel copies all of the global mappin
 > createMappingEntries base vptr X64SmallPage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPTSlot vspace vptr
 >     return $ (VMPTE $ SmallPagePTE {
->         pteExecuteDisable = False,
 >         pteFrame = base,
 >         pteGlobal = False,
 >         ptePAT = x64PAT attrib,
@@ -86,12 +85,12 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pteAccessed = False,
 >         pteCacheDisabled = x64CacheDisabled attrib,
 >         pteWriteThrough = x64WriteThrough attrib,
+>         pteExecuteDisable = False,
 >         pteRights = vmRights }, VMPTEPtr p) -- this probably won't type check.
 >
 > createMappingEntries base vptr X64LargePage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
 >     return $ (VMPDE $ LargePagePDE {
->         pdeExecuteDisable = False,
 >         pdeFrame = base,
 >         pdeGlobal = False,
 >         pdePAT = x64PAT attrib,
@@ -99,12 +98,12 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdeAccessed = False,
 >         pdeCacheDisabled = x64CacheDisabled attrib,
 >         pdeWriteThrough = x64WriteThrough attrib,
+>         pdeExecuteDisable = False,
 >         pdeRights = vmRights }, VMPDEPtr p) -- this probably won't type check.
 >
 > createMappingEntries base vptr X64HugePage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPDPTSlot vspace vptr
 >     return $ (VMPDPTE $ HugePagePDPTE {
->         pdpteExecuteDisable = False,
 >         pdpteFrame = base,
 >         pdpteGlobal = False,
 >         pdptePAT = False,
@@ -112,6 +111,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdpteAccessed = False,
 >         pdpteCacheDisabled = x64CacheDisabled attrib,
 >         pdpteWriteThrough = x64WriteThrough attrib,
+>         pdpteExecuteDisable = False,
 >         pdpteRights = vmRights }, VMPDPTEPtr p) -- this probably won't type check.
 
 The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe --- that is, that inserting it will behave predictably and will not damage the hardware. The ARMv6 specifications require that there are never two mappings of different sizes at any virtual address in the active address space, so this function will throw a fault if the requested operation would change the size of the mapping of any existing valid entry.
@@ -286,10 +286,13 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 
 \subsubsection{Deleting an Address Space}
 
+> asidInvalidate :: ASID -> Kernel ()
+> asidInvalidate (ASID asid) = doMachineOp $ hwASIDInvalidate asid
+
 > deleteASID :: ASID -> PPtr PML4E -> Kernel ()
 > deleteASID asid pm = do
 >     asidTable <- gets (x64KSASIDTable . ksArchState)
->     hwASIDInvalidate asid --FIXME x64: add to hardware functions
+>     asidInvalidate asid
 >     case asidTable!(asidHighBitsOf asid) of
 >         Nothing -> return ()
 >         Just poolPtr -> do
@@ -487,9 +490,9 @@ X64UPDATE
 
 > attribsFromWord :: Word -> VMAttributes
 > attribsFromWord w = VMAttributes {
->     x64CacheDisabled = w `testBit` 1,
+>     x64WriteThrough = w `testBit` 0,
 >     x64PAT = w `testBit` 2,
->     x64WriteThrough = w `testBit` 0 }
+>     x64CacheDisabled = w `testBit` 1 }
 
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
@@ -953,31 +956,31 @@ The kernel model's ARM targets use an external simulation of the physical addres
 > unmapIOPage _ = error "Not an IOPage capability"
 
 > mapKernelWindow :: Kernel ()
-> mapKernelWindow = error "Unimplemented -- init code"
+> mapKernelWindow = error "Unimplemented . init code"
 
 > activateGlobalVSpace :: Kernel ()
-> activateGlobalVSpace = error "Unimplemented -- init code"
+> activateGlobalVSpace = error "Unimplemented . init code"
 
 > createIPCBufferFrame :: Capability -> VPtr -> KernelInit Capability
-> createIPCBufferFrame = error "Unimplemented -- init code"
+> createIPCBufferFrame = error "Unimplemented . init code"
 
 > createBIFrame :: Capability -> VPtr -> Word32 -> Word32 -> KernelInit Capability
-> createBIFrame = error "Unimplemented -- init code"
+> createBIFrame = error "Unimplemented . init code"
 
 > createFramesOfRegion :: Capability -> Region -> Bool -> VPtr -> KernelInit () 
-> createFramesOfRegion = error "Unimplemented -- init code"
+> createFramesOfRegion = error "Unimplemented . init code"
 
 > createITPDPTs :: Capability -> VPtr -> VPtr -> KernelInit Capability
-> createITPDPTs = error "Unimplemented -- init code" 
+> createITPDPTs = error "Unimplemented . init code" 
 
 > writeITPDPTs :: Capability -> Capability -> KernelInit ()
-> writeITPDPTs = error "Unimplemented -- init code"
+> writeITPDPTs = error "Unimplemented . init code"
 
 > createITASIDPool :: Capability -> KernelInit Capability
-> createITASIDPool = error "Unimplemented -- init code"
+> createITASIDPool = error "Unimplemented . init code"
 
 > writeITASIDPool :: Capability -> Capability -> Kernel ()
-> writeITASIDPool = error "Unimplemented -- init code"
+> writeITASIDPool = error "Unimplemented . init code"
 
 > createDeviceFrames :: Capability -> KernelInit ()
-> createDeviceFrames = error "Unimplemented -- init code"
+> createDeviceFrames = error "Unimplemented . init code"

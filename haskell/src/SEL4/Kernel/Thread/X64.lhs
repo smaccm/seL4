@@ -39,7 +39,7 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 >         ksArchState = (ksArchState s) { x64KSGdt = gdt' }})
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
-> configureIdleThread tcb = error "Unimplemented -- init code"
+> configureIdleThread tcb = error "Unimplemented. init code"
 
 > switchToIdleThread :: Kernel ()
 > switchToIdleThread = return ()
