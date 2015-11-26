@@ -134,7 +134,7 @@ static void sendPD(unsigned long address)
                                                                !pde_pde_large_get_present(pde) || !pde_pde_large_get_super_user(pde))) {
             exists = 0;
         }
-        if (exists != 0 && i < PPTR_BASE >> pageBitsForSize(IA32_LargePage)) {
+        if (exists != 0 && i < PPTR_BASE >> pageBitsForSize(X86_LargePage)) {
             sendWord(i);
             sendWord(pde.words[0]);
         }

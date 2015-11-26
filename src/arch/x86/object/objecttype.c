@@ -403,25 +403,25 @@ word_t
 Arch_getObjectSize(word_t t)
 {
     switch (t) {
-    case seL4_IA32_4K:
-        return pageBitsForSize(IA32_SmallPage);
+    case seL4_X86_4K:
+        return pageBitsForSize(X86_SmallPage);
 
-    case seL4_IA32_LargePage:
-        return pageBitsForSize(IA32_LargePage);
+    case seL4_X86_LargePageObject:
+        return pageBitsForSize(X86_LargePage);
 
-    case seL4_IA32_HugePage:
-        return pageBitsForSize(IA32_HugePage);
+    case seL4_X64_HugePageObject:
+        return pageBitsForSize(X64_HugePage);
 
-    case seL4_IA32_PageTableObject:
+    case seL4_X86_PageTableObject:
         return PT_SIZE_BITS;
         
-    case seL4_IA32_PageDirectoryObject:
+    case seL4_X86_PageDirectoryObject:
         return PD_SIZE_BITS;
 
-    case seL4_IA32_PDPTObject:
+    case seL4_X86_PDPTObject:
         return PDPT_SIZE_BITS;
 
-    case seL4_IA32_IOPageTableObject:
+    case seL4_X86_IOPageTableObject:
         return VTD_PT_SIZE_BITS;
 
     default:
@@ -455,10 +455,10 @@ Arch_decodeInvocation(
         return decodeX86PortInvocation(label, length, cptr, slot, cap, extraCaps, buffer);
 
     case cap_io_space_cap:
-        return decodeIA32IOSpaceInvocation(label, cap);
+        return decodeX86IOSpaceInvocation(label, cap);
 
     case cap_io_page_table_cap:
-        return decodeIA32IOPTInvocation(label, length, slot, cap, extraCaps, buffer);
+        return decodeX86IOPTInvocation(label, length, slot, cap, extraCaps, buffer);
 
     default:
         return Mode_decodeInvocation(label, length, cptr, slot, cap, extraCaps, buffer);

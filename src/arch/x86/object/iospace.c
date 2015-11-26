@@ -112,7 +112,7 @@ static inline lookupIOPTSlot_ret_t lookupIOPTSlot(vtd_pte_t* iopt, word_t io_add
 }
 
 exception_t
-decodeIA32IOPTInvocation(
+decodeX86IOPTInvocation(
     word_t       label,
     uint32_t     length,
     cte_t*       slot,
@@ -129,7 +129,7 @@ decodeIA32IOPTInvocation(
     vtd_cte_t* vtd_context_slot;
     vtd_pte_t* vtd_pte;
 
-    if (label == IA32IOPageTableUnmap) {
+    if (label == X86IOPageTableUnmap) {
         deleteIOPageTable(slot->cap);
         slot->cap = cap_io_page_table_cap_set_capIOPTIsMapped(slot->cap, 0);
 
@@ -142,7 +142,7 @@ decodeIA32IOPTInvocation(
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-    if (label != IA32IOPageTableMap ) {
+    if (label != X86IOPageTableMap ) {
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
     }
@@ -225,7 +225,7 @@ decodeIA32IOPTInvocation(
 }
 
 exception_t
-decodeIA32IOMapInvocation(
+decodeX86IOMapInvocation(
     word_t       label,
     uint32_t     length,
     cte_t*       slot,
@@ -246,7 +246,7 @@ decodeIA32IOMapInvocation(
         return EXCEPTION_SYSCALL_ERROR;
     }
 
-    if (cap_frame_cap_get_capFSize(cap) != IA32_SmallPage) {
+    if (cap_frame_cap_get_capFSize(cap) != X86_SmallPage) {
         current_syscall_error.type = seL4_InvalidCapability;
         current_syscall_error.invalidCapNumber = 0;
         return EXCEPTION_SYSCALL_ERROR;
@@ -437,7 +437,7 @@ void unmapIOPage(cap_t cap)
 }
 
 exception_t
-decodeIA32IOUnMapInvocation(
+decodeX86IOUnMapInvocation(
     word_t       label,
     uint32_t     length,
     cte_t*       slot,
@@ -457,7 +457,7 @@ decodeIA32IOUnMapInvocation(
     return EXCEPTION_NONE;
 }
 
-exception_t decodeIA32IOSpaceInvocation(word_t label, cap_t cap)
+exception_t decodeX86IOSpaceInvocation(word_t label, cap_t cap)
 {
     current_syscall_error.type = seL4_IllegalOperation;
     return EXCEPTION_SYSCALL_ERROR;

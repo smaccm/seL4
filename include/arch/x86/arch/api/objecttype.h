@@ -16,26 +16,29 @@
 #endif /* HAVE_AUTOCONF */
 
 typedef enum _object {
-    seL4_IA32_4K = seL4_NonArchObjectTypeCount,
-    seL4_IA32_LargePage,
+    seL4_X86_4K = seL4_NonArchObjectTypeCount,
+    seL4_X86_LargePageObject,
 #ifdef CONFIG_HUGE_PAGE
-    seL4_IA32_HugePage,
+    seL4_X64_HugePageObject,
 #endif
-    seL4_IA32_PageTableObject,
-    seL4_IA32_PageDirectoryObject,
-#if defined(CONFIG_PAE_PAGING) || defined(X86_64)
-    seL4_IA32_PDPTObject,
+    seL4_X86_PageTableObject,
+    seL4_X86_PageDirectoryObject,
+#ifdef CONFIG_PAE_PAGING
+    seL4_X86_PDPTObject,
 #endif
-    seL4_IA32_PML4Object,
-    seL4_IA32_IOPageTableObject,
+#ifdef X86_64
+    seL4_X86_PDPTObject,
+    seL4_X64_PML4Object,
+#endif
+    seL4_X86_IOPageTableObject,
     seL4_ObjectTypeCount
 #ifndef CONFIG_HUGE_PAGE
     ,
-    seL4_IA32_HugePage
+    seL4_X64_HugePageObject
 #endif
 #if !defined(CONFIG_PAE_PAGING) && !defined(X86_64)
     ,
-    seL4_IA32_PDPTObject
+    seL4_X86_PDPTObject
 #endif
 } seL4_ArchObjectType;
 typedef word_t object_t;
@@ -43,7 +46,7 @@ typedef word_t object_t;
 /* Previously frame types were explcitly 4K and 4M. If not PAE
  * we assume legacy environment and emulate old definitions */
 #ifndef CONFIG_PAE_PAGING
-#define seL4_IA32_4M seL4_IA32_LargePage
+#define seL4_X86_4M seL4_X86_LargePage
 #endif
 
 #endif

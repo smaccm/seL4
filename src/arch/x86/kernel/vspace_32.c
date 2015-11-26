@@ -538,9 +538,9 @@ create_it_frame_cap(pptr_t pptr, vptr_t vptr, asid_t asid, bool_t use_large)
     vm_page_size_t frame_size;
 
     if (use_large) {
-        frame_size = IA32_LargePage;
+        frame_size = X86_LargePage;
     } else {
-        frame_size = IA32_SmallPage;
+        frame_size = X86_SmallPage;
     }
 
     return

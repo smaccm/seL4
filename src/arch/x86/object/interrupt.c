@@ -127,8 +127,8 @@ exception_t Arch_decodeIRQControlInvocation(word_t label, word_t length,
     x86_irq_state_t irqState;
 
     if (!config_set(CONFIG_IRQ_IOAPIC) ||
-        (label != IA32IRQIssueIRQHandlerIOAPIC &&
-        label != IA32IRQIssueIRQHandlerMSI)) {
+        (label != X86IRQIssueIRQHandlerIOAPIC &&
+        label != X86IRQIssueIRQHandlerMSI)) {
 
         userError("IRQControl: Illegal operation.");
         current_syscall_error.type = seL4_IllegalOperation;
@@ -166,7 +166,7 @@ exception_t Arch_decodeIRQControlInvocation(word_t label, word_t length,
         return status;
     }
 
-    if (label == IA32IRQIssueIRQHandlerIOAPIC) {
+    if (label == X86IRQIssueIRQHandlerIOAPIC) {
         word_t ioapic = getSyscallArg(2, buffer);
         word_t pin = getSyscallArg(3, buffer);
         word_t level = getSyscallArg(4, buffer);
@@ -191,7 +191,7 @@ exception_t Arch_decodeIRQControlInvocation(word_t label, word_t length,
 
     }
 
-    if (label == IA32IRQIssueIRQHandlerMSI) {
+    if (label == X86IRQIssueIRQHandlerMSI) {
         word_t pci_bus = getSyscallArg(2, buffer);
         word_t pci_dev = getSyscallArg(3, buffer);
         word_t pci_func = getSyscallArg(4, buffer);

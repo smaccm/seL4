@@ -16,20 +16,20 @@
 #endif /* HAVE_AUTOCONF */
 
 typedef enum _object {
-    seL4_IA32_4K = seL4_NonArchObjectTypeCount,
-    seL4_IA32_LargePage,
+    seL4_X86_4K = seL4_NonArchObjectTypeCount,
+    seL4_X86_LargePageObject,
 #ifdef CONFIG_HUGE_PAGE
-    seL4_IA32_HugePage,
+    seL4_X64_HugePageObject,
 #endif
-    seL4_IA32_PageTableObject,
-    seL4_IA32_PageDirectoryObject,
-    seL4_IA32_PDPTObject,
-    seL4_IA32_PML4Object,
-    seL4_IA32_IOPageTableObject,
+    seL4_X86_PageTableObject,
+    seL4_X86_PageDirectoryObject,
+    seL4_X86_PDPTObject,
+    seL4_X64_PML4Object,
+    seL4_X86_IOPageTableObject,
     seL4_ObjectTypeCount
 #ifndef CONFIG_HUGE_PAGE
     ,
-    seL4_IA32_HugePage
+    seL4_X64_HugePageObject
 #endif
 } seL4_ArchObjectType;
 
@@ -38,8 +38,8 @@ typedef seL4_Uint32 object_t;
 /* Previously frame types were explcitly 4K and 2M. If not PAE
  * we assume legacy environment and emulate old definitions */
 #ifndef CONFIG_PAE_PAGING
-#define seL4_IA32_2M seL4_IA32_LargePage
-#define seL4_IA32_1G seL4_IA32_HugePage
+#define seL4_X64_2M seL4_X86_LargePageObject
+#define seL4_X64_1G seL4_X64_HugePageObject
 #endif
 
 #endif

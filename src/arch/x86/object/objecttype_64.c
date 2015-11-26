@@ -162,7 +162,7 @@ word_t
 Mode_getObjectSize(word_t t)
 {
     switch (t) {
-    case seL4_IA32_PML4Object:
+    case seL4_X64_PML4Object:
         return PML4_SIZE_BITS;
 
     default:
@@ -176,40 +176,40 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
 {
     switch (t) {
 
-    case seL4_IA32_4K:
-        memzero(regionBase, 1 << pageBitsForSize(IA32_SmallPage));
+    case seL4_X86_4K:
+        memzero(regionBase, 1 << pageBitsForSize(X86_SmallPage));
         return cap_frame_cap_new(
                 asidInvalid,        /* capFMappedASID           */
                 (word_t)regionBase, /* capFBasePtr              */
-                IA32_SmallPage,     /* capFSize                 */
+                X86_SmallPage,     /* capFSize                 */
                 X86_MAPPING_VSPACE, /* capFMapType              */
                 0,                  /* capFMappedAddress        */
                 VMReadWrite         /* capFVMRights             */
                 );
 
-    case seL4_IA32_LargePage:
-        memzero(regionBase, 1 << pageBitsForSize(IA32_LargePage));
+    case seL4_X86_LargePageObject:
+        memzero(regionBase, 1 << pageBitsForSize(X86_LargePage));
         return cap_frame_cap_new(
                 asidInvalid,        /* capFMappedASID           */
                 (word_t)regionBase, /* capFBasePtr              */
-                IA32_LargePage,     /* capFSize                 */
+                X86_LargePage,     /* capFSize                 */
                 X86_MAPPING_VSPACE, /* capFMapType              */
                 0,                  /* capFMappedAddress        */
                 VMReadWrite         /* capFVMRights             */
                 );
 
-    case seL4_IA32_HugePage:
-        memzero(regionBase, 1 << pageBitsForSize(IA32_HugePage));
+    case seL4_X64_HugePageObject:
+        memzero(regionBase, 1 << pageBitsForSize(X64_HugePage));
         return cap_frame_cap_new(
                 asidInvalid,        /* capFMappedASID           */
                 (word_t)regionBase, /* capFBasePtr              */
-                IA32_HugePage,      /* capFSize                 */
+                X64_HugePage,      /* capFSize                 */
                 X86_MAPPING_VSPACE, /* capFMapType              */
                 0,                  /* capFMappedAddress        */
                 VMReadWrite         /* capFVMRights             */
                 );
 
-    case seL4_IA32_PageTableObject:
+    case seL4_X86_PageTableObject:
         memzero(regionBase, 1 << PT_SIZE_BITS);
         return cap_page_table_cap_new(
                    asidInvalid,            /* capPTMappedASID    */
@@ -218,7 +218,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                    0                       /* capPTMappedAddress */
                );
 
-    case seL4_IA32_PageDirectoryObject:
+    case seL4_X86_PageDirectoryObject:
         memzero(regionBase, 1 << PD_SIZE_BITS);
         return cap_page_directory_cap_new(
                 asidInvalid,                /* capPDMappedASID      */
@@ -227,7 +227,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                 0                           /* capPDMappedAddress   */
             );
 
-    case seL4_IA32_PDPTObject:
+    case seL4_X86_PDPTObject:
         memzero(regionBase, 1 << PDPT_SIZE_BITS);
         return cap_pdpt_cap_new(
                 asidInvalid,                /* capPDPTMappedASID    */
@@ -236,7 +236,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                 0                           /* capPDPTMappedAddress */
             );
 
-    case seL4_IA32_PML4Object:
+    case seL4_X64_PML4Object:
         memzero(regionBase, 1 << PML4_SIZE_BITS);
         copyGlobalMappings(PML4_PTR(regionBase));
         return cap_pml4_cap_new(
@@ -245,7 +245,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize)
                 0                           /* capPML4IsMapped     */
                 );
 
-    case seL4_IA32_IOPageTableObject:
+    case seL4_X86_IOPageTableObject:
         memzero(regionBase, 1 << VTD_PT_SIZE_BITS);
         return cap_io_page_table_cap_new(
                 0,

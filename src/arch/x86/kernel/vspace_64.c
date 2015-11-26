@@ -58,8 +58,8 @@ map_kernel_window(
     assert(GET_PML4_INDEX(KERNEL_BASE) == BIT(PML4_BITS) - 1);
     assert(GET_PDPT_INDEX(KERNEL_BASE) == BIT(PML4_BITS) - 2);
     assert(GET_PDPT_INDEX(PPTR_KDEV) == BIT(PML4_BITS) - 1);
-    assert(IS_ALIGNED(KERNEL_BASE, X86_1G_bits));
-    assert(IS_ALIGNED(PPTR_KDEV, X86_1G_bits));
+    assert(IS_ALIGNED(KERNEL_BASE, X64_1G_bits));
+    assert(IS_ALIGNED(PPTR_KDEV, X64_1G_bits));
     /* place the PDPT into the PML4 */
     pml4e_ptr_new(&x64KSGlobalPML4[GET_PML4_INDEX(PPTR_BASE)],
                   0, /* xd */
@@ -702,9 +702,9 @@ create_it_frame_cap(pptr_t pptr, vptr_t vptr, asid_t asid, bool_t use_large)
     vm_page_size_t frame_size;
 
     if (use_large) {
-        frame_size = IA32_LargePage;
+        frame_size = X86_LargePage;
     } else {
-        frame_size = IA32_SmallPage;
+        frame_size = X86_SmallPage;
     }
 
     return
@@ -1045,10 +1045,10 @@ decodeX64PageDirectoryInvocation(
     asid_t              asid;
     lookupPDPTSlot_ret_t pdptSlot;
 
-    if (label == IA32PageDirectoryUnmap) {
+    if (label == X86PageDirectoryUnmap) {
         if (!isFinalCapability(cte)) {
             current_syscall_error.type = seL4_RevokeFirst;
-            userError("IA32PageDirectory: Cannot unmap if more than one cap exist.");
+            userError("X86PageDirectory: Cannot unmap if more than one cap exist.");
             return EXCEPTION_SYSCALL_ERROR;
         }
         setThreadState(ksCurThread, ThreadState_Restart);
@@ -1067,7 +1067,7 @@ decodeX64PageDirectoryInvocation(
         return EXCEPTION_NONE;
     }
     
-    if (label != IA32PageDirectoryMap) {
+    if (label != X86PageDirectoryMap) {
         userError("X64Directory: Illegal operation.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
@@ -1200,10 +1200,10 @@ decodeX64PDPTInvocation(
     paddr_t                 paddr;
     asid_t                  asid;
 
-    if (label == IA32PDPTUnmap) {
+    if (label == X86PDPTUnmap) {
         if (!isFinalCapability(cte)) {
             current_syscall_error.type = seL4_RevokeFirst;
-            userError("X64PDPT: Cannot unmap if more than one cap exist.");
+            userError("X86PDPT: Cannot unmap if more than one cap exist.");
             return EXCEPTION_SYSCALL_ERROR;
         }
 
@@ -1221,8 +1221,8 @@ decodeX64PDPTInvocation(
         return EXCEPTION_NONE;
     }
 
-    if (label != IA32PDPTMap) {
-        userError("X64PDPT: Illegal operation.");
+    if (label != X86PDPTMap) {
+        userError("X86PDPT: Illegal operation.");
         current_syscall_error.type = seL4_IllegalOperation;
         return EXCEPTION_SYSCALL_ERROR;
     }
@@ -1331,7 +1331,7 @@ decodeX86ModeMMUInvocation(
 
 void modeUnmapPage(vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr, void *pptr)
 {
-    if (config_set(CONFIG_HUGE_PAGE) && page_size == IA32_HugePage) {
+    if (config_set(CONFIG_HUGE_PAGE) && page_size == X64_HugePage) {
         pdpte_t     *pdpte;
         lookupPDPTSlot_ret_t pdpt_ret = lookupPDPTSlot(vroot, vaddr);
         if (pdpt_ret.status != EXCEPTION_NONE) {
@@ -1356,7 +1356,7 @@ void modeUnmapPage(vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr,
 
 exception_t modeMapRemapPage(word_t label, vm_page_size_t page_size, vspace_root_t *vroot, vptr_t vaddr, paddr_t paddr, vm_rights_t vm_rights, vm_attributes_t vm_attr)
 {
-    if (config_set(CONFIG_HUGE_PAGE) && page_size == IA32_HugePage) {
+    if (config_set(CONFIG_HUGE_PAGE) && page_size == X64_HugePage) {
         pdpte_t *pdpteSlot;
         lookupPDPTSlot_ret_t lu_ret;
         lu_ret = lookupPDPTSlot(vroot, vaddr);
@@ -1368,7 +1368,7 @@ exception_t modeMapRemapPage(word_t label, vm_page_size_t page_size, vspace_root
         }
         pdpteSlot = lu_ret.pdptSlot;
         switch (label) {
-            case IA32PageMap:
+            case X86PageMap:
                 /* check for existing page directory */
                 if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_pd)  &&
                     (pdpte_pdpte_pd_ptr_get_present(pdpteSlot))) {
@@ -1383,7 +1383,7 @@ exception_t modeMapRemapPage(word_t label, vm_page_size_t page_size, vspace_root
                 }
                 break;
 
-            case IA32PageRemap: {
+            case X86PageRemap: {
                 /* check for existing page directory */
                 if ((pdpte_ptr_get_page_size(pdpteSlot) == pdpte_pdpte_pd)  &&
                     (pdpte_pdpte_pd_ptr_get_present(pdpteSlot))) {

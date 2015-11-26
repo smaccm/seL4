@@ -33,16 +33,16 @@
 typedef seL4_Uint64 seL4_Word;
 typedef seL4_Word seL4_CPtr;
 
-typedef seL4_CPtr seL4_IA32_ASIDControl;
-typedef seL4_CPtr seL4_IA32_ASIDPool;
-typedef seL4_CPtr seL4_IA32_IOSpace;
+typedef seL4_CPtr seL4_X86_ASIDControl;
+typedef seL4_CPtr seL4_X86_ASIDPool;
+typedef seL4_CPtr seL4_X86_IOSpace;
 typedef seL4_CPtr seL4_X86_IOPort;
-typedef seL4_CPtr seL4_IA32_Page;
-typedef seL4_CPtr seL4_IA32_PML4;
-typedef seL4_CPtr seL4_IA32_PDPT;
-typedef seL4_CPtr seL4_IA32_PageDirectory;
-typedef seL4_CPtr seL4_IA32_PageTable;
-typedef seL4_CPtr seL4_IA32_IOPageTable;
+typedef seL4_CPtr seL4_X86_Page;
+typedef seL4_CPtr seL4_X64_PML4;
+typedef seL4_CPtr seL4_X86_PDPT;
+typedef seL4_CPtr seL4_X86_PageDirectory;
+typedef seL4_CPtr seL4_X86_PageTable;
+typedef seL4_CPtr seL4_X86_IOPageTable;
 
 /* User context as used by seL4_TCB_ReadRegisters / seL4_TCB_WriteRegisters */
 
@@ -53,13 +53,13 @@ typedef struct seL4_UserContext_ {
 } seL4_UserContext;
 
 typedef enum {
-    seL4_IA32_Default_VMAttributes = 0,
-    seL4_IA32_WriteBack = 0,
-    seL4_IA32_WriteThrough = 1,
-    seL4_IA32_CacheDisabled = 2,
-    seL4_IA32_Uncacheable = 3,
-    seL4_IA32_WriteCombining = 4,
-    SEL4_FORCE_LONG_ENUM(seL4_IA32_VMAttributes),
-} seL4_IA32_VMAttributes;
+    seL4_X86_Default_VMAttributes = 0,
+    seL4_X86_WriteBack = 0,
+    seL4_X86_WriteThrough = 1,
+    seL4_X86_CacheDisabled = 2,
+    seL4_X86_Uncacheable = 3,
+    seL4_X86_WriteCombining = 4,
+    SEL4_FORCE_LONG_ENUM(seL4_X86_VMAttributes),
+} seL4_X86_VMAttributes;
 
 #endif
