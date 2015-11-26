@@ -32,7 +32,7 @@ build-x64: $(BOOT_FILES)
 pdf:
 	cd doc && make
 
-%.lhs-boot: %.lhs
+%.lhs-boot: %.lhs mkhsboot.pl
 	perl mkhsboot.pl -l < $< > $@
 
 clean:

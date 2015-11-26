@@ -93,7 +93,7 @@ The ARM kernel stores one ARM-specific type of object in the PSpace: ASID pools,
 >                 KOPDE _ -> 3
 >                 KOPDPTE _ -> 3
 >                 KOPML4E _ -> 3
->                 KOIOPTE _ -> error "Unimplemented" -- FIXME x64: What is the size of an IOPTE?
+>                 KOIOPTE _ -> 3
 
 \subsection{ASID Pools}
 
