@@ -20,9 +20,10 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 > import SEL4.Object.Structures
 > import SEL4.Object.TCB
 > import SEL4.Kernel.VSpace.X64
-> import qualified SEL4.Machine.Hardware.X64 as X64Hardware
+> import SEL4.Machine.Hardware.X64
 > import {-# SOURCE #-} SEL4.Kernel.Init
 > import SEL4.Model.PSpace
+> import Data.Array
 
 \end{impdetails}
 
@@ -32,22 +33,13 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 >     base <- asUser tcb $ getRegister (Register TLS_BASE)
 >     bufferPtr <- threadGet tcbIPCBuffer tcb
 >     gdt <- gets $ x64KSGdt . ksArchState
->     let gdt' = gdt//[ (GDT_TLS, base), (GDT_IPCBUF, bufferPtr) ]
+>     let gdt' = gdt//[ (GDT_TLS, GDTE { gdteFrame = toPAddr base} ), 
+>                       (GDT_IPCBUF, GDTE { gdteFrame = toPAddr $ fromVPtr bufferPtr} ) ]
 >     modify (\s -> s {
 >         ksArchState = (ksArchState s) { x64KSGdt = gdt' }})
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
-> configureIdleThread tcb = do
->     doKernelOp $ asUser tcb $ do
->         setRegister (Register RFLAGS) 0x1f
->         setRegister (Register NEXTIP) $ fromVPtr idleThreadStart
->         setRegister (Register CS) selCS0
->         setRegister (Register DS) selDS0
->         setRegister (Register ES) selDS0
->         setRegister (Register FS) selDS0
->         setRegister (Register GS) selDS0
->         setRegister (Register SS) selDS0
->         setRegister (Register RSP) $ kernelStackAlloc
+> configureIdleThread tcb = error "Unimplemented -- init code"
 
 > switchToIdleThread :: Kernel ()
 > switchToIdleThread = return ()

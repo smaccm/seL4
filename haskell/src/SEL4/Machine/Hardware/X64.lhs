@@ -24,7 +24,7 @@ This module defines the low-level ARM hardware interface.
 > import Foreign.Ptr
 > import Control.Monad.Reader
 > import Data.Bits
-> import Data.Word(Word8, Word16)
+> import Data.Word(Word8, Word16, Word32)
 > import Data.Ix
 
 \end{impdetails}
@@ -512,10 +512,16 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 
 FIXME IO port input/output
 
-in8 = error "Unimplemented"
-in16 = error "Unimplemented"
-in32 = error "Unimplemented"
-out8 = error "Unimplemented"
-out16 = error "Unimplemented"
-out32 = error "Unimplemented"
+> in8 :: MachineMonad Word
+> in8 = error "Unimplemented"
+> in16 :: MachineMonad Word
+> in16 = error "Unimplemented"
+> in32 :: MachineMonad Word
+> in32 = error "Unimplemented"
+> out8 :: IOPort -> Word8 -> MachineMonad ()
+> out8 = error "Unimplemented"
+> out16 :: IOPort -> Word16 -> MachineMonad ()
+> out16 = error "Unimplemented"
+> out32 :: IOPort -> Word32 -> MachineMonad ()
+> out32 = error "Unimplemented"
 

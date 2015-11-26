@@ -18,6 +18,7 @@ This module contains the architecture-specific kernel global data for the X86-64
 >    (PML4E(..))
 > --   (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
 > import SEL4.Object.Structures.X64
+> import SEL4.Machine.RegisterSet.X64
 
 > import Data.Array
 > import Data.Word (Word16)
@@ -26,29 +27,14 @@ This module contains the architecture-specific kernel global data for the X86-64
 
 \end{impdetails}
 
-FIXME move this somewhere more appropriate?
-
-> data GdtSlot
->     = GDT_NULL
->     | GDT_CS_0
->     | GDT_DS_0
->     | GDT_TSS_1
->     | GDT_TSS_2
->     | GDT_CS_3
->     | GDT_DS_3
->     | GDT_TLS
->     | GDT_IPCBUF
->     | GDT_ENTRIES
->     deriving (Eq, Show, Enum)
-
 FIXME the only difference in our GDT entries seems to be the base address (broken up into pieces)
 FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so something is fishy
 
-> data GdtEntry = X64GdtEntry {
->     base :: PPtr PML4E}
+> data GDTE = GDTE {
+>     gdteFrame :: PAddr }
 
 > data KernelState = X64KernelState {
->     x64KSGdt :: Array GdtSlot GdtEntry,
+>     x64KSGdt :: Array GDTSlot GDTE,
 >     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
 >     x64KSGlobalPML4 :: PPtr PML4E}
 

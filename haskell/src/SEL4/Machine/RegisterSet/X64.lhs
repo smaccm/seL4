@@ -44,13 +44,31 @@ FIXME kernel people are not using R8-R15 at the moment, but that can change
 
 FIXME move to structures?
 
-> gdtToSel :: Word -> Word
-> gdtToSel n = ( n `shiftL` 3 ) .|. 3
+> data GDTSlot
+>     = GDT_NULL
+>     | GDT_CS_0
+>     | GDT_DS_0
+>     | GDT_TSS
+>     | GDT_TSS_Padding
+>     | GDT_CS_3
+>     | GDT_DS_3
+>     | GDT_TLS
+>     | GDT_IPCBUF
+>     | GDT_ENTRIES
+>     deriving (Eq, Show, Enum, Ord, Ix)
 
-> selCS3 = gdtToSel 5
-> selDS3 = gdtToSel 6
-> selTLS = gdtToSel 7
-> selIPCBUF = gdtToSel 8
+> gdtToSel :: GDTSlot -> Word
+> gdtToSel g = (fromIntegral (fromEnum g) `shiftL` 3 ) .|. 3
+
+> gdtToSel_masked :: GDTSlot -> Word
+> gdtToSel_masked g = gdtToSel g .|. 3
+
+> selCS3 = gdtToSel_masked GDT_CS_3
+> selDS3 = gdtToSel_masked GDT_DS_3
+> selTLS = gdtToSel_masked GDT_TLS
+> selIPCBUF = gdtToSel_masked GDT_IPCBUF
+> selCS0 = gdtToSel_masked GDT_CS_0
+> selDS0 = gdtToSel GDT_DS_0
 
 > initContext :: [(Register, Word)]
 > initContext = [(DS, selDS3), (ES, selDS3), (CS, selCS3), (SS, selDS3)
