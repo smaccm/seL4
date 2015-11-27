@@ -496,6 +496,7 @@ X64UPDATE
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
 
+
 > decodeX64FrameInvocation :: Word -> [Word] -> PPtr CTE -> 
 >                    ArchCapability -> [(Capability, PPtr CTE)] ->
 >                    KernelF SyscallError ArchInv.Invocation
@@ -561,6 +562,7 @@ X64UPDATE
 >         _ -> throw IllegalOperation
 > decodeX64FrameInvocation _ _ _ _ _ = fail "Unreachable"
 
+
 > decodeX64IOMapInvocation :: Word -> [Word] -> PPtr CTE -> 
 >                    ArchCapability -> [(Capability, PPtr CTE)] ->
 >                    KernelF SyscallError ArchInv.Invocation
@@ -572,11 +574,11 @@ X64UPDATE
 > decodeX64IOUnmapInvocation label args cte cap extraCaps = error "Not implemented"
 
 
-> decodeX64MMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
+> decodeX64PDPointerTableInvocation :: Word -> [Word] -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
 
-> decodeX64MMUInvocation label args _ cte cap@(PDPointerTableCap {}) extraCaps = do
+> decodeX64PDPointerTableInvocation label args cte cap@(PDPointerTableCap {}) extraCaps = do
 >     case (invocationType label, args, extraCaps) of
 >         (ArchInvocationLabel X64PDPTMap, vaddr':attr:_, (vspaceCap,_):_) -> do
 >             when (isJust $ capPDPTMappedAddress cap) $
@@ -617,9 +619,14 @@ X64UPDATE
 >                 pdptUnmapCap = cap,
 >                 pdptUnmapCapSlot = cte }
 >         _ -> throw IllegalOperation
+> decodeX64PDPointerTableInvocation _ _ _ _ _ = fail "Unreachable"
 
 
-> decodeX64MMUInvocation label args _ cte cap@(PageDirectoryCap {}) extraCaps  = 
+> decodeX64PageDirectoryInvocation :: Word -> [Word] -> PPtr CTE ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64PageDirectoryInvocation label args cte cap@(PageDirectoryCap {}) extraCaps  = 
 >     case (invocationType label, args, extraCaps) of
 >         (ArchInvocationLabel X64PageDirectoryMap, vaddr':attr:_, (pml4Cap,_):_) -> do
 >             when (isJust $ capPDMappedAddress cap) $
@@ -660,8 +667,14 @@ X64UPDATE
 >                 pdUnmapCap = cap,
 >                 pdUnmapCapSlot = cte }
 >         _ -> throw IllegalOperation
+> decodeX64PageDirectoryInvocation _ _ _ _ _ = fail "Unreachable"
 
-> decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) extraCaps = 
+
+> decodeX64PageTableInvocation :: Word -> [Word] -> PPtr CTE ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64PageTableInvocation label args cte cap@(PageTableCap {}) extraCaps = 
 >    case (invocationType label, args, extraCaps) of
 >         (ArchInvocationLabel X64PageTableMap, vaddr':attr:_, (pml4Cap,_):_) -> do
 >             when (isJust $ capPTMappedAddress cap) $
@@ -702,10 +715,14 @@ X64UPDATE
 >                 ptUnmapCap = cap,
 >                 ptUnmapCapSlot = cte }
 >         _ -> throw IllegalOperation
+> decodeX64PageTableInvocation _ _ _ _ _ = fail "Unreachable"
 
-> decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = decodeX64FrameInvocation label args cte cap extraCaps
 
-> decodeX64MMUInvocation label args _ _ ASIDControlCap extraCaps = 
+> decodeX64ASIDControlInvocation :: Word -> [Word] ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64ASIDControlInvocation label args ASIDControlCap extraCaps = 
 >     case (invocationType label, args, extraCaps) of
 >         (ArchInvocationLabel X64ASIDControlMakePool, index:depth:_,
 >                         (untyped,parentSlot):(root,_):_) -> do
@@ -728,8 +745,14 @@ X64UPDATE
 >                 makePoolBase = base }
 >         (ArchInvocationLabel X64ASIDControlMakePool, _, _) -> throw TruncatedMessage
 >         _ -> throw IllegalOperation
+> decodeX64ASIDControlInvocation _ _ _ _ = fail "Unreachable"
 
-> decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) extraCaps =
+
+> decodeX64ASIDPoolInvocation :: Word ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64ASIDPoolInvocation label cap@(ASIDPoolCap {}) extraCaps =
 >     case (invocationType label, extraCaps) of
 >         (ArchInvocationLabel X64ASIDPoolAssign, (vspaceCap,vspaceCapSlot):_) ->
 >             case vspaceCap of
@@ -753,8 +776,26 @@ X64UPDATE
 >                 _ -> throw $ InvalidCapability 1
 >         (ArchInvocationLabel X64ASIDPoolAssign, _) -> throw TruncatedMessage
 >         _ -> throw IllegalOperation
+> decodeX64ASIDPoolInvocation _ _ _ = fail "Unreachable"
 
 
+
+> decodeX64MMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
+>         ArchCapability -> [(Capability, PPtr CTE)] ->
+>         KernelF SyscallError ArchInv.Invocation
+
+> decodeX64MMUInvocation label args _ cte cap@(PageCap {}) extraCaps = 
+>  decodeX64FrameInvocation label args cte cap extraCaps
+> decodeX64MMUInvocation label args _ cte cap@(PDPointerTableCap {}) extraCaps = 
+>  decodeX64PDPointerTableInvocation label args cte cap extraCaps
+> decodeX64MMUInvocation label args _ cte cap@(PageDirectoryCap {}) extraCaps = 
+>  decodeX64PageDirectoryInvocation label args cte cap extraCaps
+> decodeX64MMUInvocation label args _ cte cap@(PageTableCap {}) extraCaps = 
+>  decodeX64PageTableInvocation label args cte cap extraCaps
+> decodeX64MMUInvocation label args _ _ cap@(ASIDControlCap {}) extraCaps = 
+>  decodeX64ASIDControlInvocation label args cap extraCaps
+> decodeX64MMUInvocation label _ _ _ cap@(ASIDPoolCap {}) extraCaps = 
+>  decodeX64ASIDPoolInvocation label cap extraCaps
 > decodeX64MMUInvocation label _ _ _ cap@(IOPageTableCap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation label _ _ _ cap@(PML4Cap {}) _ = error "Not implemented"
 > decodeX64MMUInvocation _ _ _ _ _ _ = fail "Unreachable"
