@@ -105,8 +105,8 @@ fastpath_restore(word_t badge, word_t msgInfo, tcb_t *cur_thread)
     }
     {
         word_t context_base = ((word_t)ksCurThread) + (n_contextRegisters * sizeof(word_t));
-        tss_ptr_set_rsp0_l(&x86KStss, (uint32_t)context_base);
-        tss_ptr_set_rsp0_u(&x86KStss, (uint32_t)(context_base >> 32));
+        tss_ptr_set_rsp0_l(&x86KStss.tss, (uint32_t)context_base);
+        tss_ptr_set_rsp0_u(&x86KStss.tss, (uint32_t)(context_base >> 32));
         ksCurThread->tcbArch.tcbContext.registers[RFLAGS] &= ~0x200;
 
         asm volatile (

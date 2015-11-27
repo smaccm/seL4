@@ -21,8 +21,8 @@ void __attribute__((noreturn)) __attribute__((externally_visible)) restore_user_
     /* set the tss.rsp0. Needs to be set in two parts as it crosses a word boundary
      * as a 64-bit value */
     word_t context_base = ((word_t)ksCurThread) + (n_contextRegisters * sizeof(word_t));
-    tss_ptr_set_rsp0_l(&x86KStss, (uint32_t)context_base);
-    tss_ptr_set_rsp0_u(&x86KStss, (uint32_t)(context_base >> 32));
+    tss_ptr_set_rsp0_l(&x86KStss.tss, (uint32_t)context_base);
+    tss_ptr_set_rsp0_u(&x86KStss.tss, (uint32_t)(context_base >> 32));
     if (unlikely(ksCurThread == x86KSfpuOwner)) {
         /* We are using the FPU, make sure it is enabled */
         enableFpu();

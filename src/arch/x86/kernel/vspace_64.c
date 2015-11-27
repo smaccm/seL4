@@ -256,7 +256,7 @@ init_tss(tss_t *tss)
 {
     tss_ptr_new(
             tss,
-            0,          /* io map base */
+            sizeof(*tss),   /* io map base */
             0, 0,       /* ist 7 */
             0, 0,
             0, 0,
@@ -268,6 +268,8 @@ init_tss(tss_t *tss)
             0, 0,       /* rsp 1 */
             0, 0        /* rsp 0 */
             );
+    /* set the IO map to all 1 to block user IN/OUT instructions */
+    memset(&x86KStss.io_map[0], 0xff, sizeof(x86KStss.io_map));
 }
 
 BOOT_CODE void
@@ -376,7 +378,7 @@ init_gdt(gdt_entry_t *gdt, tss_t *tss)
             9,                                  /* desc type */
             (tss_base & 0xff0000UL) >> 16,      /* base 23-16 */
             (tss_base & 0xffffUL),              /* base 15 - 0 */
-            sizeof(tss_t) - 1                   /* limit low */
+            sizeof(tss_io_t) - 1
             );
 
     gdt[GDT_TSS].words[0] = gdt_tss.words[0];

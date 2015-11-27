@@ -28,7 +28,7 @@ init_tss(tss_t* tss)
 {
     tss_ptr_new(
         tss,
-        MASK(16),       /* io_map_base  */
+        sizeof(*tss),   /* io_map_base  */
         0,              /* trap         */
         SEL_NULL,       /* sel_ldt      */
         SEL_NULL,       /* gs           */
@@ -56,6 +56,7 @@ init_tss(tss_t* tss)
         0,              /* esp0         */
         0               /* prev_task    */
     );
+    memset(&x86KStss.io_map[0], 0xff, sizeof(x86KStss.io_map)); 
 }
 /* initialise Global Descriptor Table (GDT) */
 
@@ -143,7 +144,7 @@ init_gdt(gdt_entry_t* gdt, tss_t* tss)
                        1,                           /* always_true          */
                        (tss_addr >> 16) & 0xff,     /* base_mid 8 bits      */
                        (tss_addr & 0xffff),         /* base_low 16 bits     */
-                       sizeof(tss_t) - 1            /* limit_low 16 bits    */
+                       sizeof(tss_io_t) - 1            /* limit_low 16 bits    */
                    );
 
     /* pre-init the userland data segment used for TLS */
