@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,9 +7,11 @@
 % @TAG(GD_GPL)
 %
 
-This module contains ARM-specific TCB management functions. Specifically, these functions are used by the "CopyRegisters" operation to transfer ARM-specific subsets of the register set.
+This module contains x64-specific TCB management functions. Specifically, these functions are used by the "CopyRegisters" operation to transfer x64-specific subsets of the register set.
 
-There are presently no ARM-specific register subsets defined, but in future this may be extended to transfer floating point registers and other coprocessor state.
+There are presently no x64-specific register subsets defined, but in future this may be extended to transfer floating point registers and other coprocessor state.
+
+FIXME: add x64 floating point registers + any extra state
 
 > module SEL4.Object.TCB.X64 where
 
@@ -31,4 +32,3 @@ There are presently no ARM-specific register subsets defined, but in future this
 
 > performTransfer :: CopyRegisterSets -> PPtr TCB -> PPtr TCB -> Kernel ()
 > performTransfer _ _ _ = return ()
-
