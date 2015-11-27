@@ -1,4 +1,3 @@
-FIXME mostly clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -32,10 +31,6 @@ This module makes use of the GHC extension allowing data types with no construct
 \subsection{ARM-Specific Objects}
 
 There are five ARM-specific object types; however, only four of them may be invoked. These are the page table, page, ASID control, and ASID pool objects.
-
-
-FIXME All object invocations implicitly involve a cap to some object and a slot?
-Presumably if we point at an object the kernel can figure out the cap and the slot?
 
 > data Invocation
 >     = InvokePDPT PDPTInvocation
@@ -93,7 +88,7 @@ point to the invoked IO page table.
 >     | IOPageTableMap {
 >         ioptMapCap :: Capability,
 >         ioptMapCTSlot :: PPtr CTE,
->         ioptMapContextEntry :: IOCTE, -- FIXME IOCTE type? IO context entry
+>         ioptMapContextEntry :: IOCTE, -- FIXME IOCTE type? IO context entry. Needs better name to disambiguate from CTEs
 >         ioptMapPT :: IOPTE,
 >         ioptMapPTSlot :: PPtr IOPTE }
 >     deriving Show
@@ -115,7 +110,7 @@ point to the invoked IO page table.
 >         pageIOMapASID :: ASID,
 >         pageIOMapCap :: Capability,
 >         pageIOMapCTSlot :: PPtr CTE,
->         pageIOMapEntries :: (IOPTE, [PPtr IOPTE]) } -- FIXME : IO Types here. there's no ASID we care about?
+>         pageIOMapEntries :: (IOPTE, [PPtr IOPTE]) }
 >     deriving Show
 
 > data ASIDControlInvocation
@@ -148,7 +143,7 @@ point to the invoked IO page table.
 FIXME x86 64bit has two interrupt control invocations, one each for IOAPIC and MSI interrupt sources.
 FIXME TODO arguments to this plus decode
 FIXME Word may be too generic for some of these
-FIXME the kernel team is working on this currently, so it doesn't exactly match the C
+FIXME C still evolving
 
 There are two invocation labels corresponding to these, but no separate arch invocations. The ArchIRQControlInvocation is a special case of IRQControlInvocation.
 

@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module contains the physical memory model's representations of the ARM-specific data structures, as well as a type representing a capability to an ARM-specific object.
+This module contains the physical memory model's representations of the x64-specific data structures, as well as a type representing a capability to an x64-specific object.
 
 \begin{impdetails}
 
@@ -35,8 +34,6 @@ This module makes use of the GHC extension allowing declaration of types with no
 
 \subsection{Capabilities}
 
-There are six ARM-specific capability types: the global ASID control capability, ASID pools, page tables, page directories, and pages.
-
 > data ArchCapability
 >     = ASIDPoolCap {
 >         capASIDPool :: PPtr ASIDPool,
@@ -49,7 +46,7 @@ There are six ARM-specific capability types: the global ASID control capability,
 >         capIODomainID :: Word16, --FIXME types
 >         capIOPCIDevice :: Word16 }
 >     | IOPageTableCap {
->         capIOPTBasePtr :: PPtr IOPTE, -- ?? FIXME WTF TYPES
+>         capIOPTBasePtr :: PPtr IOPTE,
 >         capIOPTMappedAddress :: Maybe (IOASID, VPtr) }
 >     | PageCap {
 >         capVPBasePtr :: PPtr Word,
@@ -73,8 +70,6 @@ There are six ARM-specific capability types: the global ASID control capability,
 
 \subsection{Kernel Objects}
 
-The ARM kernel stores one ARM-specific type of object in the PSpace: ASID pools, which are second level nodes in the global ASID table. 
-
 > data ArchKernelObject
 >     = KOASIDPool ASIDPool
 >     | KOPTE PTE
@@ -97,7 +92,7 @@ The ARM kernel stores one ARM-specific type of object in the PSpace: ASID pools,
 
 \subsection{ASID Pools}
 
-An ASID pool is an array of pointers to page directories. This is used to implement virtual ASIDs on ARM; it is not accessed by the hardware.
+An ASID pool is an array of pointers to page directories. This is used to implement virtual ASIDs on x64; it is not accessed by the hardware.
 
 > newtype ASIDPool = ASIDPool (Array ASID (Maybe (PPtr PML4E)))
 >     deriving Show

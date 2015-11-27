@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module defines the handling of the ARM hardware-defined page tables.
+This module defines the handling of the x64 hardware-defined page tables.
 
 > module SEL4.Kernel.VSpace.X64 where
 
@@ -38,7 +37,7 @@ This module defines the handling of the ARM hardware-defined page tables.
 
 \end{impdetails}
 
-The ARM-specific invocations are imported with the "ArchInv" prefix. This is necessary to avoid namespace conflicts with the generic invocations.
+The x64-specific invocations are imported with the "ArchInv" prefix. This is necessary to avoid namespace conflicts with the generic invocations.
 
 > import SEL4.API.Invocation.X64 as ArchInv
 
@@ -114,7 +113,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdpteExecuteDisable = False,
 >         pdpteRights = vmRights }, VMPDPTEPtr p) -- this probably won't type check.
 
-The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe --- that is, that inserting it will behave predictably and will not damage the hardware. The ARMv6 specifications require that there are never two mappings of different sizes at any virtual address in the active address space, so this function will throw a fault if the requested operation would change the size of the mapping of any existing valid entry.
+The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe.
 
 > ensureSafeMapping :: (VMPageEntry, VMPageEntryPtr) ->
 >     KernelF SyscallError ()
@@ -430,7 +429,7 @@ This helper function checks that the mapping installed at a given PT or PD slot 
 > isValidVTableRoot _ = False
 
 The location of an IPC buffer is computed using the relevant bits of a VPtr as an offset within a frame.
-The IPC buffer frame must be an ARM frame capability, and the buffer must be aligned.
+The IPC buffer frame must be a frame capability, and the buffer must be aligned.
 
 Note that implementations with separate high and low memory regions may also wish to limit valid IPC buffer frames to low memory, so the kernel can access them without extra mappings. This function may also be used to enforce cache colouring restrictions.
 
@@ -447,7 +446,7 @@ Note that implementations with separate high and low memory regions may also wis
 >     (VMReadWrite, True, True) -> VMReadWrite
 >     _ -> VMKernelOnly
 
-\subsection{ARM Hardware ASID allocation}
+\subsection{Flushing}
 
 X64UPDATE
 
@@ -461,7 +460,7 @@ X64UPDATE
 
 X64UPDATE
 
-> -- FIXME x64: someone should look at this pile of fail
+> -- FIXME x64: someone should look at this
 > flushTable :: PPtr PML4E -> VPtr -> PPtr PTE -> Kernel ()
 > flushTable vspace vptr pt = do
 >     assert (vptr .&. mask (ptTranslationBits + pageBits) == 0)
@@ -486,7 +485,7 @@ X64UPDATE
 >                                          VPtr $ (fromVPtr vptr) + index'
 >         _ -> return ()
 
-\subsection{Decoding ARM Invocations}
+\subsection{Decoding x64 Invocations}
 
 > attribsFromWord :: Word -> VMAttributes
 > attribsFromWord w = VMAttributes {
@@ -920,7 +919,7 @@ Checking virtual address for page size dependent alignment:
 
 \subsection{Simulator Support}
 
-The kernel model's ARM targets use an external simulation of the physical address space for user-level virtual memory, I/O devices and MMU data structures, separate from the "PSpace" which is used for kernel objects. However, "PDE" objects are accessed by the kernel, so they must be stored in both the external physical memory model and the internal "PSpace". To make verification simpler we do the same for "PTE" objects.
+The kernel model's x64 targets use an external simulation of the physical address space for user-level virtual memory, I/O devices and MMU data structures, separate from the "PSpace" which is used for kernel objects. However, "PDE" objects are accessed by the kernel, so they must be stored in both the external physical memory model and the internal "PSpace". To make verification simpler we do the same for "PTE" objects.
 
 > storePML4E :: PPtr PML4E -> PML4E -> Kernel ()
 > storePML4E slot pml4e = do

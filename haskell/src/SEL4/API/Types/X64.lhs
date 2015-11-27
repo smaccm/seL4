@@ -14,8 +14,8 @@ This module contains an instance of the machine-specific kernel API for the ARM 
 > import SEL4.API.Types.Universal(APIObjectType, apiGetObjectSize)
 > import SEL4.Machine.Hardware.X64
 
-FIXME There are ??? x86 64bit-specific object types:
-virtual pages, page tables, and page directories.
+There are seven x86 64bit-specific object types:
+pages of 3 sizes, and 4 levels of page tables.
 
 > data ObjectType
 >     = APIObjectType APIObjectType

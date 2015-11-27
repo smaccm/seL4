@@ -62,7 +62,6 @@ There are five ARM-specific object types; however, only four of them may be invo
 >         pdFlushASID :: ASID }
 >     deriving Show
 
-> -- FIXME: should we consolidate start, end into a tuple
 > data PageInvocation
 >     = PageGetAddr {
 >         pageGetBasePtr :: PPtr Word }
