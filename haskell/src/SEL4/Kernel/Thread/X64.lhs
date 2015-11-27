@@ -20,22 +20,30 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 > import SEL4.Object.Structures
 > import SEL4.Object.TCB
 > import SEL4.Kernel.VSpace.X64
-> import SEL4.Machine.Hardware.X64
+> import qualified SEL4.Machine.Hardware.X64 as Arch
 > import {-# SOURCE #-} SEL4.Kernel.Init
 > import Data.Array
+> import Data.Bits
 
 \end{impdetails}
+
+
+> -- Current C code doesn't work for addresses above 32 bits.
+> -- This is meant to take a base address and craft a default
+> -- gdt_data structure
+> baseToGDTDataWord :: SEL4.Machine.Word -> SEL4.Machine.Word
+> baseToGDTDataWord p = error "Unimplemented"
 
 > switchToThread :: PPtr TCB -> Kernel ()
 > switchToThread tcb = do
 >     setVMRoot tcb
+>     gdt <- gets $ x64KSGDT . ksArchState
 >     base <- asUser tcb $ getRegister (Register TLS_BASE)
+>     let gdt_tls_slot = fromIntegral (fromEnum GDT_TLS) `shiftL` gdteBits
+>     doMachineOp $ storeWord (gdt + gdt_tls_slot) $ baseToGDTDataWord $ base
 >     bufferPtr <- threadGet tcbIPCBuffer tcb
->     gdt <- gets $ x64KSGdt . ksArchState
->     let gdt' = gdt//[ (GDT_TLS, GDTE { gdteFrame = toPAddr base} ), 
->                       (GDT_IPCBUF, GDTE { gdteFrame = toPAddr $ fromVPtr bufferPtr} ) ]
->     modify (\s -> s {
->         ksArchState = (ksArchState s) { x64KSGdt = gdt' }})
+>     let gdt_ipcbuf_slot = fromIntegral (fromEnum GDT_IPCBUF) `shiftL` gdteBits
+>     doMachineOp $ storeWord (gdt + gdt_ipcbuf_slot) $ baseToGDTDataWord $ fromVPtr bufferPtr
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
 > configureIdleThread _ = error "Unimplemented. init code"

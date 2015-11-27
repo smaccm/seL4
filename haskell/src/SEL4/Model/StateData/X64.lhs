@@ -16,7 +16,6 @@ This module contains the architecture-specific kernel global data for the X86-64
 > import SEL4.Machine
 > import SEL4.Machine.Hardware.X64 (PML4E(..))
 > import SEL4.Object.Structures.X64
-> import SEL4.Machine.RegisterSet.X64
 
 > import Data.Array
 
@@ -24,11 +23,11 @@ This module contains the architecture-specific kernel global data for the X86-64
 
 %FIXME x64: potential C bug: the gdt entry structure in C only has 32 bits for addresses
 
-> data GDTE = GDTE {
->     gdteFrame :: PAddr }
+> gdteBits :: Int
+> gdteBits = 3
 
 > data KernelState = X64KernelState {
->     x64KSGdt :: Array GDTSlot GDTE,
+>     x64KSGDT :: PPtr Word,
 >     x64KSASIDTable :: Array ASID (Maybe (PPtr ASIDPool)),
 >     x64KSGlobalPML4 :: PPtr PML4E}
 
