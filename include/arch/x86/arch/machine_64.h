@@ -75,7 +75,6 @@ static inline void invalidatePCID(word_t type, void *vaddr, asid_t asid)
     asm volatile ("invpcid %1, %0" :: "r"(type), "m"(desc));
 }
 
-
 #ifdef CONFIG_FSGSBASE_INST
 
 static inline void x86_write_fs_base(word_t base)
@@ -103,4 +102,5 @@ static inline word_t x86_read_gs_base(void)
 }
 
 #endif
+
 #endif

@@ -77,20 +77,30 @@ config INVPCID
 
 choice
     prompt "Setting FS/GS Base Addresses"
-    depends on ARCH_X86_64
-    default FSGSBASE_INST
+    depends on ARCH_X86
+    default FSGSBASE_INST if ARCH_X86_64
+    default FSGSBASE_GDT  if ARCH_IA32
     help
-        There are two ways to to set FS/GS base addresses in 64-bit mode:
-        IA32_FS/GS_BASE MSRs and fsgsbase instructions. The latter is not
-        supported by all micro-architectures.
+        There are three ways to to set FS/GS base addresses:
+        IA32_FS/GS_GDT, IA32_FS/GS_BASE_MSR, and fsgsbase instructions.
+        IA32_FS/GS_GDT and IA32_FS/GS_BASE_MSR are availble for 32-bit.
+        IA32_FS/GS_BASE_MSR and fsgsbase instructions are available for 64-bit.
+
+    config FSGSBASE_GDT
+        bool "IA32_FS/GS_GDT"
+        depends on ARCH_IA32
+        help
+            Use GDT entries.
 
     config FSGSBASE_MSR
         bool "IA32_FS/GS_BASE MSRs"
+        depends on ARCH_X86
         help
             Use MSRs to change base addresses.
 
     config FSGSBASE_INST
         bool "FSGSBASE Instructions"
+        depends on ARCH_X86_64
         help
             Use rdfs/gsbase, wrfs/gsbase instructions to change base adddresses.
 endchoice
