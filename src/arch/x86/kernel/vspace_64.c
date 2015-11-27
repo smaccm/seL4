@@ -91,7 +91,7 @@ map_kernel_window(
     for (paddr = 0; paddr < PADDR_TOP;
          paddr += (1ul << PAGE_1G_BITS)) {
 
-        int pdpte_index = GET_PDPT_INDEX(vaddr) - GET_PDPT_INDEX(PPTR_BASE);
+        int pdpte_index = GET_PDPT_INDEX(vaddr);
         pdpte_pdpte_1g_ptr_new(&x64KSGlobalPDPT[pdpte_index],
                 0,          /* xd               */
                 paddr,      /* physical address */
