@@ -124,32 +124,7 @@ static inline uint32_t x86_cpuid_eax(uint32_t eax, uint32_t ecx)
     return eax;
 }
 
-#ifdef CONFIG_FSGSBASE_INST
-static inline void x86_write_fs_base(word_t base)
-{
-    asm volatile ("wrfsbase %0"::"r"(base):);
-}
-
-static inline void x86_write_gs_base(word_t base)
-{
-    asm volatile ("wrgsbase %0"::"r"(base):);
-}
-
-static inline word_t x86_read_fs_base(void)
-{
-    word_t base = 0;
-    asm volatile ("rdfsbase %0":"=r"(base)::);
-    return base;
-}
-
-static inline word_t x86_read_gs_base(void)
-{
-    word_t base = 0;
-    asm volatile ("rdgsbase %0":"=r"(base)::);
-    return base;
-}
-
-#else
+#ifdef CONFIG_FSGSBASE_MSR
 
 static inline void x86_write_fs_base(word_t base)
 {
