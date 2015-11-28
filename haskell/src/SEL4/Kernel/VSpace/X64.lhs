@@ -16,7 +16,7 @@ This module defines the handling of the x64 hardware-defined page tables.
 > import SEL4.API.Types
 > import SEL4.API.Failures
 > import SEL4.Machine.RegisterSet
-> import qualified SEL4.Machine.RegisterSet.X64 as X64
+> import SEL4.Machine.RegisterSet.X64 (Register(..))
 > import SEL4.Machine.Hardware.X64
 > import SEL4.Model
 > import SEL4.Object.Structures
@@ -258,7 +258,7 @@ If the kernel receives a VM fault from the CPU, it must determine the address an
 > handleVMFault :: PPtr TCB -> VMFaultType -> KernelF Fault ()
 > handleVMFault thread f = do
 >     addr <- withoutFailure $ doMachineOp getFaultAddress
->     fault <- withoutFailure $ asUser thread $ getRegister (Register X64.ErrorRegister)
+>     fault <- withoutFailure $ asUser thread $ getRegister (Register ErrorRegister)
 >     case f of
 >         X64DataFault -> throw $ VMFault addr [0, fault .&. mask 5] -- FSR is 5 bits in x64
 >         X64InstructionFault -> throw $ VMFault addr [1, fault .&. mask 5]
