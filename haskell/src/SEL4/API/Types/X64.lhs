@@ -7,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module contains an instance of the machine-specific kernel API for the ARM architecture.
+This module contains an instance of the machine-specific kernel API for the x64 architecture.
 
 > module SEL4.API.Types.X64 where
 
@@ -52,7 +52,7 @@ pages of 3 sizes, and 4 levels of page tables.
 >         | n == apiMax + 5 = PageDirectoryObject
 >         | n == apiMax + 6 = PDPointerTableObject
 >         | n == apiMax + 7 = PML4Object
->         | otherwise = error "toEnum out of range for ARM.ObjectType"
+>         | otherwise = error "toEnum out of range for X64.ObjectType"
 >         where apiMax = fromEnum (maxBound :: APIObjectType)
 
 > fromAPIType = APIObjectType

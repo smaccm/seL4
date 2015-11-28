@@ -124,7 +124,7 @@ The following data type defines the parameters expected for invocations of Untyp
 
 The following data type defines the set of possible invocations for interrupt controller capabilities.
 
-FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones
+%FIXME IssueIRQHandler is not really handled on x64, instead it has two arch-specific ones
 
 > data IRQControlInvocation
 >         = IssueIRQHandler {
@@ -156,7 +156,7 @@ The following data type defines the set of possible invocations for IRQ capabili
 
 The following type enumerates all the kinds of invocations that clients can request of the kernel. The derived Enum instance defines the message label that clients should use when requesting that service. These labels are enumerated globally to ensure that no objects share an invocation label. This is to avoid confusion: service requests to the wrong object will fail immediately rather than perform unexpected actions.
 
-FIXME this is not quite accurate anymore, no one knows what the argument should be however
+%FIXME check and sync order with C
 
 > data InvocationLabel
 >         = InvalidInvocation

@@ -16,14 +16,13 @@ This module defines the handling of the x64 hardware-defined page tables.
 > import SEL4.API.Types
 > import SEL4.API.Failures
 > import SEL4.Machine.RegisterSet
+> import qualified SEL4.Machine.RegisterSet.X64 as X64
 > import SEL4.Machine.Hardware.X64
 > import SEL4.Model
 > import SEL4.Object.Structures
 > import SEL4.Model.StateData.X64
-> import SEL4.Object.Instances
 > import SEL4.API.Invocation
 > import SEL4.API.InvocationLabels.X64
-> import SEL4.Kernel.BootInfo
 > import {-# SOURCE #-} SEL4.Object.CNode
 > import {-# SOURCE #-} SEL4.Object.TCB
 > import {-# SOURCE #-} SEL4.Kernel.Init
@@ -31,7 +30,6 @@ This module defines the handling of the x64 hardware-defined page tables.
 
 > import Data.Bits
 > import Data.Maybe
-> import Data.List
 > import Data.Array
 > import Data.Word (Word32)
 
@@ -259,8 +257,8 @@ If the kernel receives a VM fault from the CPU, it must determine the address an
 
 > handleVMFault :: PPtr TCB -> VMFaultType -> KernelF Fault ()
 > handleVMFault thread f = do
->     addr <- withoutFailure $ doMachineOp getFaultAddress -- FIXME x64: implement getFaultAddress = read_cr2
->     fault <- withoutFailure $ asUser thread $ getRegister undefined -- FIXME: what is ErrorRegister supposed to mean here?!
+>     addr <- withoutFailure $ doMachineOp getFaultAddress
+>     fault <- withoutFailure $ asUser thread $ getRegister (Register X64.ErrorRegister)
 >     case f of
 >         X64DataFault -> throw $ VMFault addr [0, fault .&. mask 5] -- FSR is 5 bits in x64
 >         X64InstructionFault -> throw $ VMFault addr [1, fault .&. mask 5]
@@ -374,7 +372,7 @@ When a capability backing a virtual memory mapping is deleted, or when an explic
 >         tcb <- getCurThread
 >         threadRootSlot <- getThreadVSpaceRoot tcb
 >         threadRoot <- getSlotCap threadRootSlot
->         case threadRoot of -- FIXME x64: don't really know if this is how this should be written
+>         case threadRoot of
 >             ArchObjectCap (PML4Cap { capPML4BasePtr = ptr', capPML4MappedASID = Just _ }) 
 >                                -> when (ptr' == vspace) $ doMachineOp $ invalidateTLBEntry vptr
 >             _ -> return ()
@@ -448,19 +446,18 @@ Note that implementations with separate high and low memory regions may also wis
 
 \subsection{Flushing}
 
-X64UPDATE
+%FIXME x64: needs review
 
 > flushPDPT :: PPtr PML4E -> VPtr -> PPtr PDPTE -> Kernel ()
 > flushPDPT _ vptr pdpte = doMachineOp $ resetCR3
 
-X64UPDATE
+%FIXME x64: needs review
 
 > flushPageDirectory :: PPtr PML4E -> VPtr -> PPtr PDE -> Kernel ()
 > flushPageDirectory _ vptr pde = doMachineOp $ resetCR3
 
-X64UPDATE
+%FIXME x64: needs review
 
-> -- FIXME x64: someone should look at this
 > flushTable :: PPtr PML4E -> VPtr -> PPtr PTE -> Kernel ()
 > flushTable vspace vptr pt = do
 >     assert (vptr .&. mask (ptTranslationBits + pageBits) == 0)

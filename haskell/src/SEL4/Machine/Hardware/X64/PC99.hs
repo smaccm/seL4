@@ -8,8 +8,6 @@
 -- @TAG(GD_GPL)
 --
 
--- FIXME clagged from ARM/QEmu.lhs
-
 {-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface, GeneralizedNewtypeDeriving #-}
 
 module SEL4.Machine.Hardware.X64.PC99 where
@@ -166,13 +164,13 @@ readCR3 = error "Unimplemented"
 
 invalidateTLB = error "Unimplemented"
 mfence = error "Unimplemented"
-addrFromKPPtr = error "Unimplemented" -- FIXME how is this different to addrFromPPtr?!
-pptrBase = error "Unimplemented" -- FIXME how is this not physMappingOffset?!
+addrFromKPPtr = error "Unimplemented" -- FIXME two kernel windows
+pptrBase = error "Unimplemented" -- FIXME two kernel windows
 hwASIDInvalidate = error "Unimplemented"
 
 
 getFaultAddress :: Ptr CallbackData -> IO VPtr
-getFaultAddress _ = error "Unimplemented"
+getFaultAddress _ = error "Unimplemented" -- FIXME: should read CR2
 
 firstValidIODomain :: Word16
 firstValidIODomain = error "Unimplemented"

@@ -19,7 +19,6 @@ This module defines IO port routines, specific to x64.
 > import SEL4.Machine
 > import SEL4.API.Types
 > import SEL4.API.Failures
-> import SEL4.Machine.RegisterSet
 > import SEL4.Machine.Hardware.X64
 > import SEL4.Model
 > import SEL4.Object.Structures
@@ -32,7 +31,7 @@ This module defines IO port routines, specific to x64.
 
 > ensurePortOperationAllowed :: ArchCapability -> IOPort -> Int ->
 >     KernelF SyscallError ()
-> ensurePortOperationAllowed (cap@(IOPortCap { capIOPortFirstPort = first_allowed, capIOPortLastPort = last_allowed })) start_port size = do
+> ensurePortOperationAllowed (IOPortCap { capIOPortFirstPort = first_allowed, capIOPortLastPort = last_allowed }) start_port size = do
 >     let end_port = start_port + fromIntegral size - 1
 >     assert (first_allowed <= last_allowed) "first allowed must be less than last allowed"
 >     assert (start_port <= end_port) "start port must be less than end port"
@@ -40,7 +39,7 @@ This module defines IO port routines, specific to x64.
 >         throw IllegalOperation
 > ensurePortOperationAllowed _ _ _ = fail "Unreachable"
 
-FIXME kernel people need to fix the C here and not pack port and output data into a single register
+%FIXME port+output data packing in C, see SELFOUR-360
 
 > decodeX64PortInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->

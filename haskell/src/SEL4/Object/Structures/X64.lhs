@@ -43,7 +43,7 @@ This module makes use of the GHC extension allowing declaration of types with no
 >         capIOPortFirstPort :: IOPort,
 >         capIOPortLastPort :: IOPort }
 >     | IOSpaceCap {
->         capIODomainID :: Word16, --FIXME types
+>         capIODomainID :: Word16,
 >         capIOPCIDevice :: Word16 }
 >     | IOPageTableCap {
 >         capIOPTBasePtr :: PPtr IOPTE,
@@ -77,9 +77,7 @@ This module makes use of the GHC extension allowing declaration of types with no
 >     | KOPDPTE PDPTE
 >     | KOPML4E PML4E
 >     | KOIOPTE IOPTE
->     -- FIXME x64: more here? io stuff?
 >     deriving Show
-
 
 > archObjSize ::  ArchKernelObject -> Int
 > archObjSize a = case a of 
@@ -97,7 +95,7 @@ An ASID pool is an array of pointers to page directories. This is used to implem
 > newtype ASIDPool = ASIDPool (Array ASID (Maybe (PPtr PML4E)))
 >     deriving Show
 
-An ASID is an unsigned word. Note that it is a \emph{virtual} address space identifier, and may not correspond to any hardware-defined identifier --- especially on ARMv5 and earlier, where the only identifier implemented in hardware is the 4-bit domain number.
+An ASID is an unsigned word. Note that it is a \emph{virtual} address space identifier, and does not correspond to any hardware-defined identifier.
 
 > newtype ASID = ASID Word64
 >     deriving (Show, Eq, Ord, Enum, Real, Integral, Num, Bits, Ix, Bounded)
@@ -118,5 +116,4 @@ ASIDs are mapped to address space roots by a global two-level table. The actual 
 
 > asidHighBitsOf :: ASID -> ASID
 > asidHighBitsOf asid = (asid `shiftR` asidLowBits) .&. mask asidHighBits
-
 

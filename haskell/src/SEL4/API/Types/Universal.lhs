@@ -26,7 +26,7 @@ The following is the definition of the five object types that are always availab
 >         | CapTableObject
 >         deriving (Enum, Bounded, Eq, Show)
 
-FIXME possibly now arch-dependent
+%FIXME: TCB size is now possibly arch-dependent
 
 > tcbBlockSizeBits :: Int
 > tcbBlockSizeBits = 9

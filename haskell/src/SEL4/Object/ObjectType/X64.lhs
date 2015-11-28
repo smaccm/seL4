@@ -1,4 +1,3 @@
-% FIXME: Clagged from ARM
 % Copyright 2014, General Dynamics C4 Systems
 %
 % This software may be distributed and modified according to the terms of
@@ -8,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module contains operations on machine-specific object types for the ARM.
+This module contains operations on machine-specific object types for x64.
 
 > module SEL4.Object.ObjectType.X64 where
 
@@ -31,7 +30,7 @@ This module contains operations on machine-specific object types for the ARM.
 
 \end{impdetails}
 
-The ARM-specific types and structures are qualified with the "Arch.Types" and "Arch.Structures" prefixes, respectively. This is to avoid namespace conflicts with the platform-independent modules.
+The x64-specific types and structures are qualified with the "Arch.Types" and "Arch.Structures" prefixes, respectively. This is to avoid namespace conflicts with the platform-independent modules.
 
 > import qualified SEL4.API.Types.X64 as Arch.Types
 
@@ -166,7 +165,7 @@ Deletion of a final capability to a page table that has been mapped requires tha
 
 > finaliseCap (IOSpaceCap {}) True = return NullCap -- FIXME x64: not yet implemented in C
 
-FIXME x64: limitations in caseconvs makes this horrible
+%Note: limitations in Haskell translator caseconvs makes this horrible
 
 > finaliseCap c b = case (c, b) of
 >     ((IOPageTableCap { capIOPTMappedAddress = Just _ }), True) -> do
@@ -302,7 +301,7 @@ FIXME x64: limitations in caseconvs makes this horrible
 > sameObjectAs :: ArchCapability -> ArchCapability -> Bool
 > sameObjectAs (a@PageCap { capVPBasePtr = ptrA }) (b@PageCap {}) =
 >     (ptrA == capVPBasePtr b) && (capVPSize a == capVPSize b)
->         && (ptrA <= ptrA + bit (pageBitsForSize $ capVPSize a) - 1) -- FIXME x64: is overflow check required for x64?
+>         && (ptrA <= ptrA + bit (pageBitsForSize $ capVPSize a) - 1)
 > sameObjectAs a b = sameRegionAs a b
 
 \subsection{Creating New Capabilities}
@@ -396,8 +395,6 @@ Create an architecture-specific object.
 > capUntypedPtr (IOSpaceCap {}) = error "IOSpaceCap has no pointer"
 > capUntypedPtr (IOPageTableCap { capIOPTBasePtr = PPtr p }) = PPtr p
 
-
-FIXME x64: ASIDControlCap is size 0?
 
 > capUntypedSize :: ArchCapability -> Word
 > capUntypedSize (PageCap {capVPSize = sz}) = 1 `shiftL` pageBitsForSize sz

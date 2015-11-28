@@ -7,7 +7,7 @@
 % @TAG(GD_GPL)
 %
 
-This module defines the machine-specific invocations for the ARM.
+This module defines the machine-specific invocations for x64.
 
 \begin{impdetails}
 
@@ -28,9 +28,11 @@ This module makes use of the GHC extension allowing data types with no construct
 
 \end{impdetails}
 
-\subsection{ARM-Specific Objects}
+\subsection{x64-Specific Objects}
 
-There are five ARM-specific object types; however, only four of them may be invoked. These are the page table, page, ASID control, and ASID pool objects.
+This data type enumerates the object invocations that are possible.
+These are invocations on the page table structures, on pages, on
+ASID pool structures, and on IO ports.
 
 > data Invocation
 >     = InvokePDPT PDPTInvocation
@@ -140,10 +142,10 @@ point to the invoked IO page table.
 
 \subsection{Interrupt Control}
 
-FIXME x86 64bit has two interrupt control invocations, one each for IOAPIC and MSI interrupt sources.
-FIXME TODO arguments to this plus decode
-FIXME Word may be too generic for some of these
-FIXME C still evolving
+%FIXME x86 64bit has two interrupt control invocations, one each for IOAPIC and MSI interrupt sources.
+%FIXME TODO arguments to this plus decode
+%FIXME Word may be too generic for some of these
+%FIXME C still evolving
 
 There are two invocation labels corresponding to these, but no separate arch invocations. The ArchIRQControlInvocation is a special case of IRQControlInvocation.
 

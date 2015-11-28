@@ -48,8 +48,6 @@ This module defines instances of "PSpaceStorable" for X64-specific kernel object
 >                 KOArch (KOPML4E p) -> return p
 >                 _ -> typeError "PML4E" o
 
-FIXME x64: What is the max size of an asidpool?
-
 > instance PSpaceStorable ASIDPool where
 >     makeObject = ASIDPool $
 >         funPartialArray (const Nothing) (0,1023)

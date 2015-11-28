@@ -13,7 +13,7 @@
 
 \end{impdetails}
 
-This module defines the low-level ARM hardware interface.
+This module defines the low-level x64 hardware interface.
 
 > module SEL4.Machine.Hardware.X64 where
 
@@ -70,7 +70,7 @@ x86 virtual memory faults are handled by one of two trap handlers: one for data 
 
 The MMU does not allow access to physical addresses while translation is enabled; the kernel must access its objects via virtual addresses. Depending on the platform, these virtual addresses may either be the same as the physical addresses, or offset by a constant.
 
-FIXME pc99 has 2 separate offsets for different kernel windows.
+The pc99 platform on x64 has 2 separate offsets for different kernel windows.
 addrFromKPPtr is called in non-boot code exactly once in setVMRoot, so rather
 than add an additional pointer type we just give a different translation function
 
@@ -164,12 +164,10 @@ Every table is one small page in size.
 > ioptBits :: Int
 > ioptBits = ptTranslationBits + 3
 
-FIXME: Not on x64
-
 > pageColourBits :: Int
-> pageColourBits = Platform.pageColourBits
+> pageColourBits = error "Does not exist on x64" -- Platform.pageColourBits
 
-FIXME: IOAPIC: set\_mode\_config and map\_pin\_to\_vector equivalents?
+%FIXME: IOAPIC: set_mode_config and map_pin_to_vector equivalents needed?
 
 > setInterruptMode :: IRQ -> Bool -> Bool -> MachineMonad ()
 > setInterruptMode _ _ _ = return ()
@@ -200,7 +198,7 @@ This function is called before a region of user-memory is recycled.
 It zeros every word to ensure that user tasks cannot access any private data
 that might previously have been stored in the region.
 
-X64: FIXME then flushes the kernel's mapping from the virtually-indexed caches?
+%FIXME x64: then flushes the kernel's mapping from the virtually-indexed caches?
 
 > clearMemory :: PPtr Word -> Int -> MachineMonad ()
 > clearMemory ptr byteLength = do
@@ -254,7 +252,6 @@ caches must be done separately.
 
 \subsubsection{Memory Barriers}
 
-
 > mfence :: MachineMonad ()
 > mfence = Platform.mfence
 
@@ -269,11 +266,11 @@ caches must be done separately.
 > invalidatePageStructureCache :: MachineMonad ()
 > invalidatePageStructureCache = invalidateTLBEntry 0
 
-\subsubsection{Fault Status Registers}
-
-FIXME: x64 has anything like this?
-
 \subsubsection{Page Table Structure}
+
+The x64 architecture defines a four-level hardware-walked page table. The kernel must write entries to this table in the defined format to construct address spaces for user-level tasks.
+
+The following types are Haskell representations of an entry in an x64 page table structures. The "PML4E" (page map level 4 entry) is an entry in the fourth (highest) level of the structure, the "PDPTE" (page directory pointer table entry) is an entry in the third level, the "PDE" (page directory entry) type is an entry in the second level, and the "PTE" (page table entry) type is an entry in the first (lowest) level. 
 
 > data PML4E
 >     = InvalidPML4E
@@ -338,12 +335,6 @@ FIXME: x64 has anything like this?
 >     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
 
 
-         
-The ARM architecture defines a two-level hardware-walked page table. The kernel must write entries to this table in the defined format to construct address spaces for user-level tasks.
-
-The following types are Haskell representations of an entry in an ARMv6 page table. The "PDE" (page directory entry) type is an entry in the first level, and the "PTE" (page table entry) type is an entry in the second level. Note that "SuperSectionPDE" is an extension provided by some ARMv6 cores.
-
-> -- FIXME x64: rights on tables, not pages?
 > data PDE
 >     = InvalidPDE
 >     | PageTablePDE {
@@ -365,7 +356,8 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pdeRights :: VMRights }
 >     deriving (Show, Eq)
 
-> -- FIXME x64
+%FIXME x64 review
+
 > wordFromPDE :: PDE -> Word
 > wordFromPDE InvalidPDE = 0
 > wordFromPDE (PageTablePDE table accessed cd wt xd rights) = 1 .|.
@@ -400,14 +392,18 @@ The following types are Haskell representations of an entry in an ARMv6 page tab
 >         pteRights :: VMRights }
 >     deriving (Show, Eq)
 
-FIXME x64: These need to be defined
+%FIXME x64: These need to be defined
 
-> newtype IOCTE = IOCTE { iocte :: Word}
+> newtype IOCTE = IOCTE { iocte :: Word }
 >     deriving Show
+
+%FIXME x64: complete IOPTEs
+
 > data IOPTE = InvalidIOPTE
 >     deriving (Show, Eq)
 
-> -- FIXME x64: word size?
+%FIXME x64: word size review
+
 > wordFromPTE :: PTE -> Word
 > wordFromPTE InvalidPTE = 0
 > wordFromPTE (SmallPagePTE frame global pat dirty accessed cd wt xd rights) = 1 .|.
@@ -420,8 +416,6 @@ FIXME x64: These need to be defined
 >     (if cd then bit 4 else 0) .|.
 >     (if wt then bit 3 else 0) .|.
 >     (fromIntegral $ vmRightsToBits rights `shiftL` 1)
-
-Pointer Accessor Functions FIXME x64 TYPES
 
 > getPTIndex :: VPtr -> Word
 > getPTIndex vptr = 
@@ -445,9 +439,8 @@ Pointer Accessor Functions FIXME x64 TYPES
 >     let shiftBits = pageBits + ptTranslationBits + ptTranslationBits + ptTranslationBits 
 >     in fromVPtr $ vptr `shiftR` shiftBits .&. mask ptTranslationBits
 
-Page entries - could be either PTEs, PDEs or PDPTEs.
+Page entries -- any of PTEs, PDEs or PDPTEs.
 
-> -- FIXME x64: fix this up?
 > data VMPageEntry
 >     = VMPTE PTE
 >     | VMPDE PDE
@@ -505,10 +498,7 @@ Page entries - could be either PTEs, PDEs or PDPTEs.
 >     cbptr <- ask
 >     liftIO $ Platform.getFaultAddress cbptr
 
-
-> -- FIXME x64: IOPTEs
-
-FIXME IO port input/output
+IO Port interface. 
 
 > in8 :: MachineMonad Word
 > in8 = error "Unimplemented"
@@ -548,7 +538,7 @@ IRQ parameters
 >     cbptr <- ask
 >     liftIO $ Platform.ioapicMapPinToVector cbptr ioapic pin level polarity vector
 
-FIXME: how deeply are we supposed to model this?
+%FIXME: review how deeply we need to model this.
 
 > data X64IRQState = X64IRQState
 

@@ -32,9 +32,9 @@ This module defines the machine-specific interrupt handling routines for x64.
 
 \end{impdetails}
 
-FIXME IRQ shouldn't be last in the list of args! talk to kernel people
+%FIXME: argument order, IRQ shouldn't be last. Fix in C.
 
-FIXME this copies a lot of code from decodeIRQControl that is completely generic, but that's what the C code does too... the C code does not look good here, and needs to be fixed after which we can fix this. In fact, the C code could use a rewrite.
+%FIXME: remove duplication with decodeIRQControl, move code to generic case. Do this on C first.
 
 > decodeIRQControl :: Word -> [Word] -> PPtr CTE -> [Capability] ->
 >         KernelF SyscallError ArchInv.IRQControlInvocation
@@ -44,7 +44,6 @@ FIXME this copies a lot of code from decodeIRQControl that is completely generic
 >                  index:depth:ioapic:pin:level:polarity:irqW:_, cnode:_) -> do
 >
 >             rangeCheck irqW (fromEnum minIRQ) (fromEnum maxIRQ)
->             -- FIXME: is this right for x64-specific?
 >             let irq = toEnum (fromIntegral irqW) :: IRQ
 >
 >             destSlot <- lookupTargetSlot cnode (CPtr index)
@@ -66,7 +65,6 @@ FIXME this copies a lot of code from decodeIRQControl that is completely generic
 >                  index:depth:pciBus:pciDev:pciFunc:handle:irqW:_, cnode:_) -> do
 >
 >             rangeCheck irqW (fromEnum minIRQ) (fromEnum maxIRQ)
->             -- FIXME: is this right for x64-specific?
 >             let irq = toEnum (fromIntegral irqW) :: IRQ
 >
 >             destSlot <- lookupTargetSlot cnode (CPtr index)

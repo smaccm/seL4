@@ -14,21 +14,15 @@ This module contains the architecture-specific kernel global data for the X86-64
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.Hardware.X64
->    (PML4E(..))
-> --   (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
+> import SEL4.Machine.Hardware.X64 (PML4E(..))
 > import SEL4.Object.Structures.X64
 > import SEL4.Machine.RegisterSet.X64
 
 > import Data.Array
-> import Data.Word (Word16)
-> -- import Data.Bits
-> -- import Data.Helpers
 
 \end{impdetails}
 
-FIXME the only difference in our GDT entries seems to be the base address (broken up into pieces)
-FIXME Right now the gdt entry structure in C only has 32 bits for addresses, so something is fishy
+%FIXME x64: potential C bug: the gdt entry structure in C only has 32 bits for addresses
 
 > data GDTE = GDTE {
 >     gdteFrame :: PAddr }

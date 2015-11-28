@@ -26,7 +26,7 @@ We use the C preprocessor to select a target architecture.
 >     setIRQState
 >   ) where
 
-> {-# BOOT-IMPORTS: SEL4.Machine SEL4.API.Types SEL4.Model SEL4.Object.Structures #-}     
+> {-# BOOT-IMPORTS: SEL4.Machine SEL4.Model SEL4.Object.Structures #-}     
 > {-# BOOT-EXPORTS: setIRQState #-}
 
 The architecture-specific definitions are imported qualified with the "Arch" prefix.
@@ -109,7 +109,7 @@ An IRQ handler capability allows a thread possessing it to set an endpoint which
 > toBool :: Word -> Bool
 > toBool w = w /= 0
 
-FIXME: this should be called perform, not invoke, same for CNode
+%FIXME x64 naming: this should be called perform, not invoke, same for CNode
 
 > invokeIRQHandler :: IRQHandlerInvocation -> Kernel ()
 > invokeIRQHandler (AckIRQ irq) =

@@ -22,7 +22,6 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 > import SEL4.Kernel.VSpace.X64
 > import SEL4.Machine.Hardware.X64
 > import {-# SOURCE #-} SEL4.Kernel.Init
-> import SEL4.Model.PSpace
 > import Data.Array
 
 \end{impdetails}
@@ -39,7 +38,7 @@ This module contains the architecture-specific thread switch code for X86-64bit.
 >         ksArchState = (ksArchState s) { x64KSGdt = gdt' }})
 
 > configureIdleThread :: PPtr TCB -> KernelInit ()
-> configureIdleThread tcb = error "Unimplemented. init code"
+> configureIdleThread _ = error "Unimplemented. init code"
 
 > switchToIdleThread :: Kernel ()
 > switchToIdleThread = return ()

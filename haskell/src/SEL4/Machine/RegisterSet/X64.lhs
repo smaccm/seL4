@@ -6,7 +6,6 @@
 %
 % @TAG(GD_GPL)
 %
-FIXME who is the 64-bit kernel copyright by?
 
 This module defines the x86 64-bit register set.
 
@@ -38,11 +37,7 @@ This module defines the x86 64-bit register set.
 > gpRegisters = [TLS_BASE, FS, GS]
 > exceptionMessage = [FaultInstruction, RSP, RFLAGS]
 
-FIXME kernel people are not using R8-R15 at the moment, but that can change
-
 > syscallMessage = [RAX .. RBP] ++ [NextIP, RSP, RFLAGS]
-
-FIXME move to structures?
 
 > data GDTSlot
 >     = GDT_NULL
@@ -74,7 +69,7 @@ FIXME move to structures?
 > initContext = [(DS, selDS3), (ES, selDS3), (CS, selCS3), (SS, selDS3)
 >               ,(RFLAGS, bit 9 .|. bit 1)] -- User mode
 
-FIXME FPU context?
+%FIXME x64: add FPU context
 
 > sanitiseRegister :: Register -> Word -> Word
 > sanitiseRegister RFLAGS v =
