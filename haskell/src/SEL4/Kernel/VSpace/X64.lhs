@@ -83,7 +83,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pteCacheDisabled = x64CacheDisabled attrib,
 >         pteWriteThrough = x64WriteThrough attrib,
 >         pteExecuteDisable = False,
->         pteRights = vmRights }, VMPTEPtr p) -- this probably won't type check.
+>         pteRights = vmRights }, VMPTEPtr p)
 >
 > createMappingEntries base vptr X64LargePage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPDSlot vspace vptr
@@ -96,7 +96,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdeCacheDisabled = x64CacheDisabled attrib,
 >         pdeWriteThrough = x64WriteThrough attrib,
 >         pdeExecuteDisable = False,
->         pdeRights = vmRights }, VMPDEPtr p) -- this probably won't type check.
+>         pdeRights = vmRights }, VMPDEPtr p)
 >
 > createMappingEntries base vptr X64HugePage vmRights attrib vspace = do
 >     p <- lookupErrorOnFailure False $ lookupPDPTSlot vspace vptr
@@ -109,7 +109,7 @@ When a new page directory is created, the kernel copies all of the global mappin
 >         pdpteCacheDisabled = x64CacheDisabled attrib,
 >         pdpteWriteThrough = x64WriteThrough attrib,
 >         pdpteExecuteDisable = False,
->         pdpteRights = vmRights }, VMPDPTEPtr p) -- this probably won't type check.
+>         pdpteRights = vmRights }, VMPDPTEPtr p)
 
 The following function is called before creating or modifying mappings in a page table or page directory, and is responsible for ensuring that the mapping is safe.
 
