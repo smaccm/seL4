@@ -199,7 +199,7 @@ Deletion of a final capability to a page table that has been mapped requires tha
 >
 > recycleCap is_final (cap@PageTableCap { capPTBasePtr = ptr }) = do
 >     let pteBits = objBits InvalidPTE
->     let slots = [ptr, ptr + bit pteBits .. ptr + bit ptBits - 1]
+>     let slots = [ptr, ptr + bit pteBits .. ptr + bit ptTranslationBits - 1]
 >     mapM_ (flip storePTE InvalidPTE) slots
 >     case capPTMappedAddress cap of
 >         Nothing -> return ()
@@ -209,7 +209,7 @@ Deletion of a final capability to a page table that has been mapped requires tha
 
 > recycleCap is_final (cap@PageDirectoryCap { capPDBasePtr = ptr }) = do
 >     let pdeBits = objBits InvalidPDE
->     let slots = [ptr, ptr + bit pdeBits .. ptr + bit pdBits - 1]
+>     let slots = [ptr, ptr + bit pdeBits .. ptr + bit ptTranslationBits - 1]
 >     mapM_ (flip storePDE InvalidPDE) slots
 >     case capPDMappedAddress cap of
 >         Nothing -> return ()
@@ -219,7 +219,7 @@ Deletion of a final capability to a page table that has been mapped requires tha
 
 > recycleCap is_final (cap@PDPointerTableCap { capPDPTBasePtr = ptr }) = do
 >     let pdpteBits = objBits InvalidPDPTE
->     let slots = [ptr, ptr + bit pdpteBits .. ptr + bit pdptBits - 1]
+>     let slots = [ptr, ptr + bit pdpteBits .. ptr + bit ptTranslationBits - 1]
 >     mapM_ (flip storePDPTE InvalidPDPTE) slots
 >     case capPDMappedAddress cap of
 >         Nothing -> return ()
@@ -229,7 +229,7 @@ Deletion of a final capability to a page table that has been mapped requires tha
 
 > recycleCap is_final (cap@PML4Cap { capPML4BasePtr = ptr }) = do
 >     let pmBits = objBits InvalidPML4E
->     let slots = [ptr, ptr + bit pmBits .. ptr + bit pml4Bits - 1]
+>     let slots = [ptr, ptr + bit pmBits .. ptr + bit ptTranslationBits - 1]
 >     mapM_ (flip storePML4E InvalidPML4E) slots
 >     finaliseCap cap is_final
 >     return (if is_final then resetMemMapping cap else cap)  
