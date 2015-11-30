@@ -510,7 +510,7 @@ Note that implementations with separate high and low memory regions may also wis
 >                 _ -> throw $ InvalidCapability 1 
 >             vspaceCheck <- lookupErrorOnFailure False $ findVSpaceForASID asid
 >             when (vspaceCheck /= vspace) $ throw $ InvalidCapability 1
->             let vtop = vaddr + bit (pageBitsForSize $ capVPSize cap)
+>             let vtop = vaddr + (bit (pageBitsForSize $ capVPSize cap) - 1)
 >             when (VPtr vtop > kernelBase) $
 >                 throw $ InvalidArgument 0
 >             let vmRights = maskVMRights (capVPRights cap) $
@@ -607,8 +607,8 @@ Note that implementations with separate high and low memory regions may also wis
 >                 pdptMapCTSlot = cte,
 >                 pdptMapPML4E = pml4e,
 >                 pdptMapPML4Slot = pml4Slot }
->         (ArchInvocationLabel X64PageDirectoryMap, _, _) -> throw TruncatedMessage
->         (ArchInvocationLabel X64PageDirectoryUnmap, _, _) -> do
+>         (ArchInvocationLabel X64PDPTMap, _, _) -> throw TruncatedMessage
+>         (ArchInvocationLabel X64PDPTUnmap, _, _) -> do
 >             cteVal <- withoutFailure $ getCTE cte
 >             final <- withoutFailure $ isFinalCapability cteVal
 >             unless final $ throw RevokeFirst
