@@ -500,11 +500,11 @@ Page entries -- any of PTEs, PDEs or PDPTEs.
 
 IO Port interface. 
 
-> in8 :: MachineMonad Word
+> in8 :: IOPort -> MachineMonad Word
 > in8 = error "Unimplemented"
-> in16 :: MachineMonad Word
+> in16 :: IOPort -> MachineMonad Word
 > in16 = error "Unimplemented"
-> in32 :: MachineMonad Word
+> in32 :: IOPort -> MachineMonad Word
 > in32 = error "Unimplemented"
 > out8 :: IOPort -> Word8 -> MachineMonad ()
 > out8 = error "Unimplemented"

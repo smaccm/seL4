@@ -89,7 +89,7 @@ This module defines IO port routines, specific to x64.
 >     where
 >         portIn f = do
 >             ct <- getCurThread
->             res <- doMachineOp f
+>             res <- doMachineOp $ f port
 >             setMRs ct Nothing [res]
 >             msgInfo <- return $ MI {
 >                 msgLength = 1,
