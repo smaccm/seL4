@@ -32,33 +32,6 @@ This module makes use of the GHC extension allowing data types with no construct
 
 There are five ARM-specific object types; however, only four of them may be invoked. These are the page table, page, ASID control, and ASID pool objects.
 
-% REFERENCE ONLY FIXME REMOVE
-% data InvocationLabel
-%         = X64PDPTMap
-%         | X64PDPTUnmap
-%         | X64PageDirectoryMap
-%         | X64PageDirectoryUnmap
-%         | X64PageTableMap
-%         | X64PageTableUnmap
-%         | X64IOPageTableMap   -- IOPageTableInvocation
-%         | X64IOPageTableUnmap -- IOPageTableInvocation
-%         | X64PageMap
-%         | X64PageRemap
-%         | X64PageUnmap
-%         | X64PageMapIO -- IOPageInvocation? PageInvocation?
-%         | X64PageGetAddress
-%         | X64ASIDControlMakePool -- "ASIDs are same as ARM basically"
-%         | X64ASIDPoolAssign
-%         | X64IOPortIn8
-%         | X64IOPortIn16
-%         | X64IOPortIn32
-%         | X64IOPortOut8
-%         | X64IOPortOut16
-%         | X64IOPortOut32
-%         | X64IRQIssueIRQHandlerIOAPIC -- IRQControlCap
-%         | X64IRQIssueIRQHandlerMSI    -- IRQControlCap
-%         deriving (Eq, Enum, Bounded)
-
 FIXME All object invocations implicitly involve a cap to some object and a slot?
 Presumably if we point at an object the kernel can figure out the cap and the slot?
 
@@ -74,6 +47,17 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >     | InvokeIRQ IRQInvocation -- FIXME this used to be generic, but now we're adding arch-dependent functionality
 >     deriving Show
 
+> data PDPTInvocation
+>     = PDPTUnmap {
+>         pdptUnmapCap :: ArchCapability,
+>         pdptUnmapCapSlot :: PPtr CTE }
+>     | PDPTMap {
+>         pdptMapCap :: Capability,
+>         pdptMapCTSlot :: PPtr CTE,
+>         pdptMapPDPTE :: PML4E,
+>         pdptMapPDPTSlot :: PPtr PML4E }
+>     deriving Show
+
 > data PageDirectoryInvocation
 >     = PageDirectoryUnmap {
 >         pdUnmapCap :: ArchCapability,
@@ -85,8 +69,6 @@ Presumably if we point at an object the kernel can figure out the cap and the sl
 >         pdMapPDPTSlot :: PPtr PDPTE }
 >     deriving Show
 
-PML4E
-
 > data PageTableInvocation
 >     = PageTableUnmap {
 >         ptUnmapCap :: ArchCapability,
@@ -96,6 +78,23 @@ PML4E
 >         ptMapCTSlot :: PPtr CTE,
 >         ptMapPDE :: PDE,
 >         ptMapPDSlot :: PPtr PDE }
+>     deriving Show
+
+IO page tables are contained in other IO page tables. The topmost one sits in a
+VTD context as a VTD context table entry (IOCTE).  If the context table entry
+for a device does not have a page table entry, we must initialise that first to
+point to the invoked IO page table.
+
+> data IOPageTableInvocation
+>     = IOPageTableUnmap {
+>         ioptUnmapCap :: ArchCapability,
+>         ioptUnmapCapSlot :: PPtr CTE }
+>     | IOPageTableMap {
+>         ioptMapCap :: Capability,
+>         ioptMapCTSlot :: PPtr CTE,
+>         ioptMapContextEntry :: IOCTE, -- FIXME IOCTE type? IO context entry
+>         ioptMapPT :: IOPTE,
+>         ioptMapPTSlot :: PPtr IOPTE }
 >     deriving Show
 
 > data PageInvocation
@@ -116,7 +115,7 @@ PML4E
 >         pageMapASID :: ASID,
 >         pageMapCap :: Capability,
 >         pageMapCTSlot :: PPtr CTE,
->         pageMapEntries :: (IOPT, [PPtr IOPTE]) } -- FIXME : IO Types here. there's no ASID we care about?
+>         pageMapEntries :: (IOPTE, [PPtr IOPTE]) } -- FIXME : IO Types here. there's no ASID we care about?
 >     deriving Show
 
 > data ASIDControlInvocation
@@ -134,23 +133,42 @@ PML4E
 >         assignASIDCTSlot :: PPtr CTE }
 >     deriving Show
 
+\subsection{IO Ports}
+
+> data IOPortInvocationData
+>     = IOPortIn8 | IOPortIn16 | IOPortIn32
+>     | IOPortOut8 Word8 | IOPortOut16 Word16 | IOPortIn32 Word32
+
+> data IOPortInvocation = IOPortInvocation Port IOPortInvocationData
+
 \subsection{Interrupt Control}
 
 FIXME x86 64bit has two interrupt control invocations, one each for IOAPIC and MSI interrupt sources.
 FIXME TODO arguments to this plus decode
+FIXME Word may be too generic for some of these
+FIXME the kernel team is working on this currently, so it doesn't exactly match the C
 
 > data InterruptControl
->     = IssueIRQHandlerIOAPIC
->     | IssueIRQHandlerMSI
+>     = IssueIRQHandlerIOAPIC {
+>         issueHandlerIOAPICIRQ :: IRQ,
+>         issueHandlerIOAPICSlot, issueHandlerIOAPICControllerSlot :: PPtr CTE,
+>         issueHandlerIOAPICIOAPIC :: Word,
+>         issueHandlerIOAPICPin :: Word,
+>         issueHandlerIOAPICLevel, issueHandlerIOAPICPolarity :: Bool,
+>         issueHandlerIOAPICVector :: Word }
+>     | IssueIRQHandlerMSI {
+>         issueHandlerMSIIRQ :: IRQ,
+>         issueHandlerMSISlot, issueHandlerMSIControllerSlot :: PPtr CTE,
+>         issueHandlerMSIPCIBus :: Word,
+>         issueHandlerMSIPCIDev :: Word,
+>         issueHandlerMSIPCIFunc :: Word,
+>         issueHandlerMSIHandle :: Word }
 >     deriving (Show, Eq)
 
 \subsection{Additional Register Subsets}
 
-The ARM platform currently does not define any additional register sets for the "CopyRegisters" operation. This may be changed in future to support a floating point unit.
+The X64 platform currently does not define any additional register sets for the "CopyRegisters" operation. This may be changed in future to support a floating point unit.
 
-FIXME this needs to go somewhere else: invocation or invocationlabels?
-
-> data CopyRegisterSets = ARMNoExtraRegisters
+> data CopyRegisterSets = X64NoExtraRegisters
 >     deriving Show
-
 

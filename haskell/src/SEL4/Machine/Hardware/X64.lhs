@@ -46,6 +46,8 @@ The machine monad contains a platform-specific opaque pointer, used by the exter
 
 > type CR3 = Platform.CR3
 
+> type IOPort = Word16
+
 FIXME there is a 1-to-1 correspondence between hardware and software ASIDs on x64
 
 > newtype HardwareASID = HardwareASID { fromHWASID :: Word8 }
