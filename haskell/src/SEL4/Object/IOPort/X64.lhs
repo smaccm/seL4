@@ -41,6 +41,9 @@ This module defines IO port routines, specific to x64.
 
 %FIXME port+output data packing in C, see SELFOUR-360
 
+%FIXME downcast to 16-bit port from 64-bit arg happens before range check, which
+%      is likely incorrect
+
 > decodeX64PortInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
 >         ArchCapability -> [(Capability, PPtr CTE)] ->
 >         KernelF SyscallError ArchInv.Invocation
