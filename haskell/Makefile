@@ -26,7 +26,8 @@ build: $(BOOT_FILES)
 build-x64: $(BOOT_FILES)
 	cabal sandbox init
 	cabal install --dependencies-only
-	cabal configure --configure-option="x64-pc99" --flags="-ArchArm -FFI"
+	# FIXME: allow some warnings for now
+	cabal configure --configure-option="x64-pc99" --flags="-ArchArm -FFI" --ghc-options="-fno-warn-unused-matches -fno-warn-unused-imports"
 	cabal build
 
 pdf:
