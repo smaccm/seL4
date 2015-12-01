@@ -9,14 +9,14 @@
 
 This module contains the architecture-specific kernel global data for the X86-64bit architecture.
  
-> module SEL4.Model.StateData.X86 where
+> module SEL4.Model.StateData.X64 where
 
 \begin{impdetails}
 
 > import SEL4.Machine
-> import SEL4.Machine.Hardware.X86
+> import SEL4.Machine.Hardware.X64
 >     (HardwareASID(..), PDPTE(..), PTE(..), PDE(..), PML4E(..), ptBits)
-> import SEL4.Object.Structures.X86
+> import SEL4.Object.Structures.X64
 
 > import Data.Array
 > import Data.Bits

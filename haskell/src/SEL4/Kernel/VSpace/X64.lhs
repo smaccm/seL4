@@ -58,381 +58,6 @@ The idle thread's code is at an arbitrary location in kernel memory. For conveni
 > idleThreadStart :: VPtr
 > idleThreadStart = globalsBase + VPtr 0x100
 
-The idle thread executes a short loop that drains the CPU's write buffer and then waits for an interrupt. Note that the wait for interrupt instruction always completes before the interrupt is delivered, so the interrupt handler will return to the following branch instruction.
-
-> idleThreadCode :: [Word]
-> idleThreadCode =
->     [ 0xe3a00000 -- mov r0, \#0
->     , 0xee070f9a -- 1: mcr p15, 0, r0, c7, c10, 4 -- drain write buffer
->     , 0xee070f90 -- mcr p15, 0, r0, c7, c0, 4 -- wait for interrupt
->     , 0xeafffffc -- b 1b
->     ]
-
-\subsection{Creating the vspace for the initial thread}
-> --FIXME x64: do this still
-
-Function mapKernelWindow will create a virtialll address space for the initial thread
-
-> mapKernelWindow :: Kernel ()
-> mapKernelWindow = do
-
-An abstract version looks like:
-
-\begin{verbatim}
-  allMemory <- doMachineOp getMemoryRegions
-  mapM_ mapKernelRegion allMemory
-\end{verbatim}
-
-However we assume that the result of getMemoryRegions is actually [0,1<<24] and do the following
-
->     let vbase = kernelBase `shiftR` pageBitsForSize (ARMSection)
->     let pdeBits = objBits (undefined :: PDE)
->     let pteBits = objBits (undefined :: PTE)
->     let ptSize = ptBits - pteBits
->     let pdSize = pdBits - pdeBits
->     globalPD <- gets $ armKSGlobalPD . ksArchState
->     globalPTs <- gets $ armKSGlobalPTs . ksArchState
->     deleteObjects (PPtr $ fromPPtr globalPD) pdBits
->     placeNewObject (PPtr $ fromPPtr globalPD) (makeObject :: PDE) pdSize
->     forM_ [vbase, vbase+16 .. (bit pdSize) - 16 - 1] $ createSectionPDE
->     forM_ [(bit pdSize) - 16, (bit pdSize) - 2] $ \v -> do
->           let offset = fromVPtr v
->           let virt = v `shiftL` pageBitsForSize (ARMSection)
->           let phys = addrFromPPtr $ PPtr $ fromVPtr virt
->           let pde = SectionPDE {
->                   pdeFrame = phys,
->                   pdeParity = True,
->                   pdeDomain = 0,
->                   pdeCacheable = True,
->                   pdeGlobal = True,
->                   pdeExecuteNever = False,
->                   pdeRights = VMKernelOnly }
->           let slot = globalPD + PPtr (offset `shiftL` pdeBits)
->           storePDE slot pde
->     let paddr = addrFromPPtr $ PPtr $ fromPPtr $ head globalPTs
->     let pde = PageTablePDE {pdeTable = paddr ,pdeParity = True, pdeDomain = 0}
->     let slot = globalPD + PPtr (((bit pdSize) - 1) `shiftL` pdeBits)
->     deleteObjects (PPtr $ fromPPtr $ head globalPTs) ptBits
->     placeNewObject (PPtr $ fromPPtr $ head globalPTs) (makeObject :: PTE) ptSize
->     storePDE slot pde
-
-In C code we need to detype the armGlobalPagetTable which is C equivalent to
-\verb+memzero(armKSGlobalPT,1 << PT_SIZE_BITS)+
-
->     mapGlobalsFrame
->     kernelDevices <- doMachineOp getKernelDevices
->     mapM_ mapKernelDevice kernelDevices
-
-
-Helper function used above to create PDE for Section:
-
-> createSectionPDE :: VPtr -> Kernel () 
-> createSectionPDE v = do
->     let vbase = kernelBase `shiftR` pageBitsForSize (ARMSection)
->     let pdeBits = objBits (undefined :: PDE)
->     let pteBits = objBits (undefined :: PTE)
->     globalPD <- gets $ armKSGlobalPD . ksArchState
->     let offset = fromVPtr v
->     let virt = (v - vbase) `shiftL` (pageBitsForSize (ARMSuperSection) - 4)
->     let phys = addrFromPPtr $ PPtr $ fromVPtr virt
->     let pde = SuperSectionPDE {
->             pdeFrame = phys,
->             pdeParity = True,
->             pdeCacheable = True,
->             pdeGlobal = True,
->             pdeExecuteNever = False,
->             pdeRights = VMKernelOnly }
->     let slots = map (\n -> globalPD + PPtr (n `shiftL` pdeBits))
->             [offset .. offset + 15]
->     (flip $ mapM_ ) slots (\slot ->  storePDE slot pde)
-
-
-
-Any IO devices used directly by the kernel --- generally including the interrupt controller, one of the timer devices, and optionally a serial port for debugging --- must be mapped in the global address space. This implementation limits device mappings to one page; it may need to be extended to support multiple-page mappings.
-
-> mapKernelDevice :: (PAddr, PPtr Word) -> Kernel ()
-> mapKernelDevice (addr, ptr) = do
->     let vptr = VPtr $ fromPPtr ptr
->     mapKernelFrame addr vptr VMKernelOnly $ VMAttributes False False True
-
-
-> activateGlobalPD :: Kernel ()
-> activateGlobalPD = do
->     globalPD <- gets $ armKSGlobalPD . ksArchState
->     doMachineOp $ do
->         setCurrentPD $ addrFromPPtr globalPD
->         invalidateTLB
-
-Function pair "createITPDPTs" + "writeITPDPTs" init the memory space for the initial thread
-
-> createITPDPTs :: Capability -> VPtr -> VPtr -> KernelInit Capability
-> createITPDPTs rootCNCap vptrStart biFrameVPtr =  do
->     let pdSize = pdBits - objBits (makeObject :: PDE)
->     let ptSize = ptBits - objBits (makeObject :: PTE)
->     pdPPtr <- allocRegion pdBits
->     doKernelOp $ placeNewObject (ptrFromPAddr pdPPtr) (makeObject::PDE) pdSize -- create a pageDirectory
->     pdCap <- return $ ArchObjectCap $ PageDirectoryCap (ptrFromPAddr pdPPtr) (Just itASID)
->     slot  <- doKernelOp $ locateSlot (capCNodePtr rootCNCap) biCapITPD
->     doKernelOp $ insertInitCap slot $ pdCap
->     slotBefore <- noInitFailure $ gets $ initSlotPosCur
->     let btmVPtr = vptrStart `shiftR` (pdSize + pageBits) `shiftL` (pdSize + pageBits)
->     let step = 1 `shiftL` (ptSize + pageBits)
->     let topVPtr = biFrameVPtr + (bit biFrameSizeBits) - 1
->     forM_ [btmVPtr,btmVPtr + step .. topVPtr] $ \vptr -> do
->         ptPPtr <- allocRegion ptBits
->         doKernelOp $ placeNewObject (ptrFromPAddr ptPPtr) (makeObject::PTE) ptSize -- create a pageTable
->         provideCap rootCNCap $ ArchObjectCap $ PageTableCap (ptrFromPAddr ptPPtr) (Just (itASID, vptr))
->     slotAfter <- noInitFailure $ gets initSlotPosCur
->     bootInfo <- noInitFailure $ gets initBootInfo
->     let bootInfo' = bootInfo { bifUIPTCaps = [slotBefore .. slotAfter - 1] }
->     noInitFailure $ modify (\s -> s { initBootInfo = bootInfo' })
->     return pdCap
-
-> writeITPDPTs :: Capability -> Capability -> KernelInit ()
-> writeITPDPTs rootCNCap pdCap =
->   case pdCap of
->     ArchObjectCap cap -> do
->       doKernelOp $ copyGlobalMappings $ capPDBasePtr cap
->       ptSlots <- noInitFailure $ gets $ bifUIPTCaps . initBootInfo
->       doKernelOp $ do
->           (flip mapM) ptSlots (\pos-> do
->               slot <- locateSlot (capCNodePtr rootCNCap) pos
->               cte <- getCTE slot
->               mapITPTCap pdCap (cteCap cte)
->            )
->       frameSlots <- noInitFailure $ gets $ bifUIFrameCaps . initBootInfo
->       doKernelOp $ do
->            (flip mapM) frameSlots (\pos -> do
->               slot <- locateSlot (capCNodePtr rootCNCap) pos
->               cte <- getCTE slot
->               mapITFrameCap pdCap (cteCap cte))
->            slot <- locateSlot (capCNodePtr rootCNCap) biCapITIPCBuf
->            cte <- getCTE slot
->            mapITFrameCap pdCap (cteCap cte)
->            slot <- locateSlot (capCNodePtr rootCNCap) biCapBIFrame
->            cte <- getCTE slot
->            mapITFrameCap pdCap (cteCap cte)
->     _ -> fail $ (show pdCap) ++ " is not an ArchObjectCap."
-
-
-Function pair "createITASIDPool" + "writeITASIDPool" init the asidpool cap for the initial thread
-
-> createITASIDPool :: Capability -> KernelInit Capability
-> createITASIDPool rootCNCap = do
->     apPPtr <- allocRegion $ objBits (undefined :: ASIDPool)
->     doKernelOp $ placeNewObject (ptrFromPAddr apPPtr) (makeObject::ASIDPool) 0
->     slot <- doKernelOp $ locateSlot (capCNodePtr rootCNCap) biCapITASIDPool
->     asidPoolCap <- return $ ArchObjectCap $ ASIDPoolCap (ptrFromPAddr apPPtr) 0
->     doKernelOp $ insertInitCap slot asidPoolCap
->     slot <- doKernelOp $ locateSlot (capCNodePtr rootCNCap) biCapASIDControl
->     asidControlCap <- return $ ArchObjectCap $ ASIDControlCap
->     doKernelOp $ insertInitCap slot asidControlCap
->     return asidPoolCap
-
-> writeITASIDPool :: Capability -> Capability -> Kernel ()
-> writeITASIDPool apCap pdCap = do
->     apPtr <- case apCap of
->                    ArchObjectCap (ASIDPoolCap ptr _) -> return ptr
->                    _ -> fail "WrieITASIDPool:should never happen"
->     pdPtr <- case pdCap of
->                    ArchObjectCap (PageDirectoryCap ptr _) -> return ptr
->                    _ -> fail "WriteITASIDPool:should never happen"
->     ASIDPool ap <- getObject apPtr
->     let ap' = ap//[(itASID, Just pdPtr)]
->     setObject apPtr (ASIDPool ap')
->     asidTable <- gets (armKSASIDTable . ksArchState)
->     let asidTable' = asidTable//[(asidHighBitsOf itASID, Just apPtr)]
->     modify (\s -> s {
->          ksArchState = (ksArchState s) { armKSASIDTable = asidTable' }})
->
-
-Function "mapITPTCap" is used to store a pde into the pd of the initial thread
-
-> mapITPTCap :: Capability -> Capability -> Kernel ()
-> mapITPTCap pdCap ptCap = do
->     pd <- case pdCap of
->               ArchObjectCap (PageDirectoryCap ptr _) -> return ptr
->               _ -> fail "mapITPTCap:should never happen"
->     ptCap' <- case ptCap of
->                   ArchObjectCap c -> return c
->                   _ -> fail "mapITPTCap:should never happen"
->     (pt,vptr) <- case ptCap' of
->                             PageTableCap { capPTBasePtr = pt',
->                                            capPTMappedAddress = Just (_, vptr') }
->                               -> return (pt', vptr')
->                             _ -> fail $ "mapITPTCap:This shouldn't happen. PageTableCap expected instead of" ++ (show ptCap)
->     let offset = fromVPtr $ vptr `shiftR` pageBitsForSize ARMSection
->     let targetSlot = pd + (PPtr $ offset `shiftL` 2) -- array entry size
->     let pde = PageTablePDE {
->             pdeTable = addrFromPPtr pt,
->             pdeParity = True,
->             pdeDomain = 0 }
->     storePDE targetSlot pde
-
-Function "mapITFrameCap" maps pte into pt of the initial thread.
-
-> mapITFrameCap :: Capability -> Capability -> Kernel ()
-> mapITFrameCap pdCap frameCap = do
->     pd' <- case pdCap of
->                ArchObjectCap (PageDirectoryCap ptr _) -> return ptr
->                _ -> fail $ "mapITFrameCap: expect PDCap , get:" ++ (show pdCap)
->     frameCap' <- case frameCap of
->                      ArchObjectCap c -> return c
->                      _ -> fail $ "mapITFrameCap: expect FrameCap, get:" ++ (show frameCap)
->     (frame,vptr) <- case frameCap' of
->                               PageCap { capVPBasePtr = frame',
->                                         capVPMappedAddress = Just (_, vptr') }
->                                   -> return (frame', vptr')
->                               _ -> fail $ "This shouldn't happen, PageCap expected instead of " ++ (show frameCap)
->     let offset = fromVPtr $ vptr `shiftR` pageBitsForSize ARMSection
->     let pd = pd' + (PPtr $ offset `shiftL` 2)
->     pde <- getObject pd
->     pt <- case pde of
->                      PageTablePDE { pdeTable = ref } -> return $ ptrFromPAddr ref
->                      _ -> fail $ "This shouldn't happen,expect PageTablePDE at " ++ (show pd) ++ "instead of " ++ (show pde)
->     let offset = fromVPtr $ ((vptr .&.(mask $ pageBitsForSize ARMSection))
->                                `shiftR` pageBitsForSize ARMSmallPage)
->     let targetSlot = pt + (PPtr $ offset `shiftL` 2) -- slot size
->     let pte = SmallPagePTE {
->             pteFrame = addrFromPPtr frame,
->             pteCacheable = True,
->             pteGlobal = False,
->             pteExecuteNever = False,
->             pteRights = VMReadWrite }
->     storePTE targetSlot pte
-
-Function "createIPCBufferFrame" will create IpcBuffer frame of the initial thread.
-The address of this ipcbuffer  starts from the end of uiRegion
-
-> createIPCBufferFrame :: Capability -> VPtr -> KernelInit Capability
-> createIPCBufferFrame rootCNCap vptr = do
->       pptr <- allocFrame
->       doKernelOp $ doMachineOp $ clearMemory (ptrFromPAddr pptr) (1 `shiftL` pageBits)
->       cap <- createITFrameCap (ptrFromPAddr pptr) vptr (Just itASID) False
->       slot <- doKernelOp $ locateSlot (capCNodePtr rootCNCap) biCapITIPCBuf
->       doKernelOp $ insertInitCap slot cap
->       bootInfo <- noInitFailure $ gets (initBootInfo)
->       let bootInfo' = bootInfo { bifIPCBufVPtr = vptr}
->       noInitFailure $ modify (\s -> s {initBootInfo = bootInfo' })
->       return cap
-
-Function "createBIFrame" will create the biframe cap for the initial thread
-
-> createBIFrame :: Capability -> VPtr -> Word32 -> Word32 -> KernelInit Capability
-> createBIFrame rootCNCap vptr nodeId numNodes = do
->       pptr <- allocFrame
->       bootInfo <- noInitFailure $ gets initBootInfo
->       let bootInfo' = bootInfo { bifNodeID = nodeId,
->                                  bifNumNodes = numNodes }
->       noInitFailure $ modify (\s -> s {
->           initBootInfo = bootInfo',
->           initBootInfoFrame = pptr,
->           initSlotPosCur = biCapDynStart
->           })
->       doKernelOp $ doMachineOp $ clearMemory (ptrFromPAddr pptr) (1 `shiftL` pageBits)
->       cap <- createITFrameCap (ptrFromPAddr pptr) vptr (Just itASID) False
->       slot <- doKernelOp $ locateSlot (capCNodePtr rootCNCap) biCapBIFrame
->       doKernelOp $ insertInitCap slot cap
->       return cap
-
-> createITFrameCap :: PPtr Word -> VPtr -> Maybe ASID -> Bool -> KernelInit Capability
-> createITFrameCap pptr vptr asid large = do
->     let sz = if large then ARMLargePage else ARMSmallPage
->     let addr = case asid of
->                     Just asid' -> Just (asid', vptr)
->                     Nothing -> Nothing
->     let frame = PageCap {
->              capVPBasePtr = pptr,
->              capVPRights = VMReadWrite,
->              capVPSize = sz,
->              capVPMappedAddress = addr }
->     return $ ArchObjectCap $ frame
-
-> createFramesOfRegion :: Capability -> Region -> Bool -> VPtr -> KernelInit ()
-> createFramesOfRegion rootCNCap region doMap pvOffset = do
->     curSlotPos <- noInitFailure $ gets initSlotPosCur
->     (startPPtr, endPPtr) <- return $ fromRegion region
->     forM_ [startPPtr,startPPtr + (bit pageBits) .. endPPtr] $ \ptr -> do
->         let paddr = fromPAddr $ addrFromPPtr ptr
->         frameCap <- if doMap then
->                     createITFrameCap ptr ((VPtr paddr) + pvOffset ) (Just itASID) False
->                     else createITFrameCap ptr 0 Nothing False
->         provideCap rootCNCap frameCap
->     slotPosAfter <- noInitFailure $ gets initSlotPosCur
->     bootInfo <- noInitFailure $ gets initBootInfo
->     let bootInfo' = bootInfo { bifUIFrameCaps = [curSlotPos .. slotPosAfter - 1] }
->     noInitFailure $ modify (\s -> s { initBootInfo = bootInfo' })
-
-
-Function "mapGlobalsFrame" inserts an entry into the global PD for the globals frame.
-
-> mapGlobalsFrame :: Kernel ()
-> mapGlobalsFrame = do
->     globalsFrame <- gets $ armKSGlobalsFrame . ksArchState
->     mapKernelFrame (addrFromPPtr globalsFrame) globalsBase VMReadOnly $
->         VMAttributes True True True
-
-we also need to put the code of idlethread into memory
-
->     writeIdleCode
-
-> writeIdleCode :: Kernel ()
-> writeIdleCode = do
->     globalsFrame <- gets $ armKSGlobalsFrame . ksArchState
->     let offset = fromVPtr $ idleThreadStart - globalsBase
->     doMachineOp $ zipWithM_ storeWord
->         [globalsFrame + PPtr offset, globalsFrame + PPtr offset + 4 ..]
->         idleThreadCode
-
-
-The "mapKernelFrame" helper function is used when mapping the globals frame, kernel IO devices, and the trap frame. We simply store pte into our globalPT 
-
-> mapKernelFrame :: PAddr -> VPtr -> VMRights -> VMAttributes -> Kernel ()
-> mapKernelFrame paddr vaddr vmrights attributes = do
->     let idx = fromVPtr $ ( (vaddr .&. (mask $ pageBitsForSize ARMSection))
->                           `shiftR` pageBitsForSize ARMSmallPage)
->     globalPT <- getARMGlobalPT
->     let pte = SmallPagePTE {
->                  pteFrame = paddr,
->                  pteCacheable = armPageCacheable attributes,
->                  pteGlobal = True,
->                  pteExecuteNever = False,
->                  pteRights = vmrights }
->     storePTE (PPtr ((fromPPtr globalPT) + (idx `shiftL` 2))) pte
-
-> getARMGlobalPT :: Kernel (PPtr PTE)
-> getARMGlobalPT = do
->     pt <- gets (head . armKSGlobalPTs . ksArchState)
->     return pt
-
-> createDeviceFrames :: Capability -> KernelInit ()
-> createDeviceFrames rootCNodeCap = do
->     deviceRegions <- doKernelOp $ doMachineOp getDeviceRegions
->     (flip mapM_) deviceRegions (\(start,end) -> do
->         frameSize <- return $ if (isAligned start (pageBitsForSize ARMSection))
->                          && isAligned end (pageBitsForSize ARMSection)
->             then ARMSection else ARMSmallPage
->         slotBefore <- noInitFailure $ gets initSlotPosCur
->         (flip mapM_) [start, (start + (bit (pageBitsForSize frameSize))) .. (end - 1)]
->               (\f -> do
->                   frameCap <- createITFrameCap (ptrFromPAddr f) 0 Nothing (frameSize == ARMSection)
->                   provideCap rootCNodeCap frameCap)
->         slotAfter <- noInitFailure $ gets initSlotPosCur
->         let biDeviceRegion = BIDeviceRegion {
->                                   bidrBasePAddr = start,
->                                   bidrFrameSizeBits = fromIntegral $ pageBitsForSize frameSize,
->                                   bidrFrameCaps = SlotRegion (slotBefore, slotAfter) }
->         devRegions <- noInitFailure $ gets (bifDeviceRegions . initBootInfo)
->         let devRegions' = devRegions ++ [biDeviceRegion]
->         bootInfo <- noInitFailure $ gets (initBootInfo)
->         let bootInfo' = bootInfo { bifDeviceRegions = devRegions' }
->         noInitFailure $ modify (\st -> st { initBootInfo = bootInfo' })
->         --syncBIFrame
->         )
->     bInfo <- noInitFailure $ gets (initBootInfo)
->     let bInfo' = bInfo { bifNumDeviceRegions = (fromIntegral . length . bifDeviceRegions) bInfo }
->     noInitFailure $ modify (\st -> st { initBootInfo = bInfo' })
-
 \subsubsection{Creating a New Address Space}
 
 When a new page directory is created, the kernel copies all of the global mappings from the kernel page directory into the new page directory.
@@ -844,15 +469,12 @@ Note that implementations with separate high and low memory regions may also wis
 
 > checkValidIPCBuffer :: VPtr -> Capability -> KernelF SyscallError ()
 > checkValidIPCBuffer vptr (ArchObjectCap (PageCap {})) = do
->     when (vptr .&. mask msgAlignBits /= 0) $ throw AlignmentError
+>     when (vptr .&. mask 9 /= 0) $ throw AlignmentError
 >     return ()
 > checkValidIPCBuffer _ _ = throw IllegalOperation
 
-ARM memory mappings may be read-only or read-write; on newer revisions of the ARM they may also be marked non-executable. Write-only mappings are not possible.
-
 > maskVMRights :: VMRights -> CapRights -> VMRights
 > maskVMRights r m = case (r, capAllowRead m, capAllowWrite m) of
->     (VMNoAccess, _, _) -> VMNoAccess
 >     (VMReadOnly, True, _) -> VMReadOnly
 >     (VMReadWrite, True, False) -> VMReadOnly
 >     (VMReadWrite, True, True) -> VMReadWrite
@@ -867,93 +489,6 @@ ARM memory mappings may be marked cacheable or non-cacheable. Also, parity check
 >     armExecuteNever = w `testBit` 2 }
 
 \subsection{ARM Hardware ASID allocation}
-
-Manage the stored HW ASID.
-
-> storeHWASID :: ASID -> HardwareASID -> Kernel ()
-> storeHWASID asid hw_asid = do
->     pd <- findPDForASIDAssert asid
->     asidMap <- gets (armKSASIDMap . ksArchState)
->     let asidMap' = asidMap//[(asid, Just (hw_asid, pd))]
->     modify (\s -> s {
->         ksArchState = (ksArchState s)
->         { armKSASIDMap = asidMap' }})
->     hwASIDMap <- gets (armKSHWASIDTable . ksArchState)
->     let hwASIDMap' = hwASIDMap//[(hw_asid, Just asid)]
->     modify (\s -> s {
->         ksArchState = (ksArchState s)
->         { armKSHWASIDTable = hwASIDMap' }})
-
-> loadHWASID :: ASID -> Kernel (Maybe HardwareASID)
-> loadHWASID asid = do
->     asidMap <- gets (armKSASIDMap . ksArchState)
->     findPDForASIDAssert asid
->     return $ case asidMap ! asid of
->         Nothing -> Nothing
->         Just (hw_asid, _) -> Just hw_asid
-
-> invalidateASID :: ASID -> Kernel ()
-> invalidateASID asid = do
->     findPDForASIDAssert asid
->     asidMap <- gets (armKSASIDMap . ksArchState)
->     let asidMap' = asidMap//[(asid, Nothing)]
->     modify (\s -> s {
->         ksArchState = (ksArchState s)
->         { armKSASIDMap = asidMap' }})
-
-> invalidateHWASIDEntry :: HardwareASID -> Kernel ()
-> invalidateHWASIDEntry hwASID = do
->     asidMap <- gets (armKSHWASIDTable . ksArchState)
->     let asidMap' = asidMap//[(hwASID, Nothing)]
->     modify (\s -> s {
->         ksArchState = (ksArchState s)
->         { armKSHWASIDTable = asidMap' }})
-
-> invalidateASIDEntry :: ASID -> Kernel ()
-> invalidateASIDEntry asid = do
->     maybeHWASID <- loadHWASID asid
->     when (isJust maybeHWASID) $ invalidateHWASIDEntry (fromJust maybeHWASID)
->     invalidateASID asid
-
-
-> findFreeHWASID :: Kernel HardwareASID
-> findFreeHWASID = do
-
-Look for a free Hardware ASID.
-
->     hwASIDTable <- gets (armKSHWASIDTable . ksArchState)
->     nextASID <- gets (armKSNextASID . ksArchState)
->     let maybe_asid = find (\a -> isNothing (hwASIDTable ! a))
->                       ([nextASID .. maxBound] ++ init [minBound .. nextASID])
-
-If there is one, return it, otherwise revoke the next one in a strict
-round-robin.
-
->     case maybe_asid of
->         Just hw_asid -> return hw_asid
->         Nothing -> do
->             invalidateASID $ fromJust $ hwASIDTable ! nextASID
->             doMachineOp $ invalidateTLB_ASID nextASID
->             invalidateHWASIDEntry nextASID
->             let new_nextASID =
->                     if nextASID == maxBound
->                     then minBound
->                     else nextASID + 1
->             modify (\s -> s {
->                 ksArchState = (ksArchState s)
->                 { armKSNextASID = new_nextASID }})
->             return nextASID
-
-> getHWASID :: ASID -> Kernel HardwareASID
-> getHWASID asid = do
->     maybe_hw_asid <- loadHWASID asid
->     case maybe_hw_asid of
->         Just hw_asid ->
->             return hw_asid
->         Nothing -> do
->             new_hw_asid <- findFreeHWASID
->             storeHWASID asid new_hw_asid
->             return new_hw_asid
 
 X64UPDATE
 
@@ -992,23 +527,6 @@ X64UPDATE
 >                                          VPtr $ (fromVPtr vptr) + index'
 >         _ -> return ()
 
-> flushSpace :: ASID -> Kernel ()
-> flushSpace asid = do
->     maybe_hw_asid <- loadHWASID asid
->     doMachineOp cleanCaches_PoU
->     case maybe_hw_asid of
->         Nothing -> return ()
->         Just hw_asid -> do
->             doMachineOp $ invalidateTLB_ASID hw_asid
-
-> invalidateTLBByASID :: ASID -> Kernel ()
-> invalidateTLBByASID asid = do
->     maybe_hw_asid <- loadHWASID asid
->     case maybe_hw_asid of
->         Nothing -> return ()
->         Just hw_asid -> do
->             doMachineOp $ invalidateTLB_ASID hw_asid
-
 \subsection{Decoding ARM Invocations}
 
 > labelToFlushType :: Word -> FlushType
@@ -1025,29 +543,6 @@ X64UPDATE
 
 > pageBase :: VPtr -> VMPageSize -> VPtr
 > pageBase vaddr size = vaddr .&. (complement $ mask (pageBitsForSize size))
-
-> lookupPTSlot_nofail :: PPtr PTE -> VPtr -> PPtr PTE
-> lookupPTSlot_nofail pt vptr = 
->     let ptIndex = fromVPtr $ (vptr `shiftR` 12) .&. mask 8
->     in pt + (PPtr $ ptIndex `shiftL` 2) 
-
-> resolveVAddr :: PPtr PDE -> VPtr -> Kernel (Maybe (VMPageSize, PAddr))
-> resolveVAddr pd vaddr = do
->     let pdSlot = lookupPDSlot pd vaddr
->     pde <- getObject pdSlot
->     case pde of
->         SectionPDE frame _ _ _ _ _ _ -> return $ Just (ARMSection, frame)
->         SuperSectionPDE frame _ _ _ _ _ -> return $ Just (ARMSuperSection, frame)
->         PageTablePDE table _ _ -> do
->             let pt = ptrFromPAddr table
->             let pteSlot = lookupPTSlot_nofail pt vaddr
->             pte <- getObject pteSlot
->             case pte of
->                 LargePagePTE frame _ _ _ _ -> return $ Just (ARMLargePage, frame)
->                 SmallPagePTE frame _ _ _ _ -> return $ Just (ARMSmallPage, frame)
->                 _ -> return Nothing 
->         _ -> return Nothing
->     
 
 
 > decodeARMMMUInvocation :: Word -> [Word] -> CPtr -> PPtr CTE ->
@@ -1459,6 +954,17 @@ the PT/PD is consistent.
 \subsection{Simulator Support}
 
 The kernel model's ARM targets use an external simulation of the physical address space for user-level virtual memory, I/O devices and MMU data structures, separate from the "PSpace" which is used for kernel objects. However, "PDE" objects are accessed by the kernel, so they must be stored in both the external physical memory model and the internal "PSpace". To make verification simpler we do the same for "PTE" objects.
+
+> storePML4E :: PPtr PML4E -> PML4E -> Kernel ()
+> storePML4E slot pml4e = do
+>     setObject slot pml4e
+>     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPML4E pml4e
+
+> storePDPTE :: PPtr PDPTE -> PDPTE -> Kernel ()
+> storePDPTE slot pdpte = do
+>     setObject slot pdpte
+>     doMachineOp $ storeWordVM (PPtr $ fromPPtr slot) $ wordFromPDPTE pdpte
+
 
 > storePDE :: PPtr PDE -> PDE -> Kernel ()
 > storePDE slot pde = do
