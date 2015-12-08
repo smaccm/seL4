@@ -69,7 +69,7 @@ static inline word_t readCacheSize(int level, bool_t instruction)
 #define ASSOC(s)    ((((s) >> 3)  & MASK(10)) + 1)
 /* Number of sets, field is nsets - 1. */
 #define NSETS(s)    ((((s) >> 13) & MASK(15)) + 1)
-
+#define CLZ(x)      __builtin_clz(x)
 /** DONT_TRANSLATE */
 void
 clean_D_PoU(void)
