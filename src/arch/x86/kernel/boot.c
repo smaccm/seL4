@@ -287,7 +287,15 @@ init_sys_state(
 
     /* allocate a large frame for logging */
     pde = x86_make_pde_mapping(paddr, buffer_attr);
+#ifdef X86_64
+#ifdef CONFIG_HUGE_PAGE
+    x64KSGlobalPD[BIT(PD_BITS) - 1] = pde;
+#else
+#endif /* CONFIG_HUGE_PAGE */
+    x64KSGlobalPDs[BIT(PDPT_BITS) - 1][BIT(PD_BITS) - 1] = pde;
+#else
     ia32KSGlobalPD[IA32_KSLOG_IDX] = pde;
+#endif /* X86_64 */
 
 
     /* flush the tlb */
