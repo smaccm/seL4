@@ -8,9 +8,4 @@
 # @TAG(GD_GPL)
 #
 
-DIRECTORIES += src/arch/$(ARCH)/64
-
-include ${SOURCE_ROOT}/src/arch/$(ARCH)/64/model/Makefile
-
-ARCH_ASM_SOURCES += 64/machine_asm.S \
-                    64/head.S
+ARCH_C_SOURCES += 64/model/statedata.c
