@@ -13,7 +13,6 @@
 #include <arch/object/interrupt.h>
 #include <arch/api/invocation.h>
 #include <arch/linker.h>
-#include <plat/machine/pci.h>
 
 void
 Arch_irqStateInit(void)

@@ -20,6 +20,6 @@
 
 #include <plat_mode/machine/hardware.h>
 
-void platAddDevices(void);
+bool_t platAddDevices(void);
 
 #endif

@@ -18,7 +18,6 @@
 #include <machine/capdl.h>
 #include <arch/machine/capdl.h>
 #include <plat/machine/debug_helpers.h>
-#include <plat/machine/pci.h>
 
 #define ARCH 0xe1
 
