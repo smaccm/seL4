@@ -43,8 +43,8 @@
  * accessing this register as 4 byte word, ICC becomes
  * 31st bit in the upper 32bit word.
  */
-#define ICC         31  /* Invalidate Context Cache */
-#define CIRG        29  /* Context Invalidation Request Granularity */
+#define ICC         (31 + 32)  /* Invalidate Context Cache */
+#define CIRG        (29 + 32) /* Context Invalidation Request Granularity */
 #define CAIG        27  /* Context Actual Invalidation Granularity */
 #define CAIG_MASK   0x3
 #define IVO_MASK    0x3FF
@@ -97,6 +97,17 @@ static inline void vtd_write32(drhu_id_t drhu_id, uint32_t offset, uint32_t valu
     *(volatile uint32_t*)(PPTR_DRHU_START + (drhu_id << PAGE_BITS) + offset) = value;
 }
 
+
+static inline uint64_t vtd_read64(drhu_id_t drhu_id, uint32_t offset)
+{
+    return *(volatile uint64_t *)(PPTR_DRHU_START + (drhu_id << PAGE_BITS) + offset);
+}
+
+static inline void vtd_write64(drhu_id_t drhu_id, uint32_t offset, uint64_t value)
+{
+    *(volatile uint64_t *)(PPTR_DRHU_START + (drhu_id << PAGE_BITS) + offset) = value;
+}
+
 static inline uint32_t get_ivo(drhu_id_t drhu_id)
 {
     return ((vtd_read32(drhu_id, ECAP_REG) >> 8) & IVO_MASK) * 16;
@@ -131,26 +142,23 @@ void invalidate_context_cache(void)
      *    device.
      */
 
-    uint8_t   invalidate_command = CONTEXT_GLOBAL_INVALIDATE;
-    uint32_t  ccmd_reg_upper;
     drhu_id_t i;
 
     for (i = 0; i < x86KSnumDrhu; i++) {
         /* Wait till ICC bit is clear */
-        while ((vtd_read32(i, CCMD_REG + 4) >> ICC) & 1);
+        uint64_t ccmd = 0; 
+        while ((vtd_read64(i, CCMD_REG) >> ICC) & 1);
 
         /* Program CIRG for Global Invalidation by setting bit 61 which
          * will be bit 29 in upper 32 bits of CCMD_REG
          */
-        ccmd_reg_upper = invalidate_command << CIRG;
+        ccmd = ((uint64_t)CONTEXT_GLOBAL_INVALIDATE << CIRG) | (1ull << ICC);
 
         /* Invalidate Context Cache */
-        ccmd_reg_upper |= (1U << ICC);
-        vtd_write32(i, CCMD_REG, 0);
-        vtd_write32(i, CCMD_REG + 4, ccmd_reg_upper);
-
+        vtd_write64(i, CCMD_REG, ccmd);
+        
         /* Wait for the invalidation to complete */
-        while ((vtd_read32(i, CCMD_REG + 4) >> ICC) & 1);
+       while ((vtd_read64(i, CCMD_REG) >> ICC) & 1);
     }
 }
 
@@ -215,7 +223,6 @@ static void vtd_process_faults(drhu_id_t i)
     /* Retrieves FRO by looking into Capability register bits 33 to 24 */
     fro_offset = get_fro_offset(i);
     fault_status = (vtd_read32(i, FSTS_REG) >> PPF) & PPF_MASK;
-
     if (fault_status) {
         num_fault_regs = ((vtd_read32(i, CAP_REG + 4) >> NFR) & NFR_MASK) + 1;
         fault_record_index = (vtd_read32(i, FSTS_REG) >> FRI) & FRI_MASK;
@@ -347,12 +354,11 @@ vtd_create_context_table(
     memzero(vtd_context_table, 1 << VTD_CT_SIZE_BITS);
     flushCacheRange(vtd_context_table, VTD_CT_SIZE_BITS);
 
-    x86KSvtdRootTable[bus] =
+    x86KSvtdRootTable[bus] = 
         vtd_rte_new(
             pptr_to_paddr(vtd_context_table), /* Context Table Pointer */
-            true                              /* Present               */
+            true                                           /* Present               */
         );
-
     /* map in any RMRR regions */
     for (i = 0; i < rmrr_list->num; i++) {
         if (vtd_get_root_index(rmrr_list->entries[i].device) == bus) {
@@ -369,14 +375,17 @@ BOOT_CODE static bool_t
 vtd_enable(cpu_id_t cpu_id)
 {
     drhu_id_t i;
+    uint32_t status = 0;
 
     for (i = 0; i < x86KSnumDrhu; i++) {
-        /* Set the Root Table Register */
-        vtd_write32(i, RTADDR_REG, pptr_to_paddr((void*)x86KSvtdRootTable));
-        vtd_write32(i, RTADDR_REG + 4, 0);
+        pptr_t pa = (pptr_t)pptr_to_paddr((void *)x86KSvtdRootTable);
 
+        /* Set the Root Table Register */
+        vtd_write64(i, RTADDR_REG, pa);
+        status = vtd_read32(i, GSTS_REG);
+        status |= (1 << SRTP);
         /* Set SRTP bit in GCMD_REG */
-        vtd_write32(i, GCMD_REG, (1 << SRTP));
+        vtd_write32(i, GCMD_REG, status);
 
         /* Wait for SRTP operation to complete by polling
          * RTPS bit from GSTS_REG
@@ -405,15 +414,18 @@ vtd_enable(cpu_id_t cpu_id)
         vtd_write32(i, FEDATA_REG, data);
         vtd_write32(i, FEADDR_REG, addr);
         vtd_write32(i, FEUADDR_REG, 0);
-
+        status = vtd_read32(i, GSTS_REG);
+        status |= BIT(WBF);
         /*flush IOMMU write buffer */
-        vtd_write32(i, GCMD_REG, BIT(WBF));
+        vtd_write32(i, GCMD_REG, status);
         while (((vtd_read32(i, GSTS_REG) >> WBFS) & 1));
 
         printf("IOMMU 0x%x: enabling...", i);
 
+        status = vtd_read32(i, GSTS_REG);
+        status |= (1U << TE);
         /* Enable the DMA translation by setting TE bit in GCMD_REG */
-        vtd_write32(i, GCMD_REG, (1U << TE));
+        vtd_write32(i, GCMD_REG, status);
 
         /* Wait for Translation Enable operation to complete by polling
          * TES bit from GSTS_REG
@@ -490,7 +502,6 @@ vtd_init(
     printf("IOMMU: Using %d page-table levels (max. supported: %d)\n", x86KSnumIOPTLevels, max_num_iopt_levels);
 
     vtd_create_root_table();
-
     for (bus = 0; bus < 256; bus++) {
         vtd_create_context_table(
             bus,
