@@ -11,6 +11,7 @@
 #ifndef __OBJECT_UNTYPED_H
 #define __OBJECT_UNTYPED_H
 
+#include <config.h>
 #include <types.h>
 #include <api/failures.h>
 #include <api/types.h>
@@ -25,7 +26,11 @@
  * many bits of capBlockSize there are, and the largest offset that can
  * be stored in capFreeIndex */
 #define MIN_SIZE_BITS 4
+#ifdef CONFIG_ARCH_X86_64
+#define MAX_SIZE_BITS 47
+#else
 #define MAX_SIZE_BITS 30
+#endif
 #define MAX_FREE_INDEX(sizeBits) (BIT((sizeBits) - MIN_SIZE_BITS))
 #define FREE_INDEX_TO_OFFSET(freeIndex) ((freeIndex)<<MIN_SIZE_BITS)
 #define GET_FREE_REF(base,freeIndex) ((word_t)(((word_t)(base)) + FREE_INDEX_TO_OFFSET(freeIndex)))
