@@ -1495,3 +1495,11 @@ decodeX86ModeMapRemapPage(word_t label, vm_page_size_t page_size, cte_t *cte, ca
     }
     fail("Invalid Page type");
 }
+
+#ifdef CONFIG_PRINTING
+void
+Arch_userStackTrace(tcb_t *tptr)
+{
+    printf("User stack trace not supported\n");
+}
+#endif
