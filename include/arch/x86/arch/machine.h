@@ -459,4 +459,8 @@ void int_fd(void);
 void int_fe(void);
 void int_ff(void);
 
+#ifdef CONFIG_VTX
+void handle_vmexit(void);
+#endif
+
 #endif

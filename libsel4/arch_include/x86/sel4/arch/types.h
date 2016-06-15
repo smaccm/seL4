@@ -24,6 +24,10 @@ typedef seL4_CPtr seL4_X86_PDPT;
 typedef seL4_CPtr seL4_X86_PageDirectory;
 typedef seL4_CPtr seL4_X86_PageTable;
 typedef seL4_CPtr seL4_X86_IOPageTable;
+typedef seL4_CPtr seL4_X86_EPTPageDirectoryPointerTable;
+typedef seL4_CPtr seL4_X86_EPTPageDirectory;
+typedef seL4_CPtr seL4_X86_EPTPageTable;
+typedef seL4_CPtr seL4_X86_VCPU;
 
 typedef enum {
     seL4_X86_Default_VMAttributes = 0,

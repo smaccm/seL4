@@ -13,10 +13,12 @@
 #include <arch/kernel/lock.h>
 #include <arch/machine/fpu.h>
 #include <arch/fastpath/fastpath.h>
+#include <arch/object/vcpu.h>
 
 #include <api/syscall.h>
 
 void __attribute__((noreturn)) __attribute__((externally_visible)) restore_user_context(void);
+void __attribute__((noreturn)) restore_vmx(void);
 
 void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall);
 void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall)
@@ -57,6 +59,22 @@ slowpath(syscall_t syscall)
         /* set FaultIP */
         setRegister(ksCurThread, FaultIP, getRegister(ksCurThread, NextIP) - 2);
     }
+#ifdef CONFIG_VTX
+    if (syscall == SysVMEnter) {
+        vcpu_update_vmenter_state(ksCurThread->tcbArch.vcpu);
+        if (ksCurThread->tcbBoundNotification && notification_ptr_get_state(ksCurThread->tcbBoundNotification) == NtfnState_Active) {
+            completeSignal(ksCurThread->tcbBoundNotification, ksCurThread);
+            setRegister(ksCurThread, msgInfoRegister, 0);
+            /* Any guest state that we should return is in the same
+             * register position as sent to us, so we can just return
+             * and let the user pick up the values they put in */
+            restore_user_context();
+        } else {
+            setThreadState(ksCurThread, ThreadState_RunningVM);
+            restore_vmx();
+        }
+    }
+#endif
     /* check for undefined syscall */
     if (unlikely(syscall < SYSCALL_MIN || syscall > SYSCALL_MAX)) {
         handleUnknownSyscall(syscall);
@@ -76,6 +94,5 @@ void __attribute__((externally_visible)) c_handle_syscall(word_t cptr, word_t ms
         fastpath_reply_recv(cptr, msgInfo);
     }
 #endif
-
     slowpath(syscall);
 }

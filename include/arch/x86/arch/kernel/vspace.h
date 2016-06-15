@@ -137,4 +137,19 @@ pde_t CONST makeUserPDEPageTableInvalid(void);
 void Arch_userStackTrace(tcb_t *tptr);
 #endif
 
+#ifdef CONFIG_VTX
+void unmapEPTPD(ept_pdpte_t *pdpt, uint32_t index, ept_pde_t *pd);
+void unmapEPTPT(ept_pde_t *pd, uint32_t index, ept_pte_t *pt);
+exception_t decodeIA32EPTInvocation(word_t label, unsigned int length, cptr_t cptr, cte_t* cte, cap_t cap, extra_caps_t extraCaps, word_t* buffer);
+exception_t decodeIA32EPTPageDirectoryInvocation(word_t label, unsigned int length, cte_t* cte, cap_t cap, extra_caps_t extraCaps, word_t* buffer);
+exception_t decodeIA32EPTPageTableInvocation(word_t label, unsigned int length, cte_t* cte, cap_t cap, extra_caps_t extraCaps, word_t* buffer);
+void IA32EptPdpt_Init(ept_pml4e_t *pdpt);
+ept_pdpte_t *lookupEPTPDPTFromPD(ept_pde_t *pt);
+void IA32PageUnmapEPT(cap_t cap);
+void unmapAllEPTPD(ept_pdpte_t *pdpt);
+void unmapAllEPTPT(ept_pde_t *pd);
+void unmapAllEPTPages(ept_pte_t *pt);
+exception_t decodeIA32EPTFrameMap(word_t invLabel, word_t length, cte_t* cte, cap_t cap, extra_caps_t excaps, word_t* buffer);
+#endif /* VTX */
+
 #endif

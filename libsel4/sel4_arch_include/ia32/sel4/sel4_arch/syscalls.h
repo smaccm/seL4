@@ -463,6 +463,43 @@ seL4_Yield(void)
     );
 }
 
+static inline seL4_Word
+seL4_VMEnter(seL4_CPtr vcpu, seL4_Word *sender)
+{
+    seL4_Word fault;
+    seL4_Word badge;
+    seL4_Word mr0 = seL4_GetMR(0);
+    seL4_Word mr1 = seL4_GetMR(1);
+
+    asm volatile (
+        "pushl %%ebp       \n"
+        "movl %%ecx, %%ebp \n"
+        "movl %%esp, %%ecx \n"
+        "leal 1f, %%edx    \n"
+        "1:                \n"
+        "sysenter          \n"
+        "movl %%ebp, %%ecx \n"
+        "popl %%ebp        \n"
+        :
+        "=b" (badge),
+        "=S" (fault),
+        "=D" (mr0),
+        "=c" (mr1)
+        : "a" (seL4_SysVMEnter),
+        "b" (vcpu),
+        "D" (mr0),
+        "c" (mr1)
+        : "%edx", "memory"
+    );
+
+    seL4_SetMR(0, mr0);
+    seL4_SetMR(1, mr1);
+    if (!fault && sender) {
+        *sender = badge;
+    }
+    return fault;
+}
+
 #if defined(SEL4_DEBUG_KERNEL)
 static inline void
 seL4_DebugPutChar(char c)

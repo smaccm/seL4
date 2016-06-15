@@ -21,6 +21,7 @@
 #include <arch/kernel/vspace.h>
 #include <arch/machine/fpu.h>
 #include <arch/object/ioport.h>
+#include <arch/object/vtx.h>
 #include <arch/linker.h>
 #include <util.h>
 
@@ -470,6 +471,13 @@ init_cpu(
 
 #ifdef CONFIG_DEBUG_DISABLE_PREFETCHERS
     if (!disablePrefetchers()) {
+        return false;
+    }
+#endif
+
+#ifdef CONFIG_VTX
+    /* initialise Intel VT-x extensions */
+    if (!vtx_init()) {
         return false;
     }
 #endif

@@ -197,3 +197,56 @@ exception_t CONST Arch_performTransfer(word_t arch, tcb_t *tcb_src, tcb_t *tcb_d
 {
     return EXCEPTION_NONE;
 }
+
+void Arch_leaveVMAsyncTransfer(tcb_t *tcb)
+{
+#ifdef CONFIG_VTX
+    vcpu_t *vcpu = tcb->tcbArch.vcpu;
+    word_t *buffer;
+    if (vcpu) {
+        if (current_vmcs != vcpu) {
+            vmptrld(vcpu);
+        }
+
+        setRegister(tcb, msgRegisters[0], vmread(VMX_GUEST_RIP));
+        setRegister(tcb, msgRegisters[1], vmread(VMX_CONTROL_PRIMARY_PROCESSOR_CONTROLS));
+        buffer = lookupIPCBuffer(true, tcb);
+        if (!buffer) {
+            return;
+        }
+
+        buffer[3] = vmread(VMX_CONTROL_ENTRY_INTERRUPTION_INFO);
+    }
+#endif
+}
+
+exception_t decodeSetEPTRoot(cap_t cap, extra_caps_t excaps)
+{
+    tcb_t *tcb;
+    cte_t *rootSlot;
+    exception_t e;
+
+    if (excaps.excaprefs[0] == NULL) {
+        userError("TCB SetEPTRoot: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_get_capType(excaps.excaprefs[0]->cap) != cap_ept_page_directory_pointer_table_cap) {
+        userError("TCB SetEPTRoot: EPT PDPT is invalid.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    rootSlot = TCB_PTR_CTE_PTR(tcb, tcbArchEPTRoot);
+    e = cteDelete(rootSlot, true);
+    if (e != EXCEPTION_NONE) {
+        return e;
+    }
+
+    cteInsert(excaps.excaprefs[0]->cap, excaps.excaprefs[0], rootSlot);
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}

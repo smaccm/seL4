@@ -8,6 +8,7 @@
  * @TAG(GD_GPL)
  */
 
+#include <config.h>
 #include <machine/assembler.h>
 
 # On kernel entry, ESP points to the end of the thread's registers array.
@@ -392,6 +393,33 @@ END_FUNC(kernel_exception)
     movl $val, %ecx; \
     movl %ecx, %sel; \
     1:
+
+# Handle vmexit
+# Assume that esp points to the first thing in user_context_t that isn't saved
+# in the VMCS. We need to save general purpose registers here.
+#ifdef CONFIG_VTX
+BEGIN_FUNC(handle_vmexit)
+    pushl   %ebp
+    pushl   %edi
+    pushl   %esi
+    pushl   %edx
+    pushl   %ecx
+    pushl   %ebx
+    pushl   %eax
+    # indicate int_invalid as the interrupt currently being served
+    movl    $-1, x86KScurInterrupt;
+
+    # set kernel data segments (ds and es) if necessary (set them to the user value though)
+    SET_SEL(ds, 7  * 4, 0x23)
+    SET_SEL(es, 8  * 4, 0x23)
+
+    # switch to kernel stack
+    leal    kernel_stack_alloc + 4096, %esp
+    # Handle the vmexit.
+    call    handleVmexit
+    jmp     restore_user_context
+END_FUNC(handle_vmexit)
+#endif
 
 # Handle Syscall (coming via sysenter)
 # Assume following register contents when called:

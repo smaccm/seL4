@@ -15,4 +15,6 @@ ARCH_C_SOURCES += object/interrupt.c \
                   object/objecttype.c \
                   object/tcb.c
 
-ARCH_C_SOURCES += object/iospace.c 
+ARCH_C_SOURCES += object/iospace.c  \
+                  object/vtx.c \
+                  object/vcpu.c

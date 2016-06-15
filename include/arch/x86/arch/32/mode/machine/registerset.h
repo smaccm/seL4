@@ -73,5 +73,8 @@ extern const register_t frameRegisters[];
 extern const register_t gpRegisters[];
 extern const register_t exceptionMessage[];
 extern const register_t syscallMessage[];
+#ifdef CONFIG_VTX
+extern const register_t crExitRegs[];
+#endif
 
 #endif

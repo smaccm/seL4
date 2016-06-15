@@ -15,6 +15,7 @@
 #include <model/statedata.h>
 #include <arch/kernel/vspace.h>
 #include <arch/api/invocation.h>
+#include <arch/object/vtx.h>
 
 
 static inline bool_t
@@ -1123,6 +1124,7 @@ exception_t decodeX86FrameInvocation(
                 return performX86PageInvocationUnmap(cap, cte);
             case X86_MAPPING_IOSPACE:
                 return decodeX86IOUnMapInvocation(invLabel, length, cte, cap, excaps);
+            /* todo EPT */
             case X86_MAPPING_NONE:
                 fail("Mapped frame cap was not mapped");
                 break;
@@ -1135,6 +1137,9 @@ exception_t decodeX86FrameInvocation(
     case X86PageMapIO: { /* MapIO */
         return decodeX86IOMapInvocation(invLabel, length, cte, cap, excaps, buffer);
     }
+
+    case X86PageMapEPT:
+        return decodeIA32EPTFrameMap(invLabel, length, cte, cap, excaps, buffer);
 
     case X86PageGetAddress: {
         /* Return it in the first message register. */
@@ -1451,3 +1456,743 @@ exception_t decodeX86MMUInvocation(
         return decodeX86ModeMMUInvocation(invLabel, length, cptr, cte, cap, excaps, buffer);
     }
 }
+
+#ifdef CONFIG_VTX
+struct lookupEPTPDSlot_ret {
+    exception_t status;
+    ept_pde_t*  pd;
+    uint32_t    pdIndex;
+};
+typedef struct lookupEPTPDSlot_ret lookupEPTPDSlot_ret_t;
+
+struct lookupEPTPTSlot_ret {
+    exception_t status;
+    ept_pte_t*  pt;
+    uint32_t    ptIndex;
+};
+typedef struct lookupEPTPTSlot_ret lookupEPTPTSlot_ret_t;
+
+static ept_pdpte_t* CONST lookupEPTPDPTSlot(ept_pdpte_t *pdpt, vptr_t vptr)
+{
+    unsigned int pdptIndex;
+
+    pdptIndex = vptr >> (PAGE_BITS + EPT_PT_BITS + EPT_PD_BITS);
+    return pdpt + pdptIndex;
+}
+
+static lookupEPTPDSlot_ret_t lookupEPTPDSlot(ept_pdpte_t* pdpt, vptr_t vptr)
+{
+    lookupEPTPDSlot_ret_t ret;
+    ept_pdpte_t* pdptSlot;
+
+    pdptSlot = lookupEPTPDPTSlot(pdpt, vptr);
+
+    if (!ept_pdpte_ptr_get_read(pdptSlot)) {
+        current_lookup_fault = lookup_fault_missing_capability_new(22);
+
+        ret.pd = NULL;
+        ret.pdIndex = 0;
+        ret.status = EXCEPTION_LOOKUP_FAULT;
+        return ret;
+    } else {
+        ret.pd = paddr_to_pptr(ept_pdpte_ptr_get_pd_base_address(pdptSlot));
+        ret.pdIndex = (vptr >> (PAGE_BITS + EPT_PT_BITS)) & MASK(EPT_PD_BITS);
+
+        ret.status = EXCEPTION_NONE;
+        return ret;
+    }
+}
+
+static lookupEPTPTSlot_ret_t lookupEPTPTSlot(ept_pdpte_t* pdpt, vptr_t vptr)
+{
+    lookupEPTPTSlot_ret_t ret;
+    lookupEPTPDSlot_ret_t lu_ret;
+    ept_pde_t *pdSlot;
+
+    lu_ret = lookupEPTPDSlot(pdpt, vptr);
+    if (lu_ret.status != EXCEPTION_NONE) {
+        current_syscall_error.type = seL4_FailedLookup;
+        current_syscall_error.failedLookupWasSource = false;
+        /* current_lookup_fault will have been set by lookupEPTPDSlot */
+        ret.pt = NULL;
+        ret.ptIndex = 0;
+        ret.status = EXCEPTION_LOOKUP_FAULT;
+        return ret;
+    }
+
+    pdSlot = lu_ret.pd + lu_ret.pdIndex;
+
+    if ((ept_pde_ptr_get_page_size(pdSlot) != ept_pde_ept_pde_4k) ||
+            !ept_pde_ept_pde_4k_ptr_get_read(pdSlot)) {
+        current_lookup_fault = lookup_fault_missing_capability_new(22);
+
+        ret.pt = NULL;
+        ret.ptIndex = 0;
+        ret.status = EXCEPTION_LOOKUP_FAULT;
+        return ret;
+    } else {
+        ret.pt = paddr_to_pptr(ept_pde_ept_pde_4k_ptr_get_pt_base_address(pdSlot));
+        ret.ptIndex = (vptr >> (PAGE_BITS)) & MASK(EPT_PT_BITS);
+
+        ret.status = EXCEPTION_NONE;
+        return ret;
+    }
+}
+
+ept_pdpte_t *lookupEPTPDPTFromPD(ept_pde_t *pd)
+{
+    cte_t *pd_cte;
+
+    /* First query the cdt and find the cap */
+#if 0
+    pd_cte = cdtFindWithExtra(cap_ept_page_directory_cap_new(0, 0, EPT_PD_REF(pd)));
+#endif
+    assert(!"unimplemented");
+    pd_cte = NULL;
+    /* We will not be returned a slot if there was no 'extra' information (aka if it is not mapped) */
+    if (!pd_cte) {
+        return NULL;
+    }
+
+    /* Return the mapping information from the cap. */
+    return EPT_PDPT_PTR(cap_ept_page_directory_cap_get_capPDMappedObject(pd_cte->cap));
+}
+
+static ept_pdpte_t *lookupEPTPDPTFromPT(ept_pte_t *pt)
+{
+    cte_t *pt_cte;
+    cap_t pt_cap;
+    ept_pde_t *pd;
+
+    /* First query the cdt and find the cap */
+#if 0
+    pt_cte = cdtFindWithExtra(cap_ept_page_table_cap_new(0, 0, EPT_PT_REF(pt)));
+#endif
+    assert(!"not implemented");
+    pt_cte = NULL;
+    /* We will not be returned a slot if there was no 'extra' information (aka if it is not mapped) */
+    if (!pt_cte) {
+        return NULL;
+    }
+
+    /* Get any mapping information from the cap */
+    pt_cap = pt_cte->cap;
+    pd = EPT_PD_PTR(cap_ept_page_table_cap_get_capPTMappedObject(pt_cap));
+    /* If we found it then it *should* have information */
+    assert(pd);
+    /* Now lookup the PDPT from the PD */
+    return lookupEPTPDPTFromPD(pd);
+}
+
+void unmapEPTPD(ept_pdpte_t *pdpt, uint32_t index, ept_pde_t *pd)
+{
+    pdpt[index] = ept_pdpte_new(
+                      0,  /* pd_base_address  */
+                      0,  /* avl_cte_depth    */
+                      0,  /* execute          */
+                      0,  /* write            */
+                      0   /* read             */
+                  );
+}
+
+void unmapEPTPT(ept_pde_t *pd, uint32_t index, ept_pte_t *pt)
+{
+    pd[index] = ept_pde_ept_pde_4k_new(
+                    0,  /* pt_base_address  */
+                    0,  /* avl_cte_depth    */
+                    0,  /* execute          */
+                    0,  /* write            */
+                    0   /* read             */
+                );
+}
+
+void unmapAllEPTPD(ept_pdpte_t *pdpt)
+{
+    assert(!"not implemented");
+#if 0
+    uint32_t i;
+
+    for (i = 0; i < BIT(EPT_PDPT_BITS); i++) {
+        ept_pdpte_t *pdpte = pdpt + i;
+        if (ept_pdpte_ptr_get_pd_base_address(pdpte)) {
+            cap_t cap;
+            cte_t *pdCte;
+
+            ept_pde_t *pd = EPT_PD_PTR(paddr_to_pptr(ept_pdpte_ptr_get_pd_base_address(pdpte)));
+            uint32_t depth = ept_pdpte_ptr_get_avl_cte_depth(pdpte);
+            pdCte = cdtFindAtDepth(cap_ept_page_directory_cap_new(EPT_PDPT_REF(pdpt), i, EPT_PD_REF(pd)), depth);
+            assert(pdCte);
+
+            cap = pdCte->cap;
+            cap = cap_ept_page_directory_cap_set_capPDMappedObject(cap, 0);
+            cdtUpdate(pdCte, cap);
+        }
+    }
+#endif
+}
+
+void unmapAllEPTPages(ept_pte_t *pt)
+{
+    assert(!"not implemented");
+#if 0
+    uint32_t i;
+
+    for (i = 0; i < BIT(EPT_PT_BITS); i++) {
+        ept_pte_t *pte = pt + i;
+        if (ept_pte_ptr_get_page_base_address(pte)) {
+            cap_t newCap;
+            cte_t *frameCte;
+
+            void *frame = paddr_to_pptr(ept_pte_ptr_get_page_base_address(pte));
+            uint32_t depth = ept_pte_ptr_get_avl_cte_depth(pte);
+            frameCte = cdtFindAtDepth(cap_frame_cap_new(IA32_SmallPage, EPT_PT_REF(pt), i, IA32_MAPPING_EPT, 0, (uint32_t)frame), depth);
+            assert(frameCte);
+
+            newCap = cap_frame_cap_set_capFMappedObject(frameCte->cap, 0);
+            cdtUpdate(frameCte, newCap);
+        }
+    }
+#endif
+}
+
+enum ept_cache_options {
+    EPTUncacheable = 0,
+    EPTWriteCombining = 1,
+    EPTWriteThrough = 4,
+    EPTWriteProtected = 5,
+    EPTWriteBack = 6
+};
+typedef enum ept_cache_options ept_cache_options_t;
+
+static ept_cache_options_t
+eptCacheFromVmAttr(vm_attributes_t vmAttr)
+{
+    /* PAT cache options are 1-1 with ept_cache_options. But need to
+       verify user has specified a sensible option */
+    ept_cache_options_t option = vmAttr.words[0];
+    if (option != EPTUncacheable ||
+            option != EPTWriteCombining ||
+            option != EPTWriteThrough ||
+            option != EPTWriteBack) {
+        /* No failure mode is supported here, vmAttr settings should be verified earlier */
+        option = EPTWriteBack;
+    }
+    return option;
+}
+
+exception_t
+decodeIA32EPTInvocation(
+    word_t label,
+    unsigned int length,
+    cptr_t cptr,
+    cte_t* cte,
+    cap_t cap,
+    extra_caps_t extraCaps,
+    word_t* buffer
+)
+{
+    switch (cap_get_capType(cap)) {
+    case cap_ept_page_directory_pointer_table_cap:
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    case cap_ept_page_directory_cap:
+        return decodeIA32EPTPageDirectoryInvocation(label, length, cte, cap, extraCaps, buffer);
+    case cap_ept_page_table_cap:
+        return decodeIA32EPTPageTableInvocation(label, length, cte, cap, extraCaps, buffer);
+    default:
+        fail("Invalid cap type");
+    }
+}
+
+exception_t
+decodeIA32EPTPageDirectoryInvocation(
+    word_t label,
+    unsigned int length,
+    cte_t* cte,
+    cap_t cap,
+    extra_caps_t extraCaps,
+    word_t* buffer
+)
+{
+    word_t          vaddr;
+    word_t          pdptIndex;
+    cap_t           pdptCap;
+    ept_pdpte_t*    pdpt;
+    ept_pdpte_t*    pdptSlot;
+    ept_pdpte_t     pdpte;
+    paddr_t         paddr;
+
+    (void)paddr;
+
+    if (label == X86EPTPageDirectoryUnmap) {
+        setThreadState(ksCurThread, ThreadState_Restart);
+
+        pdpt = EPT_PDPT_PTR(cap_ept_page_directory_cap_get_capPDMappedObject(cap));
+        if (pdpt) {
+            ept_pde_t* pd = (ept_pde_t*)cap_ept_page_directory_cap_get_capPDBasePtr(cap);
+            unmapEPTPD(pdpt, cap_ept_page_directory_cap_get_capPDMappedIndex(cap), pd);
+            invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+        }
+
+        cap = cap_ept_page_directory_cap_set_capPDMappedObject(cap, 0);
+#if 0
+        cdtUpdate(cte, cap);
+#endif
+        assert(!"not implemented");
+
+        return EXCEPTION_NONE;
+    }
+
+    if (label != X86EPTPageDirectoryMap) {
+        userError("IA32EPTPageDirectory Illegal operation.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (length < 2 || extraCaps.excaprefs[0] == NULL) {
+        userError("IA32EPTPageDirectoryMap: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_ept_page_directory_cap_get_capPDMappedObject(cap)) {
+        userError("IA32EPTPageDirectoryMap: EPT Page directory is already mapped to an EPT page directory pointer table.");
+        current_syscall_error.type =
+            seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    vaddr = getSyscallArg(0, buffer);
+    pdptCap = extraCaps.excaprefs[0]->cap;
+
+    if (cap_get_capType(pdptCap) != cap_ept_page_directory_pointer_table_cap) {
+        userError("IA32EPTPageDirectoryMap: Not a valid EPT page directory pointer table.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 1;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pdpt = (ept_pdpte_t*)cap_ept_page_directory_pointer_table_cap_get_capPDPTBasePtr(pdptCap);
+
+    if (vaddr >= PPTR_BASE) {
+        userError("IA32EPTPageDirectoryMap: vaddr not in kernel window.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 0;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pdptIndex = vaddr >> (PAGE_BITS + EPT_PD_BITS + EPT_PT_BITS);
+    pdptSlot = &pdpt[pdptIndex];
+
+    if (ept_pdpte_ptr_get_read(pdptSlot)) {
+        userError("IA32EPTPageDirectoryMap: Page directory already mapped here.");
+        current_syscall_error.type = seL4_DeleteFirst;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    paddr = pptr_to_paddr((void*)(cap_ept_page_directory_cap_get_capPDBasePtr(cap)));
+//#if 0
+    pdpte = ept_pdpte_new(
+                paddr,                                      /* pd_base_address  */
+                0/*mdb_node_get_cdtDepth(cte->cteMDBNode)*/,     /* avl_cte_depth    */
+                1,                                          /* execute          */
+                1,                                          /* write            */
+                1                                           /* read             */
+            );
+//#endif
+//    assert(!"not implemented");
+
+    cap = cap_ept_page_directory_cap_set_capPDMappedObject(cap, EPT_PDPT_REF(pdpt));
+    cap = cap_ept_page_directory_cap_set_capPDMappedIndex(cap, pdptIndex);
+
+//#if 0
+//    cdtUpdate(cte, cap);
+    cte->cap = cap;
+//#endif
+//    assert(!"not implemented");
+
+    *pdptSlot = pdpte;
+    invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeIA32EPTPageTableInvocation(
+    word_t label,
+    unsigned int length,
+    cte_t* cte,
+    cap_t cap,
+    extra_caps_t extraCaps,
+    word_t* buffer
+)
+{
+    word_t          vaddr;
+    cap_t           pdptCap;
+    ept_pdpte_t*    pdpt;
+    ept_pde_t*      pd;
+    unsigned int    pdIndex;
+    ept_pde_t*      pdSlot;
+    ept_pde_t       pde;
+    paddr_t         paddr;
+    lookupEPTPDSlot_ret_t lu_ret;
+    (void)paddr;
+
+    if (label == X86EPTPageTableUnmap) {
+        setThreadState(ksCurThread, ThreadState_Restart);
+
+        pd = EPT_PD_PTR(cap_ept_page_table_cap_get_capPTMappedObject(cap));
+        if (pd) {
+            ept_pte_t* pt = (ept_pte_t*)cap_ept_page_table_cap_get_capPTBasePtr(cap);
+            unmapEPTPT(pd, cap_ept_page_table_cap_get_capPTMappedIndex(cap), pt);
+            pdpt = lookupEPTPDPTFromPD(pd);
+            if (pdpt) {
+                invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+            }
+        }
+
+        cap = cap_ept_page_table_cap_set_capPTMappedObject(cap, 0);
+#if 0
+        cdtUpdate(cte, cap);
+#endif
+        assert(!"not implemented");
+
+        return EXCEPTION_NONE;
+    }
+
+    if (label != X86EPTPageTableMap) {
+        userError("IA32EPTPageTable Illegal operation.");
+        current_syscall_error.type = seL4_IllegalOperation;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (length < 2 || extraCaps.excaprefs[0] == NULL) {
+        userError("IA32EPTPageTable: Truncated message.");
+        current_syscall_error.type = seL4_TruncatedMessage;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cap_ept_page_table_cap_get_capPTMappedObject(cap)) {
+        userError("IA32EPTPageTable EPT Page table is already mapped to an EPT page directory.");
+        current_syscall_error.type =
+            seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    vaddr = getSyscallArg(0, buffer);
+    pdptCap = extraCaps.excaprefs[0]->cap;
+
+    if (cap_get_capType(pdptCap) != cap_ept_page_directory_pointer_table_cap) {
+        userError("IA32EPTPageTableMap: Not a valid EPT page directory pointer table.");
+        userError("IA32ASIDPool: Invalid vspace root.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 1;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pdpt = (ept_pdpte_t*)(cap_ept_page_directory_pointer_table_cap_get_capPDPTBasePtr(pdptCap));
+
+    if (vaddr >= PPTR_BASE) {
+        userError("IA32EPTPageTableMap: vaddr not in kernel window.");
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 0;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    lu_ret = lookupEPTPDSlot(pdpt, vaddr);
+    if (lu_ret.status != EXCEPTION_NONE) {
+        current_syscall_error.type = seL4_FailedLookup;
+        current_syscall_error.failedLookupWasSource = false;
+        /* current_lookup_fault will have been set by lookupPTSlot */
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pd = lu_ret.pd;
+    pdIndex = lu_ret.pdIndex;
+    pdSlot = pd + pdIndex;
+
+    if (((ept_pde_ptr_get_page_size(pdSlot) == ept_pde_ept_pde_4k) &&
+            ept_pde_ept_pde_4k_ptr_get_read(pdSlot)) ||
+            ((ept_pde_ptr_get_page_size(pdSlot) == ept_pde_ept_pde_2m) &&
+             ept_pde_ept_pde_2m_ptr_get_read(pdSlot))) {
+        userError("IA32EPTPageTableMap: Page table already mapped here");
+        current_syscall_error.type = seL4_DeleteFirst;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    paddr = pptr_to_paddr((void*)(cap_ept_page_table_cap_get_capPTBasePtr(cap)));
+//#if 0
+    pde = ept_pde_ept_pde_4k_new(
+              paddr,                                      /* pt_base_address  */
+              0/*mdb_node_get_cdtDepth(cte->cteMDBNode)*/,     /* avl_cte_depth    */
+              1,                                          /* execute          */
+              1,                                          /* write            */
+              1                                           /* read             */
+          );
+//#endif
+//    assert(!"not implemented");
+
+    cap = cap_ept_page_table_cap_set_capPTMappedObject(cap, EPT_PD_REF(pd));
+    cap = cap_ept_page_table_cap_set_capPTMappedIndex(cap, pdIndex);
+
+//#if 0
+//    cdtUpdate(cte, cap);
+    cte->cap = cap;
+//#endif
+//    assert(!"not implemented");
+
+    *pdSlot = pde;
+    invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeIA32EPTFrameMap(
+    word_t invLabel,
+    word_t length,
+    cte_t* cte,
+    cap_t cap,
+    extra_caps_t excaps,
+    word_t* buffer)
+{
+    word_t          vaddr;
+    word_t          w_rightsMask;
+    paddr_t         paddr;
+    cap_t           pdptCap;
+    ept_pdpte_t*    pdpt;
+    vm_rights_t     capVMRights;
+    vm_rights_t     vmRights;
+    vm_attributes_t vmAttr;
+    vm_page_size_t  frameSize;
+
+    (void)paddr;
+    (void)vmRights;
+    (void)vmAttr;
+
+    frameSize = cap_frame_cap_get_capFSize(cap);
+    vaddr = getSyscallArg(0, buffer);
+    w_rightsMask = getSyscallArg(1, buffer);
+    vmAttr = vmAttributesFromWord(getSyscallArg(2, buffer));
+    pdptCap = excaps.excaprefs[0]->cap;
+
+    capVMRights = cap_frame_cap_get_capFVMRights(cap);
+
+    if (cap_frame_cap_get_capFMappedASID(cap) != asidInvalid) {
+        userError("X86EPTFrameMap: Frame already mapped.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 0;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    assert(cap_frame_cap_get_capFMapType(cap) == X86_MAPPING_NONE);
+
+    if (cap_get_capType(pdptCap) != cap_ept_page_directory_pointer_table_cap) {
+        userError("X86EPTFrameMap: Attempting to map frame into invalid ept pdpt.");
+        current_syscall_error.type = seL4_InvalidCapability;
+        current_syscall_error.invalidCapNumber = 1;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    pdpt = (ept_pdpte_t*)(cap_ept_page_directory_pointer_table_cap_get_capPDPTBasePtr(pdptCap));
+
+    vmRights = maskVMRights(capVMRights, rightsFromWord(w_rightsMask));
+
+    if (!checkVPAlignment(frameSize, vaddr)) {
+        current_syscall_error.type = seL4_AlignmentError;
+
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    paddr = pptr_to_paddr((void*)cap_frame_cap_get_capFBasePtr(cap));
+
+    switch (frameSize) {
+        /* PTE mappings */
+    case X86_SmallPage: {
+        lookupEPTPTSlot_ret_t lu_ret;
+        ept_pte_t *ptSlot;
+
+        lu_ret = lookupEPTPTSlot(pdpt, vaddr);
+        if (lu_ret.status != EXCEPTION_NONE) {
+            current_syscall_error.type = seL4_FailedLookup;
+            current_syscall_error.failedLookupWasSource = false;
+            /* current_lookup_fault will have been set by lookupEPTPTSlot */
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+
+        ptSlot = lu_ret.pt + lu_ret.ptIndex;
+
+        if (ept_pte_ptr_get_page_base_address(ptSlot) != 0) {
+            userError("IA32EPTFrameMap: Mapping already present.");
+            current_syscall_error.type = seL4_DeleteFirst;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        (void)eptCacheFromVmAttr;
+//#if 0
+        *ptSlot = ept_pte_new(
+                      paddr,
+                      0/*mdb_node_get_cdtDepth(cte->cteMDBNode)*/,
+                      0,
+                      eptCacheFromVmAttr(vmAttr),
+                      1,
+                      WritableFromVMRights(vmRights),
+                      1);
+//#endif
+//        assert(!"not implemented");
+
+        invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+
+//#if 0
+//        cap = cap_frame_cap_set_capFMappedObject(cap, EPT_PT_REF(lu_ret.pt));
+//        cap = cap_frame_cap_set_capFMappedIndex(cap, lu_ret.ptIndex);
+        cap = cap_frame_cap_set_capFMappedASID(cap, /*asid is bunk*/ 42);
+        cap = cap_frame_cap_set_capFMappedAddress(cap, vaddr);
+        cap = cap_frame_cap_set_capFMapType(cap, X86_MAPPING_EPT);
+
+//        cdtUpdate(cte, cap);
+        cte->cap = cap;
+//#endif
+//        assert(!"not implemented");
+
+        setThreadState(ksCurThread, ThreadState_Restart);
+        return EXCEPTION_NONE;
+    }
+
+    /* PDE mappings */
+    case X86_LargePage: {
+        lookupEPTPDSlot_ret_t lu_ret;
+        ept_pde_t *pdSlot;
+
+        lu_ret = lookupEPTPDSlot(pdpt, vaddr);
+        if (lu_ret.status != EXCEPTION_NONE) {
+            userError("IA32EPTFrameMap: Need a page directory first.");
+            current_syscall_error.type = seL4_FailedLookup;
+            current_syscall_error.failedLookupWasSource = false;
+            /* current_lookup_fault will have been set by lookupEPTPDSlot */
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+
+        pdSlot = lu_ret.pd + lu_ret.pdIndex;
+
+        if ((ept_pde_ptr_get_page_size(pdSlot) == ept_pde_ept_pde_4k) &&
+                ept_pde_ept_pde_4k_ptr_get_read(pdSlot)) {
+            userError("IA32EPTFrameMap: Page table already present.");
+            current_syscall_error.type = seL4_DeleteFirst;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        if ((ept_pde_ptr_get_page_size(pdSlot + 1) == ept_pde_ept_pde_4k) &&
+                ept_pde_ept_pde_4k_ptr_get_read(pdSlot + 1)) {
+            userError("IA32EPTFrameMap: Page table already present.");
+            current_syscall_error.type = seL4_DeleteFirst;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        if ((ept_pde_ptr_get_page_size(pdSlot) == ept_pde_ept_pde_2m) &&
+                ept_pde_ept_pde_2m_ptr_get_read(pdSlot)) {
+            userError("IA32EPTFrameMap: Mapping already present.");
+            current_syscall_error.type = seL4_DeleteFirst;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+
+        if (LARGE_PAGE_BITS == X86_4M_bits) {
+#if 0
+            pdSlot[1] = ept_pde_ept_pde_2m_new(
+                            paddr + (1 << 21),
+                            mdb_node_get_cdtDepth(cte->cteMDBNode),
+                            0,
+                            eptCacheFromVmAttr(vmAttr),
+                            1,
+                            WritableFromVMRights(vmRights),
+                            1);
+#endif
+            assert(!"not implemented");
+        }
+#if 0
+        pdSlot[0] = ept_pde_ept_pde_2m_new(
+                        paddr,
+                        mdb_node_get_cdtDepth(cte->cteMDBNode),
+                        0,
+                        eptCacheFromVmAttr(vmAttr),
+                        1,
+                        WritableFromVMRights(vmRights),
+                        1);
+#endif
+        assert(!"not implemented");
+
+        invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+
+#if 0
+        cap = cap_frame_cap_set_capFMappedObject(cap, EPT_PD_REF(lu_ret.pd));
+        cap = cap_frame_cap_set_capFMappedIndex(cap, lu_ret.pdIndex);
+        cap = cap_frame_cap_set_capFMappedType(cap, IA32_MAPPING_EPT);
+        cdtUpdate(cte, cap);
+#endif
+        assert(!"not implemented");
+
+        setThreadState(ksCurThread, ThreadState_Restart);
+        return EXCEPTION_NONE;
+    }
+
+    default:
+        fail("Invalid page type");
+    }
+}
+
+void IA32EptPdpt_Init(ept_pml4e_t * pdpt)
+{
+    /* Map in a PDPT for the 512GB region. */
+    pdpt[0] = ept_pml4e_new(
+                  pptr_to_paddr((void*)(pdpt + BIT(EPT_PDPT_BITS))),
+                  1,
+                  1,
+                  1
+              );
+    invept(pdpt);
+}
+
+void IA32PageUnmapEPT(cap_t cap)
+{
+    (void)lookupEPTPDPTFromPT;
+#if 0
+    void *object = (void*)cap_frame_cap_get_capFMappedObject(cap);
+    uint32_t index = cap_frame_cap_get_capFMappedIndex(cap);
+    ept_pdpte_t *pdpt;
+    switch (cap_frame_cap_get_capFSize(cap)) {
+    case IA32_SmallPage: {
+        ept_pte_t *pt = EPT_PT_PTR(object);
+        pt[index] = ept_pte_new(0, 0, 0, 0, 0, 0, 0);
+        pdpt = lookupEPTPDPTFromPT(pt);
+        break;
+    }
+    case IA32_LargePage: {
+        ept_pde_t *pd = EPT_PD_PTR(object);
+        pd[index] = ept_pde_ept_pde_2m_new(0, 0, 0, 0, 0, 0, 0);
+        if (LARGE_PAGE_BITS == X86_4M_bits) {
+            pd[index + 1] = ept_pde_ept_pde_2m_new(0, 0, 0, 0, 0, 0, 0);
+        }
+        pdpt = lookupEPTPDPTFromPD(pd);
+        break;
+    }
+    default:
+        fail("Invalid page type");
+    }
+    if (pdpt) {
+        invept((void*)((uint32_t)pdpt - EPT_PDPT_OFFSET));
+    }
+#endif
+    assert(!"not implemented");
+}
+
+#endif /* VTX */
+

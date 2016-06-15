@@ -46,5 +46,12 @@
         <config condition="defined CONFIG_BENCHMARK_TRACK_UTILISATION">
             <syscall name="BenchmarkGetThreadUtilisation"  />
         </config>
+        <!-- This is not a debug syscall, but it needs to not appear in the 'API' syscall list
+             so that the check of 'is this a valid syscall' can remain a simple range check.
+             Therefore we'll put this here and the arch code will handle it before
+             passing to handleUnknownSyscall -->
+        <config condition="CONFIG_VTX">
+            <syscall name="VMEnter"/>
+        </config>        
     </debug>
 </syscalls>

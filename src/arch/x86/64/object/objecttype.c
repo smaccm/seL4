@@ -93,17 +93,24 @@ cap_t Mode_finaliseCap(cap_t cap, bool_t final)
 
     case cap_frame_cap:
         if (final && cap_frame_cap_get_capFMappedASID(cap)) {
-            if (cap_frame_cap_get_capFMapType(cap) == X86_MAPPING_IOSPACE) {
+            switch (cap_frame_cap_get_capFMapType(cap)) {
+            case X86_MAPPING_IOSPACE:
                 unmapIOPage(cap);
                 break;
+            case X86_MAPPING_EPT:
+                assert(!"not implemented");
+                break;
+            case X86_MAPPING_VSPACE:
+                unmapPage(
+                    cap_frame_cap_get_capFSize(cap),
+                    cap_frame_cap_get_capFMappedASID(cap),
+                    cap_frame_cap_get_capFMappedAddress(cap),
+                    (void *)cap_frame_cap_get_capFBasePtr(cap)
+                );
+                break;
+            default:
+                fail("Invalid map type");
             }
-
-            unmapPage(
-                cap_frame_cap_get_capFSize(cap),
-                cap_frame_cap_get_capFMappedASID(cap),
-                cap_frame_cap_get_capFMappedAddress(cap),
-                (void *)cap_frame_cap_get_capFBasePtr(cap)
-            );
         }
         break;
 

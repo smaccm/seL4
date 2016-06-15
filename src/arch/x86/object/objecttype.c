@@ -21,6 +21,7 @@
 #include <plat/machine/devices.h>
 
 #include <arch/object/iospace.h>
+#include <arch/object/vcpu.h>
 #include <plat/machine/intel-vtd.h>
 
 deriveCap_ret_t Arch_deriveCap(cte_t* slot, cap_t cap)
@@ -196,6 +197,7 @@ cap_t Arch_finaliseCap(cap_t cap, bool_t final)
         }
         break;
 
+    /* TODO: vtx objects */
     default:
         return Mode_finaliseCap(cap, final);
     }
@@ -293,6 +295,7 @@ cap_t Arch_recycleCap(bool_t is_final, cap_t cap)
         clearMemory((void*)cap_get_capPtr(cap), cap_get_capSizeBits(cap));
         Arch_finaliseCap(cap, true);
         return resetMemMapping(cap);
+    /* TODO: vtx objects */
 
     default:
         return Mode_recycleCap(is_final, cap);
@@ -415,6 +418,14 @@ Arch_getObjectSize(word_t t)
         return seL4_PDPTBits;
     case seL4_X86_IOPageTableObject:
         return seL4_IOPageTableBits;
+    case seL4_X86_VCPUObject:
+        return seL4_X86_VCPUBits;
+    case seL4_X86_EPTPageDirectoryPointerTableObject:
+        return seL4_X86_EPTPageDirectoryPointerTableBits;
+    case seL4_X86_EPTPageDirectoryObject:
+        return seL4_X86_EPTPageDirectoryBits;
+    case seL4_X86_EPTPageTableObject:
+        return seL4_X86_EPTPageTableBits;
     default:
         return Mode_getObjectSize(t);
     }
@@ -423,7 +434,41 @@ Arch_getObjectSize(word_t t)
 cap_t
 Arch_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMemory)
 {
-    return Mode_createObject(t, regionBase, userSize, deviceMemory);
+    switch (t) {
+    case seL4_X86_VCPUObject: {
+        vcpu_t *vcpu;
+        memzero(regionBase, 1 << seL4_X86_VCPUBits);
+        vcpu = VCPU_PTR((word_t)regionBase);
+        vcpu_init(vcpu);
+        return cap_vcpu_cap_new(VCPU_REF(vcpu));
+    }
+    case seL4_X86_EPTPageDirectoryPointerTableObject: {
+        ept_pml4e_t *pml4;
+        memzero(regionBase, 1 << seL4_X86_EPTPageDirectoryPointerTableBits);
+        pml4 = (ept_pml4e_t*)((word_t)regionBase);
+        IA32EptPdpt_Init(pml4);
+        return cap_ept_page_directory_pointer_table_cap_new(
+                   (word_t)regionBase + EPT_PDPT_OFFSET /* capPTBasePtr   */);
+    }
+    case seL4_X86_EPTPageDirectoryObject:
+        memzero(regionBase, 1 << seL4_X86_EPTPageDirectoryBits);
+
+        return cap_ept_page_directory_cap_new(
+                   0,                  /* capPDMappedObject    */
+                   0,                  /* capPDMappedIndex     */
+                   (word_t)regionBase  /* capPTBasePtr         */
+               );
+    case seL4_X86_EPTPageTableObject:
+        memzero(regionBase, 1 << seL4_X86_EPTPageTableBits);
+
+        return cap_ept_page_table_cap_new(
+                   0,                  /* capPTMappedObject    */
+                   0,                  /* capPTMappedIndex     */
+                   (word_t)regionBase  /* capPTBasePtr         */
+               );
+    default:
+        return Mode_createObject(t, regionBase, userSize, deviceMemory);
+    }
 }
 
 exception_t
@@ -447,6 +492,17 @@ Arch_decodeInvocation(
         return decodeX86IOSpaceInvocation(invLabel, cap);
     case cap_io_page_table_cap:
         return decodeX86IOPTInvocation(invLabel, length, slot, cap, excaps, buffer);
+#ifdef CONFIG_VTX
+    case cap_ept_page_directory_pointer_table_cap:
+    case cap_ept_page_directory_cap:
+    case cap_ept_page_table_cap:
+        return decodeIA32EPTInvocation(invLabel, length, cptr, slot, cap, excaps, buffer);
+#endif
+
+#ifdef CONFIG_VTX
+    case cap_vcpu_cap:
+        return decodeIA32VCPUInvocation(invLabel, length, cptr, slot, cap, excaps, buffer);
+#endif
     default:
         return Mode_decodeInvocation(invLabel, length, cptr, slot, cap, excaps, buffer);
     }

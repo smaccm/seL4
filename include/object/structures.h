@@ -142,6 +142,7 @@ enum _thread_state {
     ThreadState_BlockedOnSend,
     ThreadState_BlockedOnReply,
     ThreadState_BlockedOnNotification,
+    ThreadState_RunningVM,
     ThreadState_IdleThreadState
 };
 typedef word_t _thread_state_t;

@@ -29,6 +29,11 @@
 #define seL4_IOPageTableBits 12
 #define seL4_ASIDPoolBits    12
 
+#define seL4_X86_VCPUBits 14
+#define seL4_X86_EPTPageDirectoryPointerTableBits 13
+#define seL4_X86_EPTPageDirectoryBits 12
+#define seL4_X86_EPTPageTableBits 12
+
 #ifdef CONFIG_PAE_PAGING
 #define seL4_PDPTBits         5
 #define seL4_LargePageBits    21

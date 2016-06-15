@@ -331,6 +331,12 @@ decodeTCBInvocation(word_t invLabel, word_t length, cap_t cap,
     case TCBUnbindNotification:
         return decodeUnbindNotification(cap);
 
+        /* This is temporary until arch specific TCB operations are implemented */
+#ifdef CONFIG_VTX
+    case TCBSetEPTRoot:
+        return decodeSetEPTRoot(cap, excaps);
+#endif
+
     default:
         /* Haskell: "throw IllegalOperation" */
         userError("TCB: Illegal operation.");

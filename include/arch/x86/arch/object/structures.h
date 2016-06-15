@@ -20,8 +20,19 @@
 #include <arch/machine/hardware.h>
 #include <arch/machine/registerset.h>
 
+enum tcb_arch_cnode_index {
+    /* VSpace root for running any associated VCPU in */
+    tcbArchEPTRoot = tcbCNodeEntries,
+    tcbArchCNodeEntries
+};
+
 typedef struct arch_tcb {
     user_context_t tcbContext;
+#ifdef CONFIG_VTX
+    /* Pointer to associated VCPU. NULL if not associated.
+     * tcb->vcpu->tcb == tcb. */
+    struct vcpu *vcpu;
+#endif
 } arch_tcb_t;
 
 struct user_data {
@@ -53,6 +64,40 @@ typedef struct user_data user_data_t;
 #define VTD_PT_BITS       9
 
 compile_assert(vtd_pt_size_sane, VTD_PT_BITS + VTD_PTE_SIZE_BITS == seL4_IOPageTableBits)
+
+#define EPT_PDPTE_SIZE_BITS  3
+#define EPT_PDPTE_PTR(r)     ((ept_pdpte_t *)(r))
+#define EPT_PDPTE_PTR_PTR(r) ((ept_pdpte_t **)(r))
+#define EPT_PDPTE_REF(p)     ((word_t)(p))
+
+#define EPT_PDPT_BITS      9
+#define EPT_PDPT_SIZE_BITS (EPT_PDPT_BITS+EPT_PDPTE_SIZE_BITS)
+#define EPT_PML4_SIZE_BITS (EPT_PDPT_SIZE_BITS+1)
+#define EPT_PDPT_PTR(r)    ((ept_pdpte_t *)(r))
+#define EPT_PDPT_REF(p)    ((word_t)(p))
+#define EPT_PDPT_OFFSET    (1 << EPT_PDPT_SIZE_BITS)
+
+#define EPT_PDE_SIZE_BITS  3
+#define EPT_PDE_PTR(r)     ((ept_pde_t *)(r))
+#define EPT_PDE_PTR_PTR(r) ((ept_pde_t **)(r))
+#define EPT_PDE_REF(p)     ((word_t)(p))
+
+#define EPT_PD_BITS      9
+#define EPT_PD_SIZE_BITS (PD_BITS+PDE_SIZE_BITS)
+#define EPT_PD_PTR(r)    ((ept_pde_t *)(r))
+#define EPT_PD_REF(p)    ((word_t)(p))
+
+#define EPT_PTE_SIZE_BITS 3
+#define EPT_PTE_PTR(r)    ((ept_pte_t *)(r))
+#define EPT_PTE_REF(p)    ((word_t)(p))
+
+#define EPT_PT_BITS      9
+#define EPT_PT_SIZE_BITS (PT_BITS+PTE_SIZE_BITS)
+#define EPT_PT_PTR(r)    ((ept_pte_t *)(r))
+#define EPT_PT_REF(p)    ((word_t)(p))
+
+#define VCPU_PTR(r)       ((vcpu_t *)(r))
+#define VCPU_REF(p)       ((word_t)(p))
 
 /* helper structure for filling descriptor registers */
 typedef struct gdt_idt_ptr {

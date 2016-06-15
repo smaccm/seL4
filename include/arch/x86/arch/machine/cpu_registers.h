@@ -18,6 +18,7 @@
 #define CR4_OSFXSR          BIT(9)  /* Enable SSE et. al. features. */
 #define CR4_OSXMMEXCPT      BIT(10) /* Enable SSE exceptions. */
 #define CR4_OSXSAVE         BIT(18) /* Enavle XSAVE feature set */
+#define CR4_VMXE            BIT(13) /* Enable VMX mode. */
 
 /* We use a dummy variable to synchronize reads and writes to the control registers.
  * this allows us to write inline asm blocks that do not have enforced memory

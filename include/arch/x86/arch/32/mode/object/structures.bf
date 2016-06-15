@@ -126,6 +126,44 @@ block io_page_table_cap {
     field       capType         8
 }
 
+block vcpu_cap {
+    padding              32
+
+    field_high capVCPUPtr 24
+    field capType         8
+}
+
+-- Third-level EPT page table
+block ept_page_table_cap {
+    padding                         3
+    field_high  capPTMappedObject   20
+    field       capPTMappedIndex    9
+
+    padding                         4
+    field_high  capPTBasePtr        20
+    field       capType             8
+}
+
+-- Second-level EPT page table (page directory)
+block ept_page_directory_cap {
+    padding                         3
+    field_high  capPDMappedObject   20
+    field       capPDMappedIndex    9
+
+    padding                         4
+    field_high  capPDBasePtr        20
+    field       capType             8
+}
+
+-- First-level EPT page table (page directory pointer table)
+block ept_page_directory_pointer_table_cap {
+    padding                         32
+
+    padding                         4
+    field_high  capPDPTBasePtr      20
+    field       capType             8
+}
+
 -- NB: odd numbers are arch caps (see isArchCap())
 tagged_union cap capType {
     mask 4 0xe
@@ -162,6 +200,11 @@ tagged_union cap capType {
     -- 8-bit tag arch caps
     tag io_page_table_cap   0x0f
     tag io_port_cap         0x1f
+    tag vcpu_cap                               0x2f
+    tag ept_page_table_cap                     0x3f
+    tag ept_page_directory_pointer_table_cap   0x4f
+    tag ept_page_directory_cap                 0x5f
+                
 }
 
 ---- Arch-independent object types
@@ -416,4 +459,66 @@ block pte {
     field       super_user          1
     field       read_write          1
     field       present             1
+}
+
+block ept_pml4e {
+    padding                         32
+    field_high   pdpt_base_address  20
+    padding                         9
+    field        execute            1
+    field        write              1
+    field        read               1
+}
+
+block ept_pdpte {
+    padding                         32
+    field_high   pd_base_address    20
+    field        avl_cte_depth      3
+    padding                         6
+    field        execute            1
+    field        write              1
+    field        read               1
+}
+
+block ept_pde_2m {
+    padding                         32
+    field_high   page_base_address  12
+    padding                         8
+    field        avl_cte_depth      2
+    padding                         2
+    field        page_size          1
+    field        ignore_pat         1
+    field        type               3
+    field        execute            1
+    field        write              1
+    field        read               1
+}
+
+block ept_pde_4k {
+    padding                         32
+    field_high   pt_base_address    20
+    field        avl_cte_depth      3
+    padding                         1
+    field        page_size          1
+    padding                         4
+    field        execute            1
+    field        write              1
+    field        read               1
+}
+
+tagged_union ept_pde page_size {
+    tag ept_pde_4k 0
+    tag ept_pde_2m 1
+}
+
+block ept_pte {
+    padding                         32
+    field_high   page_base_address  20
+    field        avl_cte_depth      2
+    padding                         3
+    field        ignore_pat         1
+    field        type               3
+    field        execute            1
+    field        write              1
+    field        read               1
 }

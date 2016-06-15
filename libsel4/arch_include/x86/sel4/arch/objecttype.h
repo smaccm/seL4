@@ -23,12 +23,25 @@ typedef enum _object {
 #ifdef CONFIG_IOMMU
     seL4_X86_IOPageTableObject,
 #endif
+#ifdef CONFIG_VTX
+    seL4_X86_VCPUObject,
+    seL4_X86_EPTPageDirectoryPointerTableObject,
+    seL4_X86_EPTPageDirectoryObject,
+    seL4_X86_EPTPageTableObject,
+#endif
     seL4_ObjectTypeCount
 } seL4_ArchObjectType;
 typedef seL4_Word object_t;
 
 #ifndef CONFIG_IOMMU
 #define seL4_X86_IOPageTableObject 0xffffff
+#endif
+
+#ifndef CONFIG_VTX
+#define seL4_X86_VCPUObject 0xfffffe
+#define seL4_X86_EPTPageDirectoryPointerTableObject 0xfffffd
+#define seL4_X86_EPTPageDirectoryObject 0xfffffc
+#define seL4_X86_EPTPageTableObject 0xfffffb
 #endif
 
 #endif

@@ -49,6 +49,7 @@ isRunnable(const tcb_t *thread)
     switch (thread_state_get_tsType(thread->tcbState)) {
     case ThreadState_Running:
     case ThreadState_Restart:
+    case ThreadState_RunningVM:
         return true;
 
     default:
@@ -68,6 +69,7 @@ activateThread(void)
 {
     switch (thread_state_get_tsType(ksCurThread->tcbState)) {
     case ThreadState_Running:
+    case ThreadState_RunningVM:
         break;
 
     case ThreadState_Restart: {

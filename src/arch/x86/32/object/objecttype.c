@@ -71,6 +71,9 @@ cap_t Mode_finaliseCap(cap_t cap, bool_t final)
     case cap_frame_cap:
         if (final && cap_frame_cap_get_capFMappedASID(cap)) {
             switch (cap_frame_cap_get_capFMapType(cap)) {
+            case X86_MAPPING_EPT:
+                assert(!"not implemented");
+                break;
             case X86_MAPPING_VSPACE:
                 unmapPage(
                     cap_frame_cap_get_capFSize(cap),
@@ -210,12 +213,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
                );
 
     default:
-        /*
-         * This is a conflation of the haskell error: "Arch.createNewCaps
-         * got an API type" and the case where an invalid object type is
-         * passed (which is impossible in haskell).
-         */
-        fail("Arch_createObject got an API type or invalid object type");
+        fail("Mode_createObject got an API type or invalid object type");
     }
 }
 
