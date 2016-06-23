@@ -482,6 +482,11 @@ init_cpu(
         return false;
     }
 
+    /* Initialize hardware breakpoints */
+    if (!Arch_initHardwareBreakpoints()) {
+        return false;
+    }
+
     /* initialise floating-point unit */
     if (!Arch_initFpu()) {
         return false;

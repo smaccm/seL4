@@ -16,12 +16,14 @@
 #include <api/syscall.h>
 #include <api/failures.h>
 #include <api/faults.h>
+#include <arch/machine/debug.h>
 #include <kernel/cspace.h>
 #include <kernel/faulthandler.h>
 #include <kernel/thread.h>
 #include <kernel/vspace.h>
 #include <machine/io.h>
 #include <machine/timer.h>
+#include <machine/registerset.h>
 #include <object/interrupt.h>
 #include <model/statedata.h>
 #include <string.h>
@@ -270,6 +272,59 @@ handleUserLevelFault(word_t w_a, word_t w_b)
 
     return EXCEPTION_NONE;
 }
+
+#if defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64)
+exception_t
+handleUserLevelDebugException(int int_vector)
+{
+    int bp_num;
+    word_t bp_vaddr;
+    arch_tcb_t *context;
+    word_t reason;
+
+#if defined(DEBUG) || defined(CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES)
+    ksKernelEntry.path = Entry_UserLevelFault;
+    ksKernelEntry.word = int_vector;
+#else
+    (void)int_vector;
+#endif /* DEBUG */
+
+#ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
+    benchmark_track_start();
+#endif
+
+    context = &ksCurThread->tcbArch;
+
+    /* If the caller asked us to skip over N instructions before generating the
+     * next single-step breakpoint, we shouldn't bother to construct a fault
+     * message until we've skipped N instructions.
+     */
+    if (singleStepFaultCounterReady(context) == false) {
+        return EXCEPTION_NONE;
+    }
+
+    bp_num = getAndResetActiveBreakpoint(context, &bp_vaddr, &reason);
+    if (bp_num >= 0) {
+        current_fault = fault_debug_exception_new(bp_vaddr, bp_num, reason);
+    } else if (testAndResetSingleStepException(context, &bp_vaddr) == true) {
+        current_fault = fault_debug_exception_new(bp_vaddr, 0,
+                                                  seL4_DebugException_SingleStep);
+    } else {
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    handleFault(ksCurThread);
+
+    schedule();
+    activateThread();
+
+#ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
+    benchmark_track_exit();
+#endif
+
+    return EXCEPTION_NONE;
+}
+#endif /* defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64) */
 
 exception_t
 handleVMFaultEvent(vm_fault_type_t vm_faultType)

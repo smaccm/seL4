@@ -139,6 +139,29 @@ word_t setMRs_fault(tcb_t *sender, tcb_t* receiver, word_t *receiveIPCBuffer)
         setRegister(receiver, msgRegisters[0], fault_temporal_get_data(sender->tcbFault));
         return 1u;
 
+    case fault_debug_exception: {
+        word_t reason = fault_debug_exception_get_exceptionReason(sender->tcbFault);
+        setRegister(receiver, msgRegisters[0], getRestartPC(sender));
+        setRegister(receiver, msgRegisters[1],
+                    fault_debug_exception_get_exceptionReason(sender->tcbFault));
+
+        if (!receiveIPCBuffer) {
+            return n_msgRegisters;
+        }
+
+        receiveIPCBuffer[2 + 1] = fault_debug_exception_get_breakpointAddress(sender->tcbFault);
+
+        if (reason != seL4_DebugException_SingleStep) {
+            /* Breakpoint messages also set a "breakpoint number" register. */
+            receiveIPCBuffer[2 + 2] =
+                fault_debug_exception_get_breakpointNumber(sender->tcbFault);
+
+            return 4;
+        } else {
+            return 3;
+        }
+    }
+
     default:
         fail("Invalid fault");
     }

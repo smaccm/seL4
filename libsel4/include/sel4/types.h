@@ -33,6 +33,7 @@ typedef enum {
     seL4_UserException,
     seL4_TemporalFault,
     seL4_NoFaultHandler,
+    seL4_DebugException,
     SEL4_FORCE_LONG_ENUM(seL4_FaultType),
 } seL4_FaultType;
 

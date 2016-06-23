@@ -30,6 +30,8 @@ registers. While it is not compulsory that a thread has an IPC buffer,
 it will not be able to perform most kernel invocations, as they require
 cap transfer.
 
+Each thread belongs to exactly one security domain (see
+\autoref{sec:domains}).
 %FIXME: there is much more information held in the TCB!
 
 \subsection{Thread Creation}
@@ -50,7 +52,7 @@ or by seperately calling the \apifunc{seL4\_TCB\_Resume}{tcb_resume} method.
 
 The \apifunc{seL4\_TCB\_Suspend}{tcb_suspend} method deactivates a thread.
 Suspended threads can later be resumed.
-Their suspended state can be retrieved with the 
+Their suspended state can be retrieved with the
 \apifunc{seL4\_TCB\_ReadRegisters}{tcb_readregisters} and
 \apifunc{seL4\_TCB\_CopyRegisters}{tcb_copyregisters} methods.
 They can also be reconfigured and
@@ -223,7 +225,15 @@ Additionally, if the system criticality is changed while a thread with higher cr
 \label{sec:read_write_registers}
 
 The registers of a thread can be read and written with the
-\apifunc{seL4\_TCB\_ReadRegisters}{tcb_readregisters} and \apifunc{seL4\_TCB\_WriteRegisters}{tcb_writeregisters} methods. The register contents are transferred via the IPC buffer. The IPC buffer locations that registers are copied to/from are given below.
+\apifunc{seL4\_TCB\_ReadRegisters}{tcb_readregisters} and \apifunc{seL4\_TCB\_WriteRegisters}{tcb_writeregisters} methods.
+For some registers, the kernel will silently mask certain bits or ranges of bits off, and force them to contain certain
+values to ensure that they cannot be maliciously set to values that would compromise the running system, or to respect
+values that the architecture specifications have mandated to be certain values. On X86, these bits are:
+\begin{itemize}
+\item \texttt{EFLAGS}: Bits 1, 3 and 5, TF, Bits 12-31, and IF.
+\end{itemize}
+
+The register contents are transferred via the IPC buffer. The IPC buffer locations that registers are copied to/from are given below.
 
 \ifxeightsix
 \subsubsection{IA-32}
@@ -272,7 +282,7 @@ The registers of a thread can be read and written with the
 A thread's actions may result in a fault. Faults are delivered to the
 thread's exception handler so that it can take the appropriate action.
 The fault type is specified in the message label and is one of:
-seL4\_CapFault, seL4\_VMFault, seL4\_UnknownSyscall, seL4\_UserException, seL4\_Interrupt or seL4\_TemporalFault.
+seL4\_CapFault, seL4\_VMFault, seL4\_UnknownSyscall, seL4\_UserException, seL4\_DebugException, seL4\_Interrupt or seL4\_TemporalFault.
 
 \subsection{Capability Faults}
 
@@ -426,6 +436,101 @@ IA-32 architecture.}
 \end{table}
 \fi
 
+\subsection{Debug Exception: Breakpoints and Watchpoints}
+\label{sec:debug_exceptions}
+
+Debug exceptions are used to deliver trace and debug related events to threads.
+Breakpoints, watchpoints, trace-events and instruction-performance sampling
+events are examples.
+
+\subsubsection{Arguments:}
+
+\texttt{Bp\_num}: The hardware ID of a target breakpoint. This ID will be
+a positive integer, with values ranging from \texttt{0} to
+\texttt{seL4\_NumBreakpoints}. \texttt{seL4\_NumBreakpoints} is defined for each
+target platform to reflect the number of available breakpoints/watchpoints.
+
+\texttt{Vaddr}: A virtual address which forms part of the match conditions
+for the triggering of the breakpoint.
+
+\texttt{Type} is one of: \texttt{seL4\_InstructionBreakpoint}, which specifies
+that the breakpoint should occur on instruction execution at the specified
+\texttt{vaddr} or \texttt{seL4\_DataBreakpoint}, which states that the breakpoint
+should occur on data access at the specified \texttt{vaddr}.
+
+\texttt{Size} is a positive integer indicating the span of the breakpoint.
+Must be zero for \texttt{seL4\_InstructionBreakpoint}.
+
+\texttt{Rw} is
+one of \texttt{seL4\_BreakOnRead}, which means the breakpoint will only be
+triggered on read-access (this is the only allowed value when configuring an
+instruction breakpoint); \texttt{seL4\_BreakOnWrite} which means that the
+breakpoint will only be triggered on write-access, and
+\texttt{seL4\_BreakOnReadWrite} which means the breakpoint will be triggered on
+any access.
+
+\subsubsection{ARM}
+
+\begin{table}[htb]
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+\textbf{Value sent} & \textbf{Register set by reply} & \textbf{IPC buffer location} \\
+\midrule
+\reg{Breakpoint address} & (same) & \ipcbloc{IPCBuffer[0]} \\
+\reg{Exception reason} & (same) & \ipcbloc{IPCBuffer[1]} \\
+\reg{Breakpoint ID} & (same) & \ipcbloc{IPCBuffer[2]} \\
+\bottomrule
+\end{tabularx}
+\caption{\label{tbl:debug_exception_result_arm}Debug exception outcome on the ARM
+architecture.}
+\end{table}
+
+\ifxeightsix
+\subsubsection{IA-32}
+
+\begin{table}[htb]
+\begin{tabularx}{\textwidth}{XXX}
+\toprule
+\textbf{Value sent} & \textbf{Register set by reply} & \textbf{IPC buffer location} \\
+\midrule
+\reg{Breakpoint address} & (same) & \ipcbloc{IPCBuffer[0]} \\
+\reg{Exception reason} & (same) & \ipcbloc{IPCBuffer[1]} \\
+\reg{Breakpoint ID} & (same) & \ipcbloc{IPCBuffer[2]} \\
+\bottomrule
+\end{tabularx}
+\caption{\label{tbl:debug_exception_result_ia32}Debug exception outcome on the
+IA-32 architecture.}
+\end{table}
+\fi
+
+\subsection{Debug Exception: Single-stepping}
+\label{sec:single_stepping_debug_exception}
+
+The kernel provides support for the use of hardware single-stepping. To this end
+it exposes the invocation, \texttt{seL4\_TCB\_ConfigureSingleStepping}.
+
+\subsubsection{Arguments:}
+
+\texttt{bp\_num}: The caller is expected to select a hardware breakpoint ID to use for setting up
+the single-stepping functionality. However, not all hardware platforms require hardware breakpoint
+registers to provide single-stepping functionality. If the caller's hardware platform requires the
+use of hardware breakpoint registers, it will use the breakpoint register given to it in \texttt{bp\_num},
+and return \texttt{true} in \texttt{bp\_was\_consumed}. If the underlying platform does not need a hardware
+breakpoint to provide single-stepping, seL4 will return \texttt{false} in \texttt{bp\_was\_consumed} and
+leave \texttt{bp\_num} unchanged. If \texttt{bp\_was\_consumed} is \texttt{true}, the caller should not
+attempt to re-configure \texttt{bp\_num} for Breakpoint or Watchpoint usage until the caller no longer
+needs to use single-stepping.
+
+\texttt{num\_instructions}: The kernel supports single-stepping, and also supports skipping a certain
+number of instructions before delivering the single-step fault message. \texttt{Num\_instructions}
+should be set to \texttt{1} when single-stepping, or any non-zero integer value to skip that many
+instructions before resuming single-stepping.
+
+Setting \texttt{num\_instructions} to \texttt{0} \textbf{disables single stepping}. This can be
+done either by setting the \texttt{num\_instructions} argument to \texttt{seL4\_TCB\_ConfigureSingleStepping}
+to zero, or by replying to the Debug Exception message generated by the single-stepping feature, with
+a value of zero.
+
 \subsection{VM Fault}
 \label{sec:vm-fault}
 
@@ -459,5 +564,22 @@ They allow a temporal exception handler to take some action to restore the threa
 Data word from the scheduling context object that the thread was running on when the fault occured. & \ipcbloc{IPCBuffer[0]} \\
 \bottomrule
 \end{tabularx}\\ \\
+\section{Domains}
+\label{sec:domains}
+
+Domains are used to isolate independent subsystems, so as to limit
+information flow between them.
+The kernel switches between domains according to a fixed, time-triggered
+schedule.
+The fixed schedule is compiled into the kernel via the constant
+\texttt{CONFIG\_NUM\_DOMAINS} and the global variable \texttt{ksDomSchedule}.
+
+A thread belongs to exactly one domain, and will only run when that domain
+is active.
+The \apifunc{seL4\_DomainSet\_Set}{domainset_set} method changes the domain
+of a thread.
+The caller must possess a \obj{Domain} cap and the thread's \obj{TCB} cap.
+The initial thread starts with a \obj{Domain} cap (see
+\autoref{sec:messageinfo}).
 
 

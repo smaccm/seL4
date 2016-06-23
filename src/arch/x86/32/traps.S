@@ -347,6 +347,7 @@ handle_interrupt:
     andb    %bl, %dl         # we have a kernel exception if both BL and DL are 1
     jnz     kernel_exception
 
+kernel_exception_return:
     # switch to kernel stack
     leal    kernel_stack_alloc + 4096, %esp
 
@@ -360,6 +361,56 @@ handle_interrupt:
 # Handle a kernel exception
 
 BEGIN_FUNC(kernel_exception)
+    /* Before giving up and panicking, we need to test for the extra case that
+     * this might be a kernel exception that is the result of EFLAGS.TF being
+     * set when SYSENTER was called.
+     *
+     * Since EFLAGS.TF is not disabled by SYSENTER, single-stepping continues
+     * into the kernel, and so causes a debug-exception in kernel code, since
+     * the CPU is trying to single-step the kernel code.
+     *
+     * So we test for EFLAGS.TF, and if it's set, we unset it, and let the
+     * exception continue. The debug exception handler will notice that it was
+     * kernel exception, and handle it appropriately -- that really just means
+     * setting EFLAGS.TF before SYSEXIT.
+     */
+    movl    64(%esp), %eax
+    movl    $(1<<8), %ebx
+    testl   %ebx, %eax
+    je      .not_eflags_tf
+
+    /* Else it was EFLAGS.TF that caused the kernel exception on SYSENTER.
+     * So, unset the EFLAGS.TF on the stack and this causes the syscall that we
+     * will return to, to be able to execute properly.
+     *
+     * It will then be the debug exception handler's responsibility to re-set
+     * EFLAGS.TF for the userspace thread before it returns.
+     *
+     * So at this point we want to just unset EFLAGS.TF and IRET immediately.
+     */
+    andl    $~(1<<8), %eax
+    movl    %eax, 64(%esp)
+
+    /* Begin popping registers to IRET now. We don't need to consider any
+     * unexpected side effects because we are just immediately returning after
+     * entering.
+     */
+    popl    %eax
+    popl    %ebx
+    popl    %ecx
+    popl    %edx
+    popl    %esi
+    popl    %esi
+    popl    %ebp
+    popl    %ds
+    popl    %es
+    popl    %fs
+    popl    %gs
+    /* Skip FaultIP, TLS_BASE and error-code. */
+    addl    $12, %esp
+    iretl
+
+.not_eflags_tf:
 #ifdef DEBUG
     # prepare debug info
     movl    52(%esp), %eax # EAX contains Error Code

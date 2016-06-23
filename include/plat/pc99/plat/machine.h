@@ -20,6 +20,7 @@
 
 typedef enum _interrupt_t {
     int_invalid        = -1,
+    int_debug	       = 1,
     int_unimpl_dev     = 7,
     int_page_fault     = 14,
     int_irq_min        = IRQ_INT_OFFSET, /* First IRQ. */

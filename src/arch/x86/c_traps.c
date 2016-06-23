@@ -29,6 +29,9 @@ void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall
     } else if (irq == int_page_fault) {
         /* Error code is in Error. Pull out bit 5, which is whether it was instruction or data */
         handleVMFaultEvent((ksCurThread->tcbArch.tcbContext.registers[Error] >> 4) & 1);
+    } else if (irq == int_debug) {
+        /* Debug exception */
+        handleUserLevelDebugException(irq);
     } else if (irq < int_irq_min) {
         handleUserLevelFault(irq, ksCurThread->tcbArch.tcbContext.registers[Error]);
     } else if (likely(irq < int_trap_min)) {

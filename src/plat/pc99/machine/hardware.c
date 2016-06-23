@@ -13,6 +13,7 @@
 #include <arch/kernel/apic.h>
 #include <arch/model/statedata.h>
 #include <arch/linker.h>
+#include <arch/machine.h>
 #include <plat/machine/pic.h>
 #include <plat/machine/ioapic.h>
 #include <plat/machine.h>
@@ -136,11 +137,13 @@ div64(uint64_t numerator, uint32_t denominator)
 BOOT_CODE VISIBLE uint32_t
 tsc_init(void)
 {
-    uint32_t version_info = x86_cpuid_eax(0x1, 0x0);
     uint32_t tsc_mhz;
+    x86_cpu_identity_t *model_info;
 
-    if (MODEL_ID(version_info) == HASWELL_MODEL_ID ||
-            MODEL_ID(version_info) == IVY_BRIDGE_MODEL_ID) {
+    model_info = x86_cpuid_get_model_info();
+
+    if ((model_info->family == 6 && model_info->model == HASWELL_1_MODEL_ID) ||
+            (model_info->family == 6 && model_info->model == IVY_BRIDGE_1_MODEL_ID)) {
         uint64_t info;
         uint32_t ratio;
 

@@ -96,6 +96,10 @@ exception_t decodeSetSpace(cap_t cap, word_t length,
                            cte_t* slot, extra_caps_t excaps, word_t *buffer);
 exception_t decodeBindNotification(cap_t cap, extra_caps_t excaps);
 exception_t decodeUnbindNotification(cap_t cap);
+exception_t decodeConfigureSingleStepping(cap_t cap, word_t *buffer);
+exception_t decodeGetBreakpoint(cap_t cap, word_t *buffer);
+exception_t decodeSetBreakpoint(cap_t cap, word_t *buffer);
+exception_t decodeUnsetBreakpoint(cap_t cap, word_t *buffer);
 
 enum thread_control_flag {
     thread_control_update_priority = 0x1,

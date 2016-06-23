@@ -227,6 +227,7 @@ tagged_union fault faultType {
     tag user_exception 4
     tag temporal 5
     tag no_fault_handler 6
+    tag debug_exception 7
 }
 
 -- VM attributes
@@ -525,3 +526,17 @@ block ept_pte {
     field        write              1
     field        read               1
 }
+
+block debug_exception {
+    field breakpointAddress 32
+
+    padding 21
+    -- X86 has 4 breakpoints (DR0-3).
+    -- ARM has between 2 and 16 breakpoints
+    --   ( ARM Ref manual, C3.3).
+    -- So we just use 4 bits to cater for both.
+    field breakpointNumber 4
+    field exceptionReason 4
+    field faultType 3
+}
+
