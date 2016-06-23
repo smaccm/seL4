@@ -227,6 +227,9 @@ tagged_union fault faultType {
     tag user_exception 4
     tag temporal 5
     tag no_fault_handler 6
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    tag debug_exception 7
+#endif
 }
 
 -- VM attributes

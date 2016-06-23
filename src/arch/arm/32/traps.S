@@ -166,6 +166,17 @@ BEGIN_FUNC(slowpath_irq)
 END_FUNC(slowpath_irq)
 
 BEGIN_FUNC(fastpath_restore)
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    /* Call restore_user_debug_context *before* switching from
+     * the kernel stack to the TCB context.
+     *
+     * According to the code below, r0 and r1 should be preserved,
+     * so push them before calling and restore them afterward.
+     */
+    push {r0, r1}
+    blx restore_user_debug_context
+    pop {r0, r1}
+#endif
     /* Duplicate of above except r2 contains ksCurThread,
        r0 and r1 should be preserved */
     mov sp, r2

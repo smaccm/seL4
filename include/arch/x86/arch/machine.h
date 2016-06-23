@@ -102,6 +102,30 @@ static inline void x86_wrmsr(const uint32_t reg, const uint64_t val)
     asm volatile("wrmsr" :: "a"(low), "d"(high), "c"(reg));
 }
 
+/** Hardware stack switching on exception/IRQ entry.
+ *
+ * We need to tell the CPU where the TCB register context structure is so it
+ * can push to it on entry.
+ * @param target_thread The thread we're about to switch to.
+ */
+static inline void
+setKernelEntryStackPointer(tcb_t *target_thread)
+{
+    word_t stack_top;
+
+    /* Update both the TSS and the IA32_SYSENTER_ESP MSR, because both are used.
+     *
+     * The stack pointer is loaded from the TSS on IRQ and exception entry.
+     * The IA32_SYSENTER_ESP MSR is used on syscall entry when SYSENTER is used.
+     */
+    stack_top = (word_t)&target_thread->tcbArch.tcbContext.registers[n_contextRegisters];
+
+    tss_ptr_set_esp0(&x86KStss.tss, stack_top);
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    x86_wrmsr(IA32_SYSENTER_ESP_MSR, stack_top);
+#endif
+}
+
 /* Read different parts of CPUID */
 static inline uint32_t x86_cpuid_edx(uint32_t eax, uint32_t ecx)
 {

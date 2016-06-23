@@ -206,7 +206,7 @@ block vm_fault {
     field instructionFault 1
     padding 14
 #endif
-    field faultType 3
+    field faultType 4
 }
 
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
@@ -215,13 +215,13 @@ block vgic_maintenance {
     field idxValid   1
     padding         25
     padding         29
-    field faultType  3
+    field faultType  4
 }
 
 block vcpu_fault {
     field hsr       32
     padding         29
-    field faultType  3
+    field faultType  4
 }
 #endif
 
@@ -236,6 +236,9 @@ tagged_union fault faultType {
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     tag vgic_maintenance 7
     tag vcpu_fault       8
+#endif
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    tag debug_exception 9
 #endif
 }
 
@@ -494,3 +497,80 @@ block vm_attributes {
     field armParityEnabled 1
     field armPageCacheable 1
 }
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+-- ARM breakpoint/watchpoint register layouts
+
+-- Debug ID reg
+block dbg_didr {
+    field numWrps 4
+    field numBrps 4
+    field numContextIdBrps 4
+    field version 4
+    padding 8
+    field variant 4
+    field revision 4
+}
+
+-- Status and control reg
+block dbg_dscr {
+    padding 3
+    padding 10
+    field nonSecureState 1
+    field securePrivilegedNIDebugDisabled 1
+    field securePrivilegedIDebugDisabled 1
+    field monitorDebugEnable 1
+    field haltingDebugEnable 1
+    padding 1
+    field disableAllUserAccesses 1
+    field interruptDisable 1
+    field debugAcknowledge 1
+    padding 2
+    field stickyImpreciseAbort 1
+    field stickyPreciseAbort 1
+    field methodOfEntry 4
+    padding 2
+}
+
+-- Breakpoint control reg
+block dbg_bcr {
+    padding 3
+    field addressMask 5
+#ifdef CONFIG_ARCH_ARM_V6
+    padding 1
+    field meaning 2
+    field enableLinking 1
+#else
+    field breakpointType 4
+#endif
+    field linkedBrp 4
+    field secureStateControl 2
+    field hypeModeControl 1
+    padding 4
+    field byteAddressSelect 4
+    padding 2
+    field supervisorAccess 2
+    field enabled 1
+}
+
+-- Watchpoint control reg
+block dbg_wcr {
+    padding 3
+    field addressMask 5
+    padding 3
+    field enableLinking 1
+    field linkedBrp 4
+#ifndef CONFIG_ARCH_ARM_V6
+    field secureStateControl 2
+    field hypeModeControl 1
+    field byteAddressSelect 8
+#else
+    padding 7
+    field byteAddressSelect 4
+#endif
+    field loadStore 2
+    field supervisorAccess 2
+    field enabled 1
+}
+#endif /* CONFIG_HARDWARE_DEBUG_API */
+>>>>>>> b086cf3... SELFOUR-499: X86, ARM: Add userspace invocations for hardware debugging

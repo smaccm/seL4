@@ -11,6 +11,7 @@
 #include <config.h>
 #include <types.h>
 #include <api/failures.h>
+#include <api/constants.h>
 #include <machine/registerset.h>
 #include <object/structures.h>
 #include <arch/machine.h>
@@ -138,6 +139,30 @@ setMRs_fault(tcb_t *sender, tcb_t* receiver, word_t *receiveIPCBuffer)
 
     case fault_temporal:
         return setMR(receiver, receiveIPCBuffer, 0, fault_temporal_get_data(sender->tcbFault));
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    case fault_debug_exception: {
+        unsigned int ret;
+        word_t reason = fault_debug_exception_get_exceptionReason(sender->tcbFault);
+
+        setMR(receiver, receiveIPCBuffer,
+              seL4_DebugException_FaultIP, getRestartPC(sender));
+        setMR(receiver, receiveIPCBuffer,
+              seL4_DebugException_ExceptionReason, reason);
+
+        if (reason != seL4_SingleStep && reason != seL4_SoftwareBreakRequest) {
+            ret = setMR(receiver, receiveIPCBuffer,
+                        seL4_DebugException_TriggerAddress,
+                        fault_debug_exception_get_breakpointAddress(sender->tcbFault));
+
+            /* Breakpoint messages also set a "breakpoint number" register. */
+            ret = setMR(receiver, receiveIPCBuffer,
+                        seL4_DebugException_BreakpointNumber,
+                        fault_debug_exception_get_breakpointNumber(sender->tcbFault));
+        }
+        return ret;
+    }
+#endif /* CONFIG_HARDWARE_DEBUG_API */
 
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     case fault_vgic_maintenance:

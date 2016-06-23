@@ -482,6 +482,11 @@ init_cpu(
         return false;
     }
 
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    /* Initialize hardware breakpoints */
+    Arch_initHardwareBreakpoints();
+#endif
+
     /* initialise floating-point unit */
     if (!Arch_initFpu()) {
         return false;

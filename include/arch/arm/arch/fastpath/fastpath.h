@@ -14,6 +14,8 @@
 #include <arch/linker.h>
 #include <mode/fastpath/fastpath.h>
 #include <plat/machine.h>
+#include <benchmark_track.h>
+#include <mode/machine/debug.h>
 
 void slowpath(syscall_t syscall)
 VISIBLE NORETURN;

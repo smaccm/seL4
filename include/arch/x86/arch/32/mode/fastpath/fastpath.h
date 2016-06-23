@@ -13,6 +13,7 @@
 
 #include <util.h>
 #include <arch/linker.h>
+#include <arch/machine/debug.h>
 #include <api/types.h>
 #include <api/syscall.h>
 
@@ -109,7 +110,12 @@ fastpath_restore(word_t badge, word_t msgInfo, tcb_t *cur_thread)
          * is currently disabled */
     }
 
-    tss_ptr_set_esp0(&x86KStss.tss, ((uint32_t)&ksCurThread->tcbArch.tcbContext.registers) + (sizeof(word_t)*n_contextRegisters));
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    restore_user_debug_context(ksCurThread);
+#endif
+
+    setKernelEntryStackPointer(ksCurThread);
+
     if (likely(hasDefaultSelectors(cur_thread))) {
         asm volatile(
             "movl %%ecx, %%esp\n"
