@@ -12,6 +12,8 @@
 #include <arch/machine/fpu.h>
 #include <arch/object/structures.h>
 
+#define X86_EFLAGS_TRAP_FLAG   (8u)
+
 const register_t msgRegisters[] = {
     EDI, EBP
 };
@@ -55,6 +57,7 @@ void Arch_initContext(user_context_t* context)
     context->registers[SS] = SEL_DS_3;
 
     Arch_initFpuContext(context);
+    Arch_initBreakpointContext(&context->breakpointState);
 }
 
 word_t sanitiseRegister(register_t reg, word_t v)
@@ -63,6 +66,8 @@ word_t sanitiseRegister(register_t reg, word_t v)
         v |=  BIT(1);   /* reserved bit that must be set to 1 */
         v &= ~BIT(3);   /* reserved bit that must be set to 0 */
         v &= ~BIT(5);   /* reserved bit that must be set to 0 */
+        /* Disallow setting Trap Flag: use the API instead */
+        v &= ~BIT(X86_EFLAGS_TRAP_FLAG);
         v |=  BIT(9);   /* interrupts must be enabled in userland */
         v &=  MASK(12); /* bits 12:31 have to be 0 */
     }

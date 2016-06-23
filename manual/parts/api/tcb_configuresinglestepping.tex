@@ -1,0 +1,25 @@
+%
+% Copyright 2014, General Dynamics C4 Systems
+%
+% This software may be distributed and modified according to the terms of
+% the GNU General Public License version 2. Note that NO WARRANTY is provided.
+% See "LICENSE_GPLv2.txt" for details.
+%
+% @TAG(GD_GPL)
+%
+
+\apidoc
+{tcb_configuresinglestepping}
+{TCB - Configure Single Stepping}
+{Set or modify single stepping options for the target TCB. Subsequent calls to this
+function overwrite previous configuration.}
+{static inline seL4\_TCB\_ConfigureSingleStepping\_t seL4\_TCB\_ConfigureSingleStepping}
+{
+\param{seL4\_TCB}{\_service}{\tcbcapdesc}
+\param{seL4\_Uint16}{bp\_num}{The hardware ID of the platform breakpoint to be
+configured.}
+\param{seL4\_Word}{num\_instructions}{Number of instructions to step over before delivering a fault to the
+target thread's fault endpoint.}
+}
+{A \texttt{seL4\_TCB\_ConfigureSingleStepping\_t}: \tcbconfiguresinglesteppingtdesc}
+{See \autoref{sec:debug_exceptions}}

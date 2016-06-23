@@ -89,6 +89,25 @@ bool_t handleFaultReply(tcb_t *receiver, tcb_t *sender)
     }
     return (label == 0);
 
+    case fault_debug_exception: {
+        word_t n_instrs, bp_num;
+
+        if (length == 0) {
+            return true;
+        }
+
+        bp_num = getRegister(sender, msgRegisters[0]);
+        n_instrs = getRegister(sender, msgRegisters[1]);
+
+        configureSingleStepping(&receiver->tcbArch, bp_num, n_instrs);
+
+        /* Replying will always resume the thread: the only variant behaviour
+         * is whether or not the thread will be resumed with stepping still
+         * enabled.
+         */
+        return true;
+    }
+
     default:
         fail("Invalid fault");
     }

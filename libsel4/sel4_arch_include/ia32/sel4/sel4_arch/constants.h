@@ -50,4 +50,9 @@
 #define seL4_LogBufferSize (LIBSEL4_BIT(20))
 #endif /* CONFIG_ENABLE_BENCHMARKS */
 
+/* Defined for each architecture: the number of hardware breakpoints
+ * available.
+ */
+#define seL4_NumBreakpoints (4)
+
 #endif

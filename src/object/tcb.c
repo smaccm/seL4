@@ -12,6 +12,7 @@
 #include <api/failures.h>
 #include <api/invocation.h>
 #include <api/syscall.h>
+#include <api/shared_types.h>
 #include <machine/io.h>
 #include <object/structures.h>
 #include <object/objecttype.h>
@@ -23,6 +24,7 @@
 #include <model/statedata.h>
 #include <util.h>
 #include <string.h>
+#include <stdint.h>
 
 static inline void
 addToBitmap(word_t dom, word_t prio)
@@ -330,6 +332,20 @@ decodeTCBInvocation(word_t invLabel, word_t length, cap_t cap,
 
     case TCBUnbindNotification:
         return decodeUnbindNotification(cap);
+
+#if defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64)
+    case TCBConfigureSingleStepping:
+        return decodeConfigureSingleStepping(cap, buffer);
+
+    case TCBSetBreakpoint:
+        return decodeSetBreakpoint(cap, buffer);
+
+    case TCBGetBreakpoint:
+        return decodeGetBreakpoint(cap, buffer);
+
+    case TCBUnsetBreakpoint:
+        return decodeUnsetBreakpoint(cap, buffer);
+#endif /* defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64) */
 
     default:
         /* Haskell: "throw IllegalOperation" */
@@ -851,6 +867,173 @@ decodeUnbindNotification(cap_t cap)
     setThreadState(ksCurThread, ThreadState_Restart);
     return invokeTCB_NotificationControl(tcb, NULL);
 }
+
+#if defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64)
+exception_t decodeConfigureSingleStepping(cap_t cap, word_t *buffer)
+{
+    uint16_t bp_num;
+    word_t n_instrs;
+    tcb_t *tcb;
+    arch_tcb_t *context;
+    configureSingleStepping_t cssret;
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    context = &tcb->tcbArch;
+
+    bp_num = getSyscallArg(0, buffer);
+    n_instrs = getSyscallArg(1, buffer);
+
+    cssret = configureSingleStepping(context, bp_num, n_instrs);
+    if (cssret.syscall_error.type != seL4_NoError) {
+        current_syscall_error = cssret.syscall_error;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (cssret.bp_consumed_or_released == true) {
+        if (n_instrs == 0) {
+            unsetBreakpointUsedFlag(context, bp_num);
+        } else {
+            setBreakpointUsedFlag(context, bp_num);
+        }
+    }
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeSetBreakpoint(cap_t cap, word_t *buffer)
+{
+    word_t vaddr;
+    uint16_t bp_num;
+    word_t type, size, rw;
+    tcb_t *tcb;
+    arch_tcb_t *context;
+    syscall_error_t error;
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    bp_num = getSyscallArg(0, buffer);
+    vaddr = getSyscallArg(1, buffer);
+    type = getSyscallArg(2, buffer);
+    size = getSyscallArg(3, buffer);
+    rw = getSyscallArg(4, buffer);
+
+    /* We disallow the user to set breakpoint addresses that are in the kernel
+     * vaddr range.
+     */
+    if (vaddr >= (word_t)kernelBase) {
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 1;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    if (type != seL4_InstructionBreakpoint && type != seL4_DataBreakpoint
+        && type != seL4_IOBreakpoint && type != seL4_SingleStep) {
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 2;
+        return EXCEPTION_SYSCALL_ERROR;
+    } else if (type == seL4_InstructionBreakpoint) {
+        if (size != 0) {
+            current_syscall_error.type = seL4_InvalidArgument;
+            current_syscall_error.invalidArgumentNumber = 3;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+        if (rw != seL4_BreakOnRead) {
+            current_syscall_error.type = seL4_InvalidArgument;
+            current_syscall_error.invalidArgumentNumber = 4;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+    } else if (type == seL4_DataBreakpoint) {
+        if (size == 0) {
+            current_syscall_error.type = seL4_InvalidArgument;
+            current_syscall_error.invalidArgumentNumber = 3;
+            return EXCEPTION_SYSCALL_ERROR;
+        }
+    }
+
+    if (rw != seL4_BreakOnRead && rw != seL4_BreakOnWrite
+        && rw != seL4_BreakOnReadWrite) {
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 3;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    if (size != 0 && size != 1 && size != 2 && size != 4 && size != 8) {
+        current_syscall_error.type = seL4_InvalidArgument;
+        current_syscall_error.invalidArgumentNumber = 3;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+
+    context = &tcb->tcbArch;
+
+    error = setBreakpoint(context, bp_num, vaddr, type, size, rw);
+    if (error.type != seL4_NoError) {
+        current_syscall_error = error;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Signal restore_user_context() to pop the breakpoint context on return. */
+    setBreakpointUsedFlag(context, bp_num);
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeGetBreakpoint(cap_t cap, word_t *buffer)
+{
+    tcb_t *tcb;
+    uint16_t bp_num;
+    getBreakpoint_t res;
+    arch_tcb_t *context;
+    bool_t is_enabled;
+
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    bp_num = getSyscallArg(0, buffer);
+
+    context = &tcb->tcbArch;
+
+    res = getBreakpoint(context, bp_num);
+    if (res.error != seL4_NoError) {
+        current_syscall_error.type = res.error;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    is_enabled = breakpointIsEnabled(context, bp_num);
+
+    setMR(ksCurThread, buffer, 0, res.vaddr);
+    setMR(ksCurThread, buffer, 1, res.type);
+    setMR(ksCurThread, buffer, 2, res.size);
+    setMR(ksCurThread, buffer, 3, res.rw);
+    setMR(ksCurThread, buffer, 4, is_enabled);
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+
+exception_t
+decodeUnsetBreakpoint(cap_t cap, word_t *buffer)
+{
+    tcb_t *tcb;
+    uint16_t bp_num;
+    arch_tcb_t *context;
+    syscall_error_t error;
+
+    tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
+    bp_num = getSyscallArg(0, buffer);
+
+    context = &tcb->tcbArch;
+
+    error = unsetBreakpoint(context, bp_num);
+    if (error.type != seL4_NoError) {
+        current_syscall_error = error;
+        return EXCEPTION_SYSCALL_ERROR;
+    }
+    /* Maintain the bitfield of in-use breakpoints. */
+    unsetBreakpointUsedFlag(context, bp_num);
+
+    setThreadState(ksCurThread, ThreadState_Restart);
+    return EXCEPTION_NONE;
+}
+#endif /* defined(CONFIG_ARCH_X86) || defined(CONFIG_ARCH_X86_64) */
 
 /* The following functions sit in the preemption monad and implement the
  * preemptible, non-faulting bottom end of a TCB invocation. */

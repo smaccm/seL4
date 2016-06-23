@@ -13,6 +13,7 @@
 
 #include <util.h>
 #include <arch/linker.h>
+#include <arch/machine/debug.h>
 #include <api/types.h>
 #include <api/syscall.h>
 #include <benchmark_track.h>
@@ -112,6 +113,17 @@ fastpath_restore(word_t badge, word_t msgInfo, tcb_t *cur_thread)
     } else {
         /* No-one (including us) is using the FPU, so we assume it
          * is currently disabled */
+    }
+
+    arch_tcb_t *uds = &ksCurThread->tcbArch;
+    /* If the thread being switched to is using the debug registers, we
+     * load its particular breakpoint configurations. If not, we must load
+     * an "all-registers-disabled" state.
+     */
+    if (uds->tcbContext.breakpointState.used_breakpoints_bf != 0) {
+        loadBreakpointState(uds);
+    } else {
+        loadAllDisabledBreakpointState();
     }
 
     tss_ptr_set_esp0(&x86KStss.tss, ((uint32_t)&ksCurThread->tcbArch.tcbContext.registers) + (sizeof(word_t)*n_contextRegisters));

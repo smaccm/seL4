@@ -13,6 +13,28 @@
 
 #define LIBSEL4_BIT(n) (1ul<<(n))
 
+typedef enum {
+    seL4_IOBreakpoint = 0,
+    seL4_DataBreakpoint,
+    seL4_InstructionBreakpoint,
+    seL4_SingleStep
+} seL4_BreakpointType;
+
+typedef enum {
+    seL4_BreakOnRead = 0,
+    seL4_BreakOnWrite,
+    seL4_BreakOnReadWrite,
+    seL4_MaxBreakpointAccess
+} seL4_BreakpointAccess;
+
+typedef enum {
+    seL4_DebugException_Breakpoint = 0,
+    seL4_DebugException_Watchpoint,
+    seL4_DebugException_SingleStep
+} seL4_DebugExceptionReason;
+
+#define seL4_SingleStep_Disable     0
+
 enum priorityConstants {
     seL4_InvalidPrio = -1,
     seL4_MinPrio = 0,

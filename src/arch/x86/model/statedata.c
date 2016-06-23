@@ -14,6 +14,7 @@
 #include <arch/types.h>
 #include <arch/model/statedata.h>
 #include <arch/object/structures.h>
+#include <arch/machine/registerset.h>
 
 /* ==== read/write kernel state not preserved across kernel entries ==== */
 
@@ -47,6 +48,9 @@ idt_entry_t x86KSidt[IDT_ENTRIES];
 
 /* A valid initial FPU state, copied to every new thread. */
 user_fpu_state_t x86KSnullFpuState ALIGN(MIN_FPU_ALIGNMENT);
+
+/* A valid initial debug register state, copied to every new thread. */
+user_breakpoint_state_t x86KSnullBreakpointState = {{0}};
 
 /* Number of IOMMUs (DMA Remapping Hardware Units) */
 uint32_t x86KSnumDrhu;

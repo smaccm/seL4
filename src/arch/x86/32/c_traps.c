@@ -12,6 +12,7 @@
 #include <model/statedata.h>
 #include <arch/kernel/lock.h>
 #include <arch/machine/fpu.h>
+#include <arch/machine/debug.h>
 #include <arch/fastpath/fastpath.h>
 #include <benchmark_track.h>
 
@@ -37,6 +38,18 @@ void NORETURN VISIBLE restore_user_context(void)
         /* No-one (including us) is using the FPU, so we assume it
          * is currently disabled */
     }
+
+    arch_tcb_t *uds = &ksCurThread->tcbArch;
+    /* If the thread being switched to is using the debug registers, we
+     * load its particular breakpoint configurations. If not, we must load
+     * an "all-registers-disabled" state.
+     */
+    if (uds->tcbContext.breakpointState.used_breakpoints_bf != 0) {
+        loadBreakpointState(uds);
+    } else {
+        loadAllDisabledBreakpointState();
+    }
+
     /* see if we entered via syscall */
     if (likely(ksCurThread->tcbArch.tcbContext.registers[Error] == -1)) {
         asm volatile(

@@ -31,6 +31,7 @@ typedef enum {
     seL4_VMFault,
     seL4_UnknownSyscall,
     seL4_UserException,
+    seL4_DebugException,
     SEL4_FORCE_LONG_ENUM(seL4_FaultType),
 } seL4_FaultType;
 

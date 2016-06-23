@@ -1,0 +1,30 @@
+%
+% Copyright 2014, General Dynamics C4 Systems
+%
+% This software may be distributed and modified according to the terms of
+% the GNU General Public License version 2. Note that NO WARRANTY is provided.
+% See "LICENSE_GPLv2.txt" for details.
+%
+% @TAG(GD_GPL)
+%
+
+\apidoc
+{tcb_setbreakpoint}
+{TCB - Set Breakpoint}
+{Set or modify a thread's breakpoints or watchpoints. Calls to this function
+overwrite previous configurations for the target breakpoint.}
+{static inline int seL4\_TCB\_SetBreakpoint}
+{
+\param{seL4\_TCB}{\_service}{\tcbcapdesc}
+\param{seL4\_Uint16}{bp\_num}{The hardware ID of the platform breakpoint to be
+configured.}
+\param{seL4\_Word}{vaddr}{Virtual address at which the breakpoint should be triggered.}
+\param{seL4\_Word}{type}{The type of operation which should trigger the
+breakpoint, whether instruction execution, or data access.}
+\param{seL4\_Word}{size}{Integer value for the span-size of the breakpoint.
+Usually a multiple of two.}
+\param{seL4\_Word}{rw}{The access direction that should trigger the breakpoint,
+whether read, write, or both.}
+}
+{\errorenumdesc}
+{See \autoref{sec:debug_exceptions}}

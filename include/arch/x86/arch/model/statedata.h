@@ -39,6 +39,7 @@ extern tcb_t *x86KSfpuOwner;
 extern uint32_t x86KScacheLineSizeBits;
 extern idt_entry_t x86KSidt[];
 extern user_fpu_state_t x86KSnullFpuState ALIGN(MIN_FPU_ALIGNMENT);
+extern user_breakpoint_state_t x86KSnullBreakpointState;
 
 extern uint32_t x86KSnumDrhu;
 extern vtd_rte_t* x86KSvtdRootTable;
