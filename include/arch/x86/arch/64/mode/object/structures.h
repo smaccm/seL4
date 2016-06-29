@@ -157,15 +157,16 @@ cap_get_archCapSizeBits(cap_t cap)
         return pageBitsForSize(cap_frame_cap_get_capFSize(cap));
 
     case cap_page_table_cap:
-        return PT_SIZE_BITS;
+        return seL4_PageTableBits;
 
     case cap_page_directory_cap:
-        return PD_SIZE_BITS;
+        return seL4_PageDirBits;
 
     case cap_pdpt_cap:
-        return PDPT_SIZE_BITS;
+        return seL4_PDPTBits;
 
     case cap_pml4_cap:
+        /* TODO: fix this definition and anywhere else it is used */
         return PML4_SIZE_BITS;
 
     case cap_io_port_cap:
@@ -175,13 +176,59 @@ cap_get_archCapSizeBits(cap_t cap)
         return 0;
 
     case cap_io_page_table_cap:
-        return VTD_PT_SIZE_BITS;
+        return seL4_IOPageTableBits;
 
     case cap_asid_control_cap:
         return 0;
 
     case cap_asid_pool_cap:
-        return ASID_POOL_SIZE_BITS;
+        return seL4_ASIDPoolBits;
+
+    default:
+        fail("Invalid arch cap type");
+    }
+}
+
+/* TODO: remove duplication of this with 32-bit (and probably some of the other
+ * functions around here */
+static inline bool_t CONST
+cap_get_archCapIsPhysical(cap_t cap)
+{
+    cap_tag_t ctag;
+
+    ctag = cap_get_capType(cap);
+
+    switch (ctag) {
+
+    case cap_frame_cap:
+        return true;
+
+    case cap_page_table_cap:
+        return true;
+
+    case cap_page_directory_cap:
+        return true;
+
+    case cap_pdpt_cap:
+        return true;
+
+    case cap_pml4_cap:
+        return true;
+
+    case cap_io_port_cap:
+        return false;
+
+    case cap_io_space_cap:
+        return false;
+
+    case cap_io_page_table_cap:
+        return true;
+
+    case cap_asid_control_cap:
+        return false;
+
+    case cap_asid_pool_cap:
+        return true;
 
     default:
         fail("Invalid arch cap type");
