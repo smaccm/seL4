@@ -215,7 +215,11 @@ try_boot_sys_node(cpu_id_t cpu_id)
             )) {
         return false;
     }
+#ifdef CONFIG_ARCH_IA32
     setCurrentPD(kpptr_to_paddr(X86_GLOBAL_VSPACE_ROOT));
+#else
+    setCurrentVSpaceRoot(kpptr_to_paddr(X86_GLOBAL_VSPACE_ROOT), 0);
+#endif
     /* Sync up the compilers view of the world here to force the PD to actually
      * be set *right now* instead of delayed */
     asm volatile("" ::: "memory");
