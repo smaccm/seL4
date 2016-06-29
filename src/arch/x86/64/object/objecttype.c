@@ -237,6 +237,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
                 );
 
     case seL4_X86_PageTableObject:
+        /* TODO: fixe this size */
         memzero(regionBase, 1 << PT_SIZE_BITS);
         return cap_page_table_cap_new(
                    asidInvalid,            /* capPTMappedASID    */
@@ -246,6 +247,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
                );
 
     case seL4_X86_PageDirectoryObject:
+        /* TODO: fixe this size */
         memzero(regionBase, 1 << PD_SIZE_BITS);
         return cap_page_directory_cap_new(
                 asidInvalid,                /* capPDMappedASID      */
@@ -255,6 +257,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
             );
 
     case seL4_X86_PDPTObject:
+        /* TODO: fixe this size */
         memzero(regionBase, 1 << PDPT_SIZE_BITS);
         return cap_pdpt_cap_new(
                 asidInvalid,                /* capPDPTMappedASID    */
@@ -264,6 +267,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
             );
 
     case seL4_X64_PML4Object:
+        /* TODO: fixe this size */
         memzero(regionBase, 1 << PML4_SIZE_BITS);
         copyGlobalMappings(PML4_PTR(regionBase));
         return cap_pml4_cap_new(
@@ -273,7 +277,7 @@ Mode_createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMe
                 );
 
     case seL4_X86_IOPageTableObject:
-        memzero(regionBase, 1 << VTD_PT_SIZE_BITS);
+        memzero(regionBase, 1 << seL4_IOPageTableBits);
         return cap_io_page_table_cap_new(
                 0,
                 0,
