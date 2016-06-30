@@ -16,8 +16,6 @@
 #define NTFN_SIZE_BITS 5
 #define CTE_SIZE_BITS 5
 #define TCB_BLOCK_SIZE_BITS 11
-/* update this when you modify the tcb struct */
-#define EXPECTED_TCB_SIZE sizeof(tcb_t)
 
 /* x86-64 specific object types */
 /* sysexit with rex.w prefix (64-bit) user code = cs + 32, user data = cs + 40.
