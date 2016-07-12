@@ -9,14 +9,13 @@
 %
 
 \apidoc
-{domainset_set}
-{DomainSet - Set}
-{Change the domain of a thread.}
-{static inline int seL4\_DomainSet\_Set}
+{schedcontrol_setcriticality}
+{SchedControl - Set Criticality}
+{Set the system criticality level.}
+{static inline int seL4\_SchedControl\_Configure }
 {
-\param{seL4\_DomainSet}{\_service}{\domcapdesc}
-\param{uint8\_t}{domain}{\domargdesc}
-\param{seL4\_TCB}{thread}{\tcbcapdesc}
+\param{seL4\_SchedControl}{\_service}{\schedcontrolcapdesc}
+\param{seL4\_Uint32}{criticality}{\criticalitydesc}
 }
 {\errorenumdesc}
-{See \autoref{sec:domains}}
+{See \autoref{sec:sched}}

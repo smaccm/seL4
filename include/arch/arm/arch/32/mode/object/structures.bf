@@ -160,7 +160,7 @@ tagged_union cap capType {
     tag reply_cap            8
     tag cnode_cap           10
     tag thread_cap          12
-    -- Do not extend even 4-bit caps types beyond 12, as we use 
+    -- Do not extend even 4-bit caps types beyond 12, as we use
     -- 14 (0xe) to determine which caps are 8-bit.
 
     -- 4-bit tag arch caps
@@ -170,14 +170,15 @@ tagged_union cap capType {
     tag page_table_cap       7
     tag page_directory_cap   9
     tag asid_control_cap    11
-    -- Do not extend odd 4-bit caps types beyond 13, as we use 
+    -- Do not extend odd 4-bit caps types beyond 13, as we use
     -- 15 (0xf) to determine which caps are 8-bit.
 
     -- 8-bit tag caps
     tag irq_control_cap     0x0e
     tag irq_handler_cap     0x1e
     tag zombie_cap          0x2e
-    tag domain_cap          0x3e
+    tag sched_context_cap   0x3e
+    tag sched_control_cap   0x4e
 
     -- 8-bit tag arch caps
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
@@ -230,9 +231,11 @@ tagged_union fault faultType {
     tag vm_fault 2
     tag unknown_syscall 3
     tag user_exception 4
+    tag temporal 5
+    tag no_fault_handler 6
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
-    tag vgic_maintenance 5
-    tag vcpu_fault       6
+    tag vgic_maintenance 7
+    tag vcpu_fault       8
 #endif
 }
 

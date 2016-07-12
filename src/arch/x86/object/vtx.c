@@ -188,7 +188,7 @@ handleVmexit(void)
     if (reason == EXTERNAL_INTERRUPT) {
         interrupt = vmread(VMX_DATA_EXIT_INTERRUPT_INFO);
         x86KScurInterrupt = interrupt & 0xff;
-        return handleInterruptEntry();
+        return handleInterruptEntry(x86KScurInterrupt);
     } else if (ksCurThread != x86KSfpuOwner) {
         if (reason == EXCEPTION_OR_NMI && !(ksCurThread->tcbArch.vcpu->exception_mask & BIT(7))) {
             interrupt = vmread(VMX_DATA_EXIT_INTERRUPT_INFO);

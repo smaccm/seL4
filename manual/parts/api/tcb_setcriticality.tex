@@ -9,12 +9,13 @@
 %
 
 \apidoc
-{sel4_yield}
-{Yield}
-{Donate the remaining timeslice to a thread of the same priority}
-{static inline void seL4\_Yield}
+{tcb_setcriticality}
+{TCB - Set Criticality}
+{Change a thread's criticality}
+{static inline int seL4\_TCB\_SetCriticality }
 {
-\param{void}{}{}
+\param{seL4\_TCB}{\_service}{\tcbcapdesc}
+\param{uint8\_t}{criticality}{\threadcriticalitydesc}
 }
-{\noret}
-{See \autoref{sec:sys_yield}}
+{\errorenumdesc}
+{See \autoref{sec:criticality}}

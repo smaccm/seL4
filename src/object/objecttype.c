@@ -21,6 +21,8 @@
 #include <object/endpoint.h>
 #include <object/cnode.h>
 #include <object/interrupt.h>
+#include <object/schedcontrol.h>
+#include <object/schedcontext.h>
 #include <object/tcb.h>
 #include <object/untyped.h>
 #include <model/statedata.h>
@@ -42,6 +44,8 @@ word_t getObjectSize(word_t t, word_t userObjSize)
             return seL4_EndpointBits;
         case seL4_NotificationObject:
             return seL4_NotificationBits;
+        case seL4_SchedContextObject:
+            return seL4_SchedContextBits;
         case seL4_CapTableObject:
             return seL4_SlotBits + userObjSize;
         case seL4_UntypedObject:
@@ -127,9 +131,21 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         fc_ret.irq = irqInvalid;
         return fc_ret;
 
-    case cap_reply_cap:
+    case cap_reply_cap: {
+        tcb_t *tcb;
+
+        tcb = TCB_PTR(cap_reply_cap_get_capTCBPtr(cap));
+
+        if (tcb->tcbCallStackNext) {
+            tcbCallStackRemove(tcb->tcbCallStackNext);
+        }
+
+        fc_ret.remainder = cap_null_cap_new();
+        fc_ret.irq = irqInvalid;
+        return fc_ret;
+    }
+
     case cap_null_cap:
-    case cap_domain_cap:
         fc_ret.remainder = cap_null_cap_new();
         fc_ret.irq = irqInvalid;
         return fc_ret;
@@ -162,7 +178,18 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
             tcb = TCB_PTR(cap_thread_cap_get_capTCBPtr(cap));
             cte_ptr = TCB_PTR_CTE_PTR(tcb, tcbCTable);
             unbindNotification(tcb);
+
             suspend(tcb);
+
+            if (tcb->tcbSchedContext) {
+                if (tcb->tcbSchedContext->scYieldFrom) {
+                    schedContext_completeYieldTo(tcb->tcbSchedContext->scYieldFrom);
+                }
+                schedContext_removeTCB(tcb->tcbSchedContext, tcb);
+            }
+            /* ipc call stack will be cleared up when reply cap deleted
+             * in suspend */
+
             Arch_prepareThreadDelete(tcb);
             fc_ret.remainder =
                 Zombie_new(
@@ -175,7 +202,24 @@ finaliseCap(cap_t cap, bool_t final, bool_t exposed)
         }
         break;
     }
+    case cap_sched_context_cap:
+        if (final) {
+            sched_context_t *sc;
 
+            sc = SC_PTR(cap_sched_context_cap_get_capPtr(cap));
+
+            if (sc->scYieldFrom) {
+                schedContext_completeYieldTo(sc->scYieldFrom);
+            }
+
+            schedContext_unbindAllTCBs(sc);
+            schedContext_unbindNtfn(sc);
+
+            fc_ret.remainder = cap_null_cap_new();
+            fc_ret.irq = irqInvalid;
+            return fc_ret;
+        }
+        break;
     case cap_zombie_cap:
         fc_ret.remainder = cap;
         fc_ret.irq = irqInvalid;
@@ -210,11 +254,11 @@ recycleCap(bool_t is_final, cap_t cap)
     case cap_null_cap:
         fail("recycleCap: can't reconstruct Null");
         break;
-    case cap_domain_cap:
-        return cap;
     case cap_cnode_cap:
         return cap;
     case cap_thread_cap:
+        return cap;
+    case cap_sched_context_cap:
         return cap;
     case cap_zombie_cap: {
         word_t type;
@@ -229,8 +273,7 @@ recycleCap(bool_t is_final, cap_t cap)
             ts = thread_state_get_tsType(tcb->tcbState);
             /* Haskell error:
              * "Zombie cap should point at inactive thread" */
-            assert(ts == ThreadState_Inactive ||
-                   ts != ThreadState_IdleThreadState);
+            assert(ts == ThreadState_Inactive);
             /* Haskell error:
              * "Zombie cap should not point at queued thread" */
             assert(!thread_state_get_tcbQueued(tcb->tcbState));
@@ -245,8 +288,6 @@ recycleCap(bool_t is_final, cap_t cap)
              * the CNode alone. */
             memzero(tcb, sizeof (tcb_t));
             Arch_initContext(&tcb->tcbArch.tcbContext);
-            tcb->tcbTimeSlice = CONFIG_TIME_SLICE;
-            tcb->tcbDomain = ksCurDomain;
 
             return cap_thread_cap_new(TCB_REF(tcb));
         } else {
@@ -273,7 +314,6 @@ hasRecycleRights(cap_t cap)
 {
     switch (cap_get_capType(cap)) {
     case cap_null_cap:
-    case cap_domain_cap:
         return false;
 
     case cap_endpoint_cap:
@@ -341,17 +381,16 @@ sameRegionAs(cap_t cap_a, cap_t cap_b)
                    cap_thread_cap_get_capTCBPtr(cap_b);
         }
         break;
-
+    case cap_sched_context_cap:
+        if (cap_get_capType(cap_b) == cap_sched_context_cap) {
+            return cap_sched_context_cap_get_capPtr(cap_a) ==
+                   cap_sched_context_cap_get_capPtr(cap_b);
+        }
+        break;
     case cap_reply_cap:
         if (cap_get_capType(cap_b) == cap_reply_cap) {
             return cap_reply_cap_get_capTCBPtr(cap_a) ==
                    cap_reply_cap_get_capTCBPtr(cap_b);
-        }
-        break;
-
-    case cap_domain_cap:
-        if (cap_get_capType(cap_b) == cap_domain_cap) {
-            return true;
         }
         break;
 
@@ -368,6 +407,13 @@ sameRegionAs(cap_t cap_a, cap_t cap_b)
                    (irq_t)cap_irq_handler_cap_get_capIRQ(cap_b);
         }
         break;
+
+    case cap_sched_control_cap:
+        if (cap_get_capType(cap_b) == cap_sched_control_cap) {
+            return true;
+        }
+        break;
+
 
     default:
         if (isArchCap(cap_a) &&
@@ -452,7 +498,6 @@ maskCapRights(cap_rights_t cap_rights, cap_t cap)
 
     switch (cap_get_capType(cap)) {
     case cap_null_cap:
-    case cap_domain_cap:
     case cap_cnode_cap:
     case cap_untyped_cap:
     case cap_reply_cap:
@@ -460,6 +505,8 @@ maskCapRights(cap_rights_t cap_rights, cap_t cap)
     case cap_irq_handler_cap:
     case cap_zombie_cap:
     case cap_thread_cap:
+    case cap_sched_context_cap:
+    case cap_sched_control_cap:
         return cap;
 
     case cap_endpoint_cap: {
@@ -506,6 +553,13 @@ createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMemory)
 
     /* Create objects. */
     switch ((api_object_t)t) {
+    case seL4_SchedContextObject: {
+        sched_context_t *sc;
+        memzero(regionBase, 1UL << seL4_SchedContextBits);
+        sc = SC_PTR(regionBase);
+        sc->scNext = ksCurrentTime;
+        return cap_sched_context_cap_new(SC_REF(sc));
+    }
     case seL4_TCBObject: {
         tcb_t *tcb;
         memzero(regionBase, 1UL << seL4_TCBBits);
@@ -517,8 +571,6 @@ createObject(object_t t, void *regionBase, word_t userSize, bool_t deviceMemory)
         /* Setup non-zero parts of the TCB. */
 
         Arch_initContext(&tcb->tcbArch.tcbContext);
-        tcb->tcbTimeSlice = CONFIG_TIME_SLICE;
-        tcb->tcbDomain = ksCurDomain;
 
 #ifdef CONFIG_PRINTING
         strlcpy(tcb->tcbName, "child of: '", TCB_NAME_LENGTH);
@@ -596,7 +648,7 @@ createNewObjects(object_t t, cte_t *parent, slot_range_t slots,
 exception_t
 decodeInvocation(word_t invLabel, word_t length,
                  cptr_t capIndex, cte_t *slot, cap_t cap,
-                 extra_caps_t excaps, bool_t block, bool_t call,
+                 extra_caps_t excaps, bool_t block, bool_t call, bool_t donate,
                  word_t *buffer)
 {
     if (isArchCap(cap)) {
@@ -630,7 +682,7 @@ decodeInvocation(word_t invLabel, word_t length,
         return performInvocation_Endpoint(
                    EP_PTR(cap_endpoint_cap_get_capEPPtr(cap)),
                    cap_endpoint_cap_get_capEPBadge(cap),
-                   cap_endpoint_cap_get_capCanGrant(cap), block, call);
+                   cap_endpoint_cap_get_capCanGrant(cap), block, call, donate);
 
     case cap_notification_cap: {
         if (unlikely(!cap_notification_cap_get_capNtfnCanSend(cap))) {
@@ -664,9 +716,6 @@ decodeInvocation(word_t invLabel, word_t length,
         return decodeTCBInvocation(invLabel, length, cap,
                                    slot, excaps, call, buffer);
 
-    case cap_domain_cap:
-        return decodeDomainInvocation(invLabel, length, excaps, buffer);
-
     case cap_cnode_cap:
         return decodeCNodeInvocation(invLabel, length, cap, excaps, buffer);
 
@@ -682,6 +731,12 @@ decodeInvocation(word_t invLabel, word_t length,
         return decodeIRQHandlerInvocation(invLabel,
                                           cap_irq_handler_cap_get_capIRQ(cap), excaps);
 
+    case cap_sched_control_cap:
+        return decodeSchedControlInvocation(invLabel, length, excaps, buffer);
+
+    case cap_sched_context_cap:
+        return decodeSchedContextInvocation(invLabel, cap, excaps);
+
     default:
         fail("Invalid cap type");
     }
@@ -690,9 +745,9 @@ decodeInvocation(word_t invLabel, word_t length,
 exception_t
 performInvocation_Endpoint(endpoint_t *ep, word_t badge,
                            bool_t canGrant, bool_t block,
-                           bool_t call)
+                           bool_t call, bool_t donate)
 {
-    sendIPC(block, call, badge, canGrant, ksCurThread, ep);
+    sendIPC(block, call, donate, badge, canGrant, ksCurThread, ep);
 
     return EXCEPTION_NONE;
 }

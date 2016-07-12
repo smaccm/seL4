@@ -255,9 +255,6 @@ try_init_kernel(
         return false;
     }
 
-    /* create the cap for managing thread domains */
-    create_domain_cap(root_cnode_cap);
-
     /* create the IRQ CNode */
     if (!create_irq_cnode()) {
         return false;
@@ -265,6 +262,10 @@ try_init_kernel(
 
     /* initialise the IRQ states and provide the IRQ control cap */
     init_irqs(root_cnode_cap);
+
+    /* create sched control cap */
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapSchedControl),
+               cap_sched_control_cap_new());
 
     /* create the bootinfo frame */
     bi_frame_pptr = allocate_bi_frame(0, 1, ipcbuf_vptr);

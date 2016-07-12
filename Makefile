@@ -54,17 +54,6 @@ endif
 $(if $(filter ${SEL4_ARCH},${SEL4_ARCH_LIST}),, \
     $(error SEL4_ARCH ${SEL4_ARCH} invalid or undefined, should be one of [${SEL4_ARCH_LIST}]))
 
-# If no domain configuration file was specified, use a default
-# configuration of just a single domain.
-ifeq (${CONFIG_DOMAIN_SCHEDULE},)
-DOMAIN_CONFIG_FILE=${SOURCE_ROOT}/src/config/default_domain.c
-else
-DOMAIN_CONFIG_FILE=$(wildcard ${CONFIG_DOMAIN_SCHEDULE})
-ifeq ($(DOMAIN_CONFIG_FILE),)
-$(error Domain schedule, ${CONFIG_DOMAIN_SCHEDULE}, does not exist)
-endif
-endif
-
 ### Verbose building
 ########################################
 
@@ -126,15 +115,13 @@ endif
 
 CONFIG_DEFS += $(strip $(foreach var, \
   CONFIG_ROOT_CNODE_SIZE_BITS \
-  CONFIG_TIME_SLICE \
-  CONFIG_NUM_DOMAINS \
+  CONFIG_BOOT_THREAD_TIME_SLICE \
   CONFIG_NUM_PRIORITIES \
   CONFIG_RETYPE_FAN_OUT_LIMIT \
   CONFIG_MAX_NUM_WORK_UNITS_PER_PREEMPTION \
   CONFIG_MAX_NUM_BOOTINFO_DEVICE_REGIONS \
-  CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS \
-  CONFIG_TIMER_TICK_MS, \
-  $(if $(value ${var}), ${var}=$(value ${var}), )))
+  CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS, \
+	$(if $(value ${var}), ${var}=$(value ${var}), )))
 
 ifdef BUILD_VERBOSE
 $(info seL4 build options:)
@@ -397,6 +384,7 @@ WARNINGS = all error strict-prototypes missing-prototypes nested-externs \
 
 CFLAGS += --std=c99 -nostdlib -nostdinc -ffreestanding \
 	${WARNINGS:%=-W%} ${INCLUDES}
+CPPFLAGS += -nostdinc
 LDFLAGS += -nostdlib -nostdinc
 LDFLAGS += -Wl,--build-id=none
 ASFLAGS += ${INCLUDES}
@@ -565,7 +553,7 @@ sources_list_updated: ${STATICHEADERS} ${MAKEFILES}
 	@echo " [TOUCH] $@"
 	$(Q)touch $@
 
-kernel_all.c: sources_list_updated ${C_SOURCES_WITH_PARSE} ${DOMAIN_CONFIG_FILE}
+kernel_all.c: sources_list_updated ${C_SOURCES_WITH_PARSE}
 	@echo " [CPP_GEN] $@"
 	$(Q)${CPP_GEN} $(wordlist 2, $(words $^), $^) > $@
 

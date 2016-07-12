@@ -21,6 +21,7 @@
 #include <kernel/thread.h>
 #include <kernel/vspace.h>
 #include <machine/io.h>
+#include <machine/timer.h>
 #include <object/interrupt.h>
 #include <model/statedata.h>
 #include <string.h>
@@ -33,11 +34,9 @@
  * for each event causing a kernel entry */
 
 exception_t
-handleInterruptEntry(void)
+handleInterruptEntry(irq_t irq)
 {
-    irq_t irq;
 
-    irq = getActiveIRQ();
 #if defined(DEBUG) || defined(CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES)
     ksKernelEntry.path = Entry_Interrupt;
     ksKernelEntry.word = irq;
@@ -51,14 +50,9 @@ handleInterruptEntry(void)
     benchmark_utilisation_kentry_stamp();
 #endif /* CONFIG_BENCHMARK_TRACK_UTILISATION */
 
-    if (irq != irqInvalid) {
-        handleInterrupt(irq);
-    } else {
-#ifdef CONFIG_IRQ_REPORTING
-        printf("Spurious interrupt\n");
-#endif
-        handleSpuriousIRQ();
-    }
+    ksCurThread->tcbSchedContext = ksCurSchedContext;
+    assert(irq != irqInvalid);
+    handleInterrupt(irq);
 
     schedule();
     activateThread();
@@ -225,8 +219,16 @@ handleUnknownSyscall(word_t w)
 
 #endif /* CONFIG_ENABLE_BENCHMARKS */
 
-    current_fault = fault_unknown_syscall_new(w);
-    handleFault(ksCurThread);
+    /* we don't account for unknown syscalls that are for debugging or benchmarking,
+     * so don't record the kernel entry time until now */
+    updateTimestamp();
+    if (likely(checkBudget())) {
+        current_fault = fault_unknown_syscall_new(w);
+        handleFault(ksCurThread);
+    } else {
+        /* try again when the thread has budget */
+        setThreadState(ksCurThread, ThreadState_Restart);
+    }
 
     schedule();
     activateThread();
@@ -250,8 +252,14 @@ handleUserLevelFault(word_t w_a, word_t w_b)
     benchmark_utilisation_kentry_stamp();
 #endif /* CONFIG_BENCHMARK_TRACK_UTILISATION */
 
-    current_fault = fault_user_exception_new(w_a, w_b);
-    handleFault(ksCurThread);
+    updateTimestamp();
+    if (likely(checkBudget())) {
+        current_fault = fault_user_exception_new(w_a, w_b);
+        handleFault(ksCurThread);
+    } else {
+        /* try again when the thread has budget */
+        setThreadState(ksCurThread, ThreadState_Restart);
+    }
 
     schedule();
     activateThread();
@@ -280,9 +288,15 @@ handleVMFaultEvent(vm_fault_type_t vm_faultType)
     benchmark_utilisation_kentry_stamp();
 #endif /* CONFIG_BENCHMARK_TRACK_UTILISATION */
 
-    status = handleVMFault(ksCurThread, vm_faultType);
-    if (status != EXCEPTION_NONE) {
-        handleFault(ksCurThread);
+    updateTimestamp();
+    if (likely(checkBudget())) {
+        status = handleVMFault(ksCurThread, vm_faultType);
+        if (status != EXCEPTION_NONE) {
+            handleFault(ksCurThread);
+        }
+    } else {
+        /* try again when the thread has budget */
+        setThreadState(ksCurThread, ThreadState_Restart);
     }
 
     schedule();
@@ -297,14 +311,14 @@ handleVMFaultEvent(vm_fault_type_t vm_faultType)
 
 
 static exception_t
-handleInvocation(bool_t isCall, bool_t isBlocking)
+handleInvocation(bool_t isCall, bool_t isBlocking, bool_t canDonate)
 {
     seL4_MessageInfo_t info;
     cptr_t cptr;
     lookupCapAndSlot_ret_t lu_ret;
     word_t *buffer;
     exception_t status;
-    word_t length;
+    word_t length, extra_caps_length;
     tcb_t *thread;
 
     thread = ksCurThread;
@@ -332,26 +346,32 @@ handleInvocation(bool_t isCall, bool_t isBlocking)
         return EXCEPTION_NONE;
     }
 
-    buffer = lookupIPCBuffer(false, thread);
+    buffer = NULL;
+    length = seL4_MessageInfo_get_length(info);
+    extra_caps_length = seL4_MessageInfo_get_extraCaps(info);
+    /* avoid looking up the IPC buffer if we don't have to */
+    if (unlikely(length > n_msgRegisters || extra_caps_length > 0)) {
+        buffer = lookupIPCBuffer(false, thread);
+        if (unlikely(extra_caps_length > 0)) {
+            status = lookupExtraCaps(thread, buffer, extra_caps_length);
 
-    status = lookupExtraCaps(thread, buffer, info);
-
-    if (unlikely(status != EXCEPTION_NONE)) {
-        userError("Lookup of extra caps failed.");
-        if (isBlocking) {
-            handleFault(thread);
+            if (unlikely(status != EXCEPTION_NONE)) {
+                userError("Lookup of extra caps failed.");
+                if (isBlocking) {
+                    handleFault(thread);
+                }
+                return EXCEPTION_NONE;
+            }
         }
-        return EXCEPTION_NONE;
     }
 
     /* Syscall error/Preemptible section */
-    length = seL4_MessageInfo_get_length(info);
     if (unlikely(length > n_msgRegisters && !buffer)) {
         length = n_msgRegisters;
     }
     status = decodeInvocation(seL4_MessageInfo_get_label(info), length,
                               cptr, lu_ret.slot, lu_ret.cap,
-                              current_extra_caps, isBlocking, isCall,
+                              current_extra_caps, isBlocking, isCall, canDonate,
                               buffer);
 
     if (unlikely(status == EXCEPTION_PREEMPTED)) {
@@ -416,12 +436,9 @@ handleReply(void)
 }
 
 static void
-handleRecv(bool_t isBlocking)
+handleRecv(bool_t isBlocking, word_t epCPtr)
 {
-    word_t epCPtr;
     lookupCap_ret_t lu_ret;
-
-    epCPtr = getRegister(ksCurThread, capRegister);
 
     lu_ret = lookupCap(ksCurThread, epCPtr);
 
@@ -473,14 +490,6 @@ handleRecv(bool_t isBlocking)
     }
 }
 
-static void
-handleYield(void)
-{
-    tcbSchedDequeue(ksCurThread);
-    tcbSchedAppend(ksCurThread);
-    rescheduleRequired();
-}
-
 exception_t
 handleSyscall(syscall_t syscall)
 {
@@ -494,65 +503,75 @@ handleSyscall(syscall_t syscall)
 #ifdef CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES
     benchmark_track_start();
 #endif /* CONFIG_BENCHMARK_TRACK_KERNEL_ENTRIES */
-
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     benchmark_utilisation_kentry_stamp();
 #endif /* CONFIG_BENCHMARK_TRACK_UTILISATION */
+    ret = EXCEPTION_NONE;
+    updateTimestamp();
+    if (checkBudget()) {
+        switch (syscall) {
+        case SysSend:
+            ret = handleInvocation(false, true, false);
+            break;
 
-    switch (syscall) {
-    case SysSend:
-        ret = handleInvocation(false, true);
-        if (unlikely(ret != EXCEPTION_NONE)) {
+        case SysNBSend:
+            ret = handleInvocation(false, false, false);
+            break;
+
+        case SysCall:
+            ret = handleInvocation(true, true, true);
+            break;
+
+        case SysRecv: {
+            word_t epCPtr = getRegister(ksCurThread, capRegister);
+            handleRecv(true, epCPtr);
+            break;
+        }
+
+        case SysReply:
+            handleReply();
+            break;
+
+        case SysReplyRecv: {
+            word_t epCPtr = getRegister(ksCurThread, capRegister);
+            handleReply();
+            handleRecv(true, epCPtr);
+            break;
+        }
+
+        case SysNBRecv: {
+            word_t epCPtr = getRegister(ksCurThread, capRegister);
+            handleRecv(false, epCPtr);
+            break;
+        }
+
+        case SysSignalRecv: {
+            word_t epCPtr = getRegister(ksCurThread, msgInfoRegister);
+            /* Signal sends no message - reset msgInfo register that the
+             * src endpoint cptr is passed in to 0 to avoid handleInvocation
+             * treating src as the message info. */
+            setRegister(ksCurThread, msgInfoRegister, 0);
+            handleInvocation(false, false, true);
+            handleRecv(true, epCPtr);
+            setRegister(ksCurThread, msgInfoRegister, epCPtr);
+            break;
+        }
+
+        default:
+            fail("Invalid syscall");
+        }
+
+        /* this will occur if any preemption points where triggered */
+        if (unlikely(ret == EXCEPTION_PREEMPTED)) {
             irq = getActiveIRQ();
             if (irq != irqInvalid) {
+                commitTime(ksCurSchedContext);
                 handleInterrupt(irq);
             }
         }
-        break;
-
-    case SysNBSend:
-        ret = handleInvocation(false, false);
-        if (unlikely(ret != EXCEPTION_NONE)) {
-            irq = getActiveIRQ();
-            if (irq != irqInvalid) {
-                handleInterrupt(irq);
-            }
-        }
-        break;
-
-    case SysCall:
-        ret = handleInvocation(true, true);
-        if (unlikely(ret != EXCEPTION_NONE)) {
-            irq = getActiveIRQ();
-            if (irq != irqInvalid) {
-                handleInterrupt(irq);
-            }
-        }
-        break;
-
-    case SysRecv:
-        handleRecv(true);
-        break;
-
-    case SysReply:
-        handleReply();
-        break;
-
-    case SysReplyRecv:
-        handleReply();
-        handleRecv(true);
-        break;
-
-    case SysNBRecv:
-        handleRecv(false);
-        break;
-
-    case SysYield:
-        handleYield();
-        break;
-
-    default:
-        fail("Invalid syscall");
+    } else {
+        /* try again when the thread has budget */
+        setThreadState(ksCurThread, ThreadState_Restart);
     }
 
     schedule();

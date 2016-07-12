@@ -192,7 +192,9 @@ handleInterrupt(irq_t irq)
     switch (intStateIRQTable[irq]) {
     case IRQSignal: {
         cap_t cap;
+        bool_t expired;
 
+        updateTimestamp();
         cap = intStateIRQNode[irq].cap;
 
         if (cap_get_capType(cap) == cap_notification_cap &&
@@ -205,12 +207,27 @@ handleInterrupt(irq_t irq)
 #endif
         }
         maskInterrupt(true, irq);
+
+        /* Bill the current thread. We know it has enough budget, as
+         * otherwise we would be dealing with a timer interrupt not a signal
+         * interrupt
+         */
+        expired = currentThreadExpired();
+        commitTime(ksCurThread->tcbSchedContext);
+
+        if (expired) {
+            endTimeslice(ksCurThread->tcbSchedContext);
+            rescheduleRequired();
+        }
+
         break;
     }
 
     case IRQTimer:
-        timerTick();
-        resetTimer();
+        updateTimestamp();
+        ackDeadlineIRQ();
+        ksReprogram = true;
+        checkBudget();
         break;
 
     case IRQReserved:

@@ -72,24 +72,34 @@
 \fi
 
 \newcommand{\tcbcapdesc}{Capability to the TCB which is being operated on.}
+\newcommand{\threadschedcontextcapdesc}{Capability to the scheduling context that the TCB should run on. If the scheduling context is already bound to a notification or TCB that is not this TCB this operation will fail. Similarly, if this TCB is already bound to a scheduling context that is not this scheduling context, this will also fail. }
+\newcommand{\schedcontrolcapdesc}{The SchedControl capability.}
+\newcommand{\schedcontextcapdesc}{Capability to the scheduling context which is being operated on.}
+\newcommand{\budgetdesc}{Timeslice in microseconds, when the budget expires the thread will be preempted.}
+\newcommand{\perioddesc}{Period in microseconds, the budget is replenished every time the period exipires.}
+\newcommand{\datadesc}{A word of data to identify the owner of the scheduling context that a thread faulted on to a temporal fault handler.}
 
 \newcommand{\irqhandlercapdesc}{The IRQ handler capability.}
-
 \newcommand{\invokedcapdesc}{The capability to be invoked.}
 \newcommand{\messageinfodesc}{The messageinfo structure for the IPC.}
 \newcommand{\senderdesc}{The address to write sender information to. The sender information is the badge of the endpoint capability that was invoked by the sender, or the notification word of the notification object that was signalled. This parameter is ignored if \texttt{NULL}.}
 \newcommand{\resumetargetdesc}{The invocation should also resume the destination thread.}
 \newcommand{\suspendsourcedesc}{The invocation should also suspend the source thread.}
 \newcommand{\archflagsdesc}{Architecture dependent flags. These have no meaning on \ifxeightsix{either IA-32 or}\fi{} ARM.}
-
+\newcommand{\criticalitydesc}{The system criticality level. Threads with criticalities below the system criticality level will not be chosen by the scheduler.}
 \newcommand{\threadpriodesc}{The thread's new priority.}
+\newcommand{\threadmaxpriodesc}{The thread's new maximum controlled priority.}
+\newcommand{\threadcriticalitydesc}{The thread's new criticality.}
+\newcommand{\threadmccdesc}{The thread's new maximum controlled criticality.}
+\newcommand{\threadcombinedpriodesc}{A \texttt{seL4\_Prio\_t} structure as described in \autoref{sec:sched}.}
 \newcommand{\threadcspacerootdesc}{The new CSpace root.}
 \newcommand{\threadcspacedatadesc}{Optionally set the guard and guard size of the new root CNode. If set to zero, this parameter has no effect.}
 \newcommand{\threadvspacerootdesc}{The new VSpace root.}
 \newcommand{\threadvspacedatadesc}{Has no effect on \ifxeightsix{IA-32 or}\fi{} ARM processors.}
 \newcommand{\threadbufferdesc}{Location of the thread's IPC buffer. Must be 512-byte aligned. The IPC buffer may not cross a page boundary.}
 \newcommand{\threadbufferpagedesc}{Capability to a page containing the thread's IPC buffer.}
-\newcommand{\excepthanddesc}{CPTR to the endpoint which receives IPCs when this thread faults. This capability is in the CSpace of the thread being configured.}
+\newcommand{\excepthanddesc}{CPTR to the endpoint which receives IPCs when this thread faults. This capability is in the caller's cspace.}
+\newcommand{\temporalexcepthanddesc}{CPTR to the endpoint which receives IPCs when this thread triggers a temporal fault. This capability is in the caller's cspace.}
 
 \newcommand{\asidassignpooldesc}{The ASID pool which is being assigned to. Must not be full. Each ASID pool can contain 1024 entries.}
 \newcommand{\asidassignpddesc}{The page directory that is being assigned to an ASID pool. Must not already be assigned to an ASID pool.}
@@ -98,10 +108,8 @@
 \newcommand{\messageinforetdesc}{A \texttt{seL4\_MessageInfo\_t} structure as described in \autoref{sec:messageinfo}.}
 \newcommand{\noret}{This method does not return anything.}
 \newcommand{\errorenumdesc}{A return value of \texttt{0} indicates success. A non-zero value indicates that an error occurred. See \autoref{sec:errors} for a description of the message register and tag contents upon error.}
+\newcommand{\consumeddesc}{\texttt{consumed}, which is the amount of time that threads have been executing using this scheduling context since \apifunc{seL4\_SchedContext\_YieldTo}{schedcontext_yieldto} or \apifunc{seL4\_SchedContext\_Consumed}{schedcontext_consumed} was called, and \texttt{error}, an error code, see \autoref{sec:errors}.}
 \newcommand{\pagegetaddresstdesc}{struct that contains \texttt{seL4\_Word paddr}, which holds the physical address of the page, and \texttt{int error}. See \autoref{sec:errors} for a description of the message register and tag contents upon error.}
-
-\newcommand{\domcapdesc}{Capability allowing domain configuration.}
-\newcommand{\domargdesc}{The thread's new domain.}
 
 \section{Error Codes}
 \label{sec:errors}
@@ -247,10 +255,10 @@ complete the \apifunc{seL4\_Untyped\_Retype}{untyped_retype} request.
 \inputapidoc{sel4_nbsend}
 \inputapidoc{sel4_replyrecv}
 \inputapidoc{sel4_nbrecv}
-\inputapidoc{sel4_yield}
 \inputapidoc{sel4_signal}
 \inputapidoc{sel4_wait}
 \inputapidoc{sel4_poll}
+\inputapidoc{sel4_signalrecv}
 \clearpage
 
 \section{Architecture-Independent Object Methods}
@@ -263,10 +271,10 @@ complete the \apifunc{seL4\_Untyped\_Retype}{untyped_retype} request.
 \inputapidoc{cnode_recycle}
 \inputapidoc{cnode_revoke}
 \inputapidoc{cnode_rotate}
-\inputapidoc{cnode_savecaller}
+\inputapidoc{cnode_swapcaller}
+\inputapidoc{cnode_swaptcbcaller}
 \inputapidoc{debug_halt}
 \inputapidoc{debug_putchar}
-\inputapidoc{domainset_set}
 \inputapidoc{irq_controlget}
 \inputapidoc{irq_handleracknowledge}
 \inputapidoc{irq_handlerclear}
@@ -279,11 +287,21 @@ complete the \apifunc{seL4\_Untyped\_Retype}{untyped_retype} request.
 \inputapidoc{tcb_resume}
 \inputapidoc{tcb_setipcbuffer}
 \inputapidoc{tcb_setpriority}
+\inputapidoc{tcb_setmcpriority}
+\inputapidoc{tcb_setcriticality}
+\inputapidoc{tcb_setmcc}
 \inputapidoc{tcb_setspace}
 \inputapidoc{tcb_suspend}
 \inputapidoc{tcb_writeregisters}
 \inputapidoc{untyped_retype}
-
+\inputapidoc{schedcontrol_configure}
+\inputapidoc{schedcontrol_setcriticality}
+\inputapidoc{schedcontext_yield}
+\inputapidoc{schedcontext_yieldto}
+\inputapidoc{schedcontext_consumed}
+\inputapidoc{schedcontext_bind}
+\inputapidoc{schedcontext_unbindobject}
+\inputapidoc{schedcontext_unbind}
 \ifxeightsix
 \clearpage
 

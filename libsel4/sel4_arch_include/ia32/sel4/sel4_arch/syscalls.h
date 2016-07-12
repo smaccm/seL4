@@ -447,20 +447,85 @@ seL4_ReplyRecvWithMRs(seL4_CPtr dest, seL4_MessageInfo_t msgInfo, seL4_Word *sen
     return info;
 }
 
-static inline void
-seL4_Yield(void)
+static inline seL4_MessageInfo_t
+seL4_SignalRecv(seL4_CPtr dest, seL4_CPtr src, seL4_Word* sender)
 {
+    seL4_MessageInfo_t info;
+    seL4_Word badge;
+    seL4_Word mr0;
+    seL4_Word mr1;
+
     asm volatile (
         "pushl %%ebp       \n"
+        "movl %%ecx, %%ebp \n"
         "movl %%esp, %%ecx \n"
         "leal 1f, %%edx    \n"
         "1:                \n"
         "sysenter          \n"
+        "movl %%ebp, %%ecx \n"
         "popl %%ebp        \n"
         :
-        : "a" (seL4_SysYield)
-        : "%ebx", "%ecx", "%edx", "%esi", "%edi", "memory"
+        "=b" (badge),
+        "=S" (info.words[0]),
+        "=D" (mr0),
+        "=c" (mr1)
+        : "a" (seL4_SysSignalRecv),
+        "b" (dest),
+        "S" (src)
+        : "%edx", "memory"
     );
+
+    seL4_SetMR(0, mr0);
+    seL4_SetMR(1, mr1);
+
+    if (sender) {
+        *sender = badge;
+    }
+
+    return info;
+}
+
+static inline seL4_MessageInfo_t
+seL4_SignalRecvWithMRs(seL4_CPtr dest, seL4_CPtr src, seL4_Word *sender,
+                       seL4_Word *mr0, seL4_Word *mr1)
+{
+    seL4_MessageInfo_t info;
+    seL4_Word badge;
+    seL4_Word msg0;
+    seL4_Word msg1;
+
+    asm volatile (
+        "pushl %%ebp       \n"
+        "movl %%ecx, %%ebp \n"
+        "movl %%esp, %%ecx \n"
+        "leal 1f, %%edx    \n"
+        "1:                \n"
+        "sysenter          \n"
+        "movl %%ebp, %%ecx \n"
+        "popl %%ebp        \n"
+        :
+        "=b" (badge),
+        "=S" (info.words[0]),
+        "=D" (msg0),
+        "=c" (msg1)
+        : "a" (seL4_SysSignalRecv),
+        "b" (dest),
+        "S" (src)
+        : "%edx", "memory"
+    );
+
+    if (mr0 != seL4_Null) {
+        *mr0 = msg0;
+    }
+    if (mr1 != seL4_Null) {
+        *mr1 = msg1;
+    }
+
+    if (sender) {
+        *sender = badge;
+    }
+
+    return info;
 }
 
 static inline seL4_Word

@@ -18,26 +18,21 @@
 #include <object/endpoint.h>
 #include <object/tcb.h>
 
-static inline tcb_queue_t PURE
-ep_ptr_get_queue(endpoint_t *epptr)
+void
+reorderIPCQueue(tcb_t *thread, prio_t old_prio)
 {
+    endpoint_t *epptr;
     tcb_queue_t queue;
 
-    queue.head = (tcb_t*)endpoint_ptr_get_epQueue_head(epptr);
-    queue.end = (tcb_t*)endpoint_ptr_get_epQueue_tail(epptr);
-
-    return queue;
+    epptr = EP_PTR(thread_state_get_blockingObject(thread->tcbState));
+    queue = ep_ptr_get_queue(epptr);
+    queue = tcbEPReorder(thread, queue, old_prio);
+    ep_ptr_set_queue(epptr, queue);
 }
 
-static inline void
-ep_ptr_set_queue(endpoint_t *epptr, tcb_queue_t queue)
-{
-    endpoint_ptr_set_epQueue_head(epptr, (word_t)queue.head);
-    endpoint_ptr_set_epQueue_tail(epptr, (word_t)queue.end);
-}
 
 void
-sendIPC(bool_t blocking, bool_t do_call, word_t badge,
+sendIPC(bool_t blocking, bool_t do_call, bool_t canDonate, word_t badge,
         bool_t canGrant, tcb_t *thread, endpoint_t *epptr)
 {
     switch (endpoint_ptr_get_state(epptr)) {
@@ -71,6 +66,7 @@ sendIPC(bool_t blocking, bool_t do_call, word_t badge,
     case EPState_Recv: {
         tcb_queue_t queue;
         tcb_t *dest;
+        sched_context_t *donated = NULL;
 
         /* Get the head of the endpoint queue. */
         queue = ep_ptr_get_queue(epptr);
@@ -90,13 +86,18 @@ sendIPC(bool_t blocking, bool_t do_call, word_t badge,
         /* Do the transfer */
         doIPCTransfer(thread, epptr, badge, canGrant, dest);
 
+        if (canDonate && dest->tcbSchedContext == NULL) {
+            schedContext_donate(dest, ksCurSchedContext);
+            donated = ksCurSchedContext;
+        }
+
         setThreadState(dest, ThreadState_Running);
         attemptSwitchTo(dest);
 
         if (do_call ||
                 fault_ptr_get_faultType(&thread->tcbFault) != fault_null_fault) {
             if (canGrant) {
-                setupCallerCap(thread, dest);
+                setupCallerCap(thread, dest, donated);
             } else {
                 setThreadState(thread, ThreadState_Inactive);
             }
@@ -118,11 +119,19 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
 
     epptr = EP_PTR(cap_endpoint_cap_get_capEPPtr(cap));
 
-    /* Check for anything waiting in the notification */
     ntfnPtr = thread->tcbBoundNotification;
+    /* Check for anything waiting in the notification */
     if (ntfnPtr && notification_ptr_get_state(ntfnPtr) == NtfnState_Active) {
+        /* if the notification is active we do not need to return the scheduling context
+         * as it will just be donated again */
         completeSignal(ntfnPtr, thread);
     } else {
+        /* this is effectively waiting on the bound endpoint, so return the scheduling
+         * context */
+        if (ntfnPtr) {
+            maybeReturnSchedContext(ntfnPtr, thread);
+        }
+
         switch (endpoint_ptr_get_state(epptr)) {
         case EPState_Idle:
         case EPState_Recv: {
@@ -154,6 +163,7 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
             word_t badge;
             bool_t canGrant;
             bool_t do_call;
+            sched_context_t *donated = NULL;
 
             /* Get the head of the endpoint queue. */
             queue = ep_ptr_get_queue(epptr);
@@ -181,10 +191,20 @@ receiveIPC(tcb_t *thread, cap_t cap, bool_t isBlocking)
 
             do_call = thread_state_ptr_get_blockingIPCIsCall(&sender->tcbState);
 
+            /*
+             * if at this point the thread doesn't have a scheduling context,
+             * it must have given it away in either a reply or signal before
+             * calling handleRecv. We cannot get here from a plain recv, as
+             * without a scheduling context, we could not be running to call it */
+            if (thread->tcbSchedContext == NULL && sender->tcbSchedContext != NULL) {
+                donated = sender->tcbSchedContext;
+                schedContext_donate(thread, sender->tcbSchedContext);
+            }
+
             if (do_call ||
                     fault_get_faultType(sender->tcbFault) != fault_null_fault) {
                 if (canGrant) {
-                    setupCallerCap(sender, thread);
+                    setupCallerCap(sender, thread, donated);
                 } else {
                     setThreadState(sender, ThreadState_Inactive);
                 }

@@ -23,18 +23,18 @@
 #endif
 
 /* number of timer ticks until a thread is preempted  */
-#ifndef CONFIG_TIME_SLICE
-#define CONFIG_TIME_SLICE 5
+#ifndef CONFIG_BOOT_THREAD_TIME_SLICE
+#define CONFIG_BOOT_THREAD_TIME_SLICE 10
 #endif
 
-/* the number of scheduler domains */
-#ifndef CONFIG_NUM_DOMAINS
-#define CONFIG_NUM_DOMAINS 16
-#endif
-
-/* number of priorities per domain */
+/* number of priorities */
 #ifndef CONFIG_NUM_PRIORITIES
 #define CONFIG_NUM_PRIORITIES 256
+#endif
+
+/* number of criticalities to use */
+#ifndef CONFIG_NUM_CRITICALITIES
+#define CONFIG_NUM_CRITICALITIES 4
 #endif
 
 /* maximum number of caps that can be created in one retype invocation */
@@ -57,11 +57,6 @@
 /* CONSTRAINT: (16 * CONFIG_MAX_NUM_BOOTINFO_DEVICE_REGIONS) + (5 * CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS) <= 4036 */
 #ifndef CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS
 #define CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS 166
-#endif
-
-/* length of a timer tick in ms  */
-#ifndef CONFIG_TIMER_TICK_MS
-#define CONFIG_TIMER_TICK_MS 2
 #endif
 
 /* maximum number of different tracepoints which can be placed in the kernel */

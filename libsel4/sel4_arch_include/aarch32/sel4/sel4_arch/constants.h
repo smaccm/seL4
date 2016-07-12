@@ -24,7 +24,7 @@ enum {
 #define seL4_SlotBits 4
 #define seL4_TCBBits 9
 #define seL4_EndpointBits 4
-#define seL4_NotificationBits 4
+#define seL4_NotificationBits 5
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
 #define seL4_PageTableBits      12
 #else
@@ -32,6 +32,8 @@ enum {
 #endif
 #define seL4_PageDirBits 14
 #define seL4_ASIDPoolBits 12
+#define seL4_SchedContextBits 6
+
 #define seL4_ARM_VCPUBits       12
 #define seL4_IOPageTableBits    12
 /* word size */

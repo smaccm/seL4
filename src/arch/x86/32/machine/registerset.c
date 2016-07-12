@@ -32,6 +32,10 @@ const register_t syscallMessage[] = {
     EAX, EBX, ECX, EDX, ESI, EDI, EBP, NextIP, ESP, EFLAGS
 };
 
+const register_t temporalMessage[] = {
+    FaultIP, ESP, EFLAGS, EAX, EBX, ECX, EDX, ESI, EDI, EBP, TLS_BASE, FS, GS
+};
+
 #ifdef CONFIG_VTX
 const register_t crExitRegs[] = {
     EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI

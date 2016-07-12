@@ -23,11 +23,12 @@
 #define seL4_SlotBits         4
 #define seL4_TCBBits         10
 #define seL4_EndpointBits     4
-#define seL4_NotificationBits 4
+#define seL4_NotificationBits 5
 #define seL4_PageTableBits   12
 #define seL4_PageDirBits     12
 #define seL4_IOPageTableBits 12
 #define seL4_ASIDPoolBits    12
+#define seL4_SchedContextBits 6
 
 #define seL4_X86_VCPUBits 14
 #define seL4_X86_EPTPageDirectoryPointerTableBits 13

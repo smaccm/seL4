@@ -195,7 +195,8 @@ tagged_union cap capType {
     tag irq_control_cap     0x0e
     tag irq_handler_cap     0x1e
     tag zombie_cap          0x2e
-    tag domain_cap	        0x3e
+    tag sched_context_cap   0x3e
+    tag sched_control_cap   0x4e
 
     -- 8-bit tag arch caps
     tag io_page_table_cap   0x0f
@@ -224,6 +225,8 @@ tagged_union fault faultType {
     tag vm_fault 2
     tag unknown_syscall 3
     tag user_exception 4
+    tag temporal 5
+    tag no_fault_handler 6
 }
 
 -- VM attributes

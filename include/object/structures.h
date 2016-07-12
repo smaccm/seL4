@@ -26,11 +26,6 @@ enum irq_state {
 };
 typedef word_t irq_state_t;
 
-typedef struct dschedule {
-    dom_t domain;
-    word_t length;
-} dschedule_t;
-
 /* Arch-independent object types */
 enum endpoint_state {
     EPState_Idle = 0,
@@ -67,6 +62,10 @@ typedef word_t notification_state_t;
 #define TCB_PTR(r)       ((tcb_t *)(r))
 #define TCB_CTE_PTR(r,i) (((cte_t *)(r))+(i))
 #define TCB_REF(p)       ((word_t)(p))
+
+#define SC_REF(p) ((word_t) (p))
+#define SC_PTR(r) ((sched_context_t *) (r))
+#define SC_SIZE_BITS 6
 
 /* Generate a cte_t pointer from a tcb_t pointer */
 #define TCB_PTR_CTE_PTR(p,i) \
@@ -135,15 +134,17 @@ typedef struct cte cte_t;
 
 /* Thread state */
 enum _thread_state {
+    /* blocked thread states */
     ThreadState_Inactive = 0,
-    ThreadState_Running,
-    ThreadState_Restart,
     ThreadState_BlockedOnReceive,
     ThreadState_BlockedOnSend,
     ThreadState_BlockedOnReply,
     ThreadState_BlockedOnNotification,
+    /* runnable thread states */
+    ThreadState_Running,
     ThreadState_RunningVM,
-    ThreadState_IdleThreadState
+    ThreadState_Restart,
+    ThreadState_YieldTo,
 };
 typedef word_t _thread_state_t;
 
@@ -164,6 +165,10 @@ enum tcb_cnode_index {
 
     /* IPC buffer cap slot */
     tcbBuffer = 4,
+
+    tcbFaultHandler = 5,
+
+    tcbTemporalFaultHandler = 6,
 
     tcbCNodeEntries
 };
@@ -192,8 +197,11 @@ vmAttributesFromWord(word_t w)
     return attr;
 }
 
-/* TCB: size 64 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+/* TCB: size 88 bytes + sizeof(arch_tcb_t) (aligned to nearest power of 2) */
+typedef struct sched_context sched_context_t;
+
 struct tcb {
+    /* TOUCHED ON THE FASTPATH */
     /* arch specific tcb state (including context)*/
     arch_tcb_t tcbArch;
 
@@ -208,20 +216,28 @@ struct tcb {
     /* Current fault, 8 bytes */
     fault_t tcbFault;
 
-    /* Current lookup failure, 8 bytes */
-    lookup_fault_t tcbLookupFailure;
-
-    /* Domain, 1 byte (packed to 4) */
-    dom_t tcbDomain;
-
     /* Priority, 1 byte (packed to 4) */
     prio_t tcbPriority;
 
-    /* Timeslice remaining, 4 bytes */
-    word_t tcbTimeSlice;
+    /* sched context object that this tcb is running on, 4 bytes */
+    sched_context_t *tcbSchedContext;
 
-    /* Capability pointer to thread fault handler, 4 bytes */
-    cptr_t tcbFaultHandler;
+    /* Preivous and next pointers for endpoint and notification queues, 8 bytes */
+    struct tcb* tcbEPNext;
+
+    /* previous and next pointers for IPC call stack, 8 bytes */
+    struct tcb *tcbCallStackPrev;
+    struct tcb *tcbCallStackNext;
+
+    /* NOT TOUCHED ON THE FASTPATH */
+    /* Current lookup failure, 8 bytes */
+    lookup_fault_t tcbLookupFailure;
+
+    /* maximum controlled priority, 1 byte (packed to 4) */
+    prio_t tcbMCP;
+
+    /* sched context object that this tcb is bound to, 4 bytes */
+    sched_context_t *tcbHomeSchedContext;
 
     /* userland virtual address of thread IPC buffer, 4 bytes */
     word_t tcbIPCBuffer;
@@ -229,9 +245,19 @@ struct tcb {
     /* Previous and next pointers for scheduler queues , 8 bytes */
     struct tcb* tcbSchedNext;
     struct tcb* tcbSchedPrev;
-    /* Preivous and next pointers for endpoint and notification queues, 8 bytes */
-    struct tcb* tcbEPNext;
     struct tcb* tcbEPPrev;
+    /* Previous and next pointers for endpoint and notification queues, 8 bytes */
+    struct tcb* tcbCritNext;
+    struct tcb* tcbCritPrev;
+
+    /* sched context that this thread yielded to */
+    sched_context_t *tcbYieldTo;
+
+    /* criticality level of this tcb */
+    crit_t tcbCrit;
+
+    /* maximum controlled criticality of this tcb */
+    crit_t tcbMCC;
 
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     benchmark_util_t benchmark;
@@ -244,13 +270,50 @@ struct tcb {
 };
 typedef struct tcb tcb_t;
 
+/* sched context - 56 bytes */
+struct sched_context {
+    /* budget for this tcb -- remaining is refilled from this value */
+    ticks_t scBudget;
+
+    /* period for this tcb -- controls rate at which budget is replenished */
+    ticks_t scPeriod;
+
+    /* current budget for this tcb (timeslice) -- will be refilled from budget */
+    ticks_t scRemaining;
+
+    /* timestamp when this scheduling context is next due for a budget recharge */
+    ticks_t scNext;
+
+    /* tcb that is currently running on this scheduling context --
+     * if this == scHome, the scheduling context is at the tcb it is bound to. Otherwise,
+     * if scTcb is not NULL, the scheduling context was donated over IPC to scTcb */
+    tcb_t *scTcb;
+
+    /* thread that this scheduling context is bound to, but not neccesserily running on */
+    tcb_t *scHome;
+
+    /* notification this scheduling context is optionally bound to */
+    notification_t *scNotification;
+
+    /* data word that is sent with temporal faults that occur on this scheduling context */
+    seL4_Word scData;
+
+    /* amount of ticks this sc has been scheduled for since seL4_SchedContext_YieldTo
+     * or seL4_SchedContext_Consumed was last called */
+    ticks_t scConsumed;
+
+    /* thread that yeilded to this scheduling context */
+    tcb_t *scYieldFrom;
+
+};
+
 /* Ensure object sizes are sane */
 compile_assert(cte_size_sane, sizeof(cte_t) <= (1 << seL4_SlotBits))
 compile_assert(tcb_size_sane,
                (1 << (TCB_SIZE_BITS)) + sizeof(tcb_t) <= (1 << seL4_TCBBits))
 compile_assert(ep_size_sane, sizeof(endpoint_t) <= (1 << seL4_EndpointBits))
 compile_assert(notification_size_sane, sizeof(notification_t) <= (1 << seL4_NotificationBits))
-
+compile_assert(sc_size_sane, sizeof(sched_context_t) <= (1 << SC_SIZE_BITS))
 
 /* helper functions */
 
@@ -295,9 +358,6 @@ cap_get_capSizeBits(cap_t cap)
     case cap_null_cap:
         return 0;
 
-    case cap_domain_cap:
-        return 0;
-
     case cap_reply_cap:
         return 0;
 
@@ -305,6 +365,12 @@ cap_get_capSizeBits(cap_t cap)
         return 0;
 
     case cap_irq_handler_cap:
+        return 0;
+
+    case cap_sched_context_cap:
+        return SC_SIZE_BITS;
+
+    case cap_sched_control_cap:
         return 0;
 
     default:
@@ -342,9 +408,6 @@ cap_get_capIsPhysical(cap_t cap)
     case cap_zombie_cap:
         return true;
 
-    case cap_domain_cap:
-        return false;
-
     case cap_reply_cap:
         return false;
 
@@ -352,6 +415,12 @@ cap_get_capIsPhysical(cap_t cap)
         return false;
 
     case cap_irq_handler_cap:
+        return false;
+
+    case cap_sched_context_cap:
+        return true;
+
+    case cap_sched_control_cap:
         return false;
 
     default:
@@ -385,8 +454,8 @@ cap_get_capPtr(cap_t cap)
     case cap_zombie_cap:
         return CTE_PTR(cap_zombie_cap_get_capZombiePtr(cap));
 
-    case cap_domain_cap:
-        return NULL;
+    case cap_sched_context_cap:
+        return SC_PTR(cap_sched_context_cap_get_capPtr(cap));
 
     case cap_reply_cap:
         return NULL;
@@ -396,6 +465,10 @@ cap_get_capPtr(cap_t cap)
 
     case cap_irq_handler_cap:
         return NULL;
+
+    case cap_sched_control_cap:
+        return NULL;
+
     default:
         return cap_get_archCapPtr(cap);
 

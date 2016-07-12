@@ -16,6 +16,8 @@
 #include <plat/machine/devices.h>
 #include <plat/machine/pit.h>
 
+#define CPUID_TSC_DEADLINE_BIT 24u
+
 typedef enum _apic_reg_t {
     APIC_ID             = 0x020,
     APIC_VERSION        = 0x030,
@@ -55,24 +57,6 @@ apic_write_reg(apic_reg_t reg, uint32_t val)
     *(volatile uint32_t*)(PPTR_APIC + reg) = val;
 }
 
-static BOOT_CODE uint32_t
-apic_measure_freq(void)
-{
-    pit_init();
-    /* wait for 1st PIT wraparound */
-    pit_wait_wraparound();
-
-    /* start APIC timer countdown */
-    apic_write_reg(APIC_TIMER_DIVIDE, 0xb); /* divisor = 1 */
-    apic_write_reg(APIC_TIMER_COUNT, 0xffffffff);
-
-    /* wait for 2nd PIT wraparound */
-    pit_wait_wraparound();
-
-    /* calculate APIC/bus cycles per ms = frequency in kHz */
-    return (0xffffffff - apic_read_reg(APIC_TIMER_CURRENT)) / PIT_WRAPAROUND_MS;
-}
-
 BOOT_CODE paddr_t
 apic_get_base_paddr(void)
 {
@@ -91,9 +75,7 @@ apic_init(bool_t mask_legacy_irqs)
 {
     apic_version_t apic_version;
     uint32_t num_lvt_entries;
-    uint32_t apic_khz;
-
-    apic_khz = apic_measure_freq();
+    uint32_t cpuid_value;
 
     apic_version.words[0] = apic_read_reg(APIC_VERSION);
 
@@ -110,10 +92,6 @@ apic_init(bool_t mask_legacy_irqs)
         printf("APIC: number of LVT entries must be >= 3\n");
         return false;
     }
-
-    /* initialise APIC timer */
-    apic_write_reg(APIC_TIMER_DIVIDE, 0xb); /* divisor = 1 */
-    apic_write_reg(APIC_TIMER_COUNT, apic_khz * CONFIG_TIMER_TICK_MS);
 
     /* enable APIC using SVR register */
     apic_write_reg(
@@ -155,11 +133,19 @@ apic_init(bool_t mask_legacy_irqs)
         ).words[0]
     );
 
+    /* Check APIC for tsc-deadline mode support */
+    cpuid_value = x86_cpuid_ecx(0x1, 0x0);
+
+    if (!(cpuid_value & BIT(CPUID_TSC_DEADLINE_BIT))) {
+        printf("APIC: unsupported platform, TSC-deadline mode is not supported\n");
+        return false;
+    }
+
     /* initialise timer */
     apic_write_reg(
         APIC_LVT_TIMER,
         apic_lvt_new(
-            1,        /* timer_mode      */
+            2,        /* timer_mode - tsc_deadline */
             0,        /* masked          */
             0,        /* trigger_mode    */
             0,        /* remote_irr      */

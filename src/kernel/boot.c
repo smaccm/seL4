@@ -180,30 +180,6 @@ create_irq_cnode(void)
     return true;
 }
 
-/* Check domain scheduler assumptions. */
-compile_assert(num_domains_valid,
-               CONFIG_NUM_DOMAINS >= 1 && CONFIG_NUM_DOMAINS <= 256)
-compile_assert(num_priorities_valid,
-               CONFIG_NUM_PRIORITIES >= 1 && CONFIG_NUM_PRIORITIES <= 256)
-
-BOOT_CODE void
-create_domain_cap(cap_t root_cnode_cap)
-{
-    cap_t cap;
-    word_t i;
-
-    /* Check domain scheduler assumptions. */
-    assert(ksDomScheduleLength > 0);
-    for (i = 0; i < ksDomScheduleLength; i++) {
-        assert(ksDomSchedule[i].domain < CONFIG_NUM_DOMAINS);
-        assert(ksDomSchedule[i].length > 0);
-    }
-
-    cap = cap_domain_cap_new();
-    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapDomain), cap);
-}
-
-
 BOOT_CODE cap_t
 create_ipcbuf_frame(cap_t root_cnode_cap, cap_t pd_cap, vptr_t vptr)
 {
@@ -266,7 +242,6 @@ allocate_bi_frame(
     BI_PTR(pptr)->numIOPTLevels = 0;
     BI_PTR(pptr)->ipcBuffer = (seL4_IPCBuffer *) ipcbuf_vptr;
     BI_PTR(pptr)->initThreadCNodeSizeBits = CONFIG_ROOT_CNODE_SIZE_BITS;
-    BI_PTR(pptr)->initThreadDomain = ksDomSchedule[ksDomScheduleIdx].domain;
 
     return pptr;
 }
@@ -343,6 +318,31 @@ create_it_asid_pool(cap_t root_cnode_cap)
     return ap_cap;
 }
 
+BOOT_CODE static bool_t
+create_sched_context(tcb_t *tcb, ticks_t timeslice)
+{
+    pptr_t sc_pptr;
+    sched_context_t *sc;
+
+    sc_pptr = alloc_region(SC_SIZE_BITS);
+    if (!sc_pptr) {
+        printf("Kernel init failed: unable to allocate sched context for start-up thread\n");
+        return false;
+    }
+
+    memzero((void *) sc_pptr, BIT(SC_SIZE_BITS));
+    sc = SC_PTR(sc_pptr);
+    tcb->tcbSchedContext = sc;
+    sc->scTcb = tcb;
+    sc->scBudget = timeslice;
+    sc->scPeriod = sc->scBudget;
+    sc->scRemaining = sc->scBudget;
+    sc->scNext = ksCurrentTime + sc->scPeriod;
+    sc->scHome = tcb;
+
+    return true;
+}
+
 BOOT_CODE bool_t
 create_idle_thread(void)
 {
@@ -355,7 +355,7 @@ create_idle_thread(void)
     memzero((void *)pptr, 1 << seL4_TCBBits);
     ksIdleThread = TCB_PTR(pptr + TCB_OFFSET);
     configureIdleThread(ksIdleThread);
-    return true;
+    return create_sched_context(ksIdleThread, usToTicks(CONFIG_BOOT_THREAD_TIME_SLICE * US_PER_MS));
 }
 
 BOOT_CODE bool_t
@@ -381,7 +381,6 @@ create_initial_thread(
     }
     memzero((void*)pptr, 1 << seL4_TCBBits);
     tcb = TCB_PTR(pptr + TCB_OFFSET);
-    tcb->tcbTimeSlice = CONFIG_TIME_SLICE;
     Arch_initContext(&tcb->tcbArch.tcbContext);
 
     /* derive a copy of the IPC buffer cap for inserting */
@@ -411,19 +410,34 @@ create_initial_thread(
     setRegister(tcb, capRegister, bi_frame_vptr);
     setNextPC(tcb, ui_v_entry);
 
+    /* initialise temporal globals */
+    ksConsumed = 0u;
+    ksCurrentTime = getCurrentTime();
+
     /* initialise TCB */
+    if (!create_sched_context(tcb, usToTicks(CONFIG_BOOT_THREAD_TIME_SLICE * US_PER_MS))) {
+        return false;
+    }
     tcb->tcbPriority = seL4_MaxPrio;
+    tcb->tcbMCP = seL4_MaxPrio;
+    tcb->tcbCrit = seL4_MaxCrit;
+    tcb->tcbMCC = seL4_MaxCrit;
     setupReplyMaster(tcb);
     setThreadState(tcb, ThreadState_Running);
     ksSchedulerAction = tcb;
+    ksReprogram = true;
+    ksReleaseHead = NULL;
     ksCurThread = ksIdleThread;
-    ksCurDomain = ksDomSchedule[ksDomScheduleIdx].domain;
-    ksDomainTime = ksDomSchedule[ksDomScheduleIdx].length;
-    assert(ksCurDomain < CONFIG_NUM_DOMAINS && ksDomainTime > 0);
+    ksCurSchedContext = tcb->tcbSchedContext;
+    ksCriticality = seL4_MinCrit;
+    tcbCritEnqueue(tcb);
+    tcbCritEnqueue(ksIdleThread);
 
     /* create initial thread's TCB cap */
     cap = cap_thread_cap_new(TCB_REF(tcb));
     write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapInitThreadTCB), cap);
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapInitThreadSC),
+               cap_sched_context_cap_new(SC_REF(tcb->tcbSchedContext)));
 
 #ifdef CONFIG_PRINTING
     setThreadName(tcb, "rootserver");

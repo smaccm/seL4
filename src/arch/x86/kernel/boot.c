@@ -18,6 +18,7 @@
 #include <arch/kernel/apic.h>
 #include <arch/kernel/boot.h>
 #include <arch/kernel/boot_sys.h>
+#include <arch/kernel/tsc.h>
 #include <arch/kernel/vspace.h>
 #include <arch/machine/fpu.h>
 #include <arch/object/ioport.h>
@@ -325,9 +326,6 @@ init_sys_state(
         )
     );
 
-    /* create the cap for managing thread domains */
-    create_domain_cap(root_cnode_cap);
-
     /* create the IRQ CNode */
     if (!create_irq_cnode()) {
         return false;
@@ -335,6 +333,10 @@ init_sys_state(
 
     /* initialise the IRQ states and provide the IRQ control cap */
     init_irqs(root_cnode_cap);
+
+    /* create sched control cap */
+    write_slot(SLOT_PTR(pptr_of_cap(root_cnode_cap), seL4_CapSchedControl),
+               cap_sched_control_cap_new());
 
     /* create the bootinfo frame */
     bi_frame_pptr = allocate_bi_frame(0, 1, ipcbuf_vptr);
@@ -385,6 +387,12 @@ init_sys_state(
     write_it_asid_pool(it_ap_cap, it_vspace_cap);
 
     x86KSfpuOwner = NULL;
+    x86KStscMhz = tsc_init();
+    ndks_boot.bi_frame->archInfo = x86KStscMhz;
+
+    if (x86KStscMhz == 0) {
+        return false;
+    }
 
     /* create the idle thread */
     if (!create_idle_thread()) {

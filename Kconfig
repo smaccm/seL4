@@ -24,7 +24,7 @@ config ARCH_ARM_V8A
     bool
     default n
 
-config KERNEL_MASTER
+config KERNEL_RT
     bool
     default y
 
@@ -74,7 +74,7 @@ menu "seL4 System"
         bool
         default n
 
-    config ARM_CORTEX_A8 
+    config ARM_CORTEX_A8
         bool
         default n
 
@@ -291,18 +291,11 @@ menu "seL4 System Parameters"
             to be several bits larger than 4 to fit untyped caps and
             cannot be 27 bits as it won't fit in memory.
 
-    config TIMER_TICK_MS
-        int "Timer tick period in milliseconds"
-        default 2
+    config BOOT_THREAD_TIME_SLICE
+        int "Boot thread time slice in milliseconds"
+        default 10
         help
-            The number of milliseconds between timer ticks.
-
-
-    config TIME_SLICE
-        int "Time slice"
-        default 5
-        help
-            Number of timer ticks until a thread is preempted.
+            The number of milliseconds between timer ticks for the boot and idle thread.
 
     config RETYPE_FAN_OUT_LIMIT
         int "Retype fan out limit"
@@ -337,19 +330,6 @@ menu "seL4 System Parameters"
         help
             Enable IPC fastpath
 
-      config NUM_DOMAINS
-        int "Number of domains"
-        default 1
-        help
-            The number of scheduler domains in the system
-
-    config DOMAIN_SCHEDULE
-        string "Domain schedule"
-        help
-            A C file providing the symbols ksDomSchedule and
-            ksDomScheduleLength to be linked with the kernel as a scheduling
-            configuration.
-
     config NUM_PRIORITIES
         int "Number of priority levels"
         default 256
@@ -357,10 +337,17 @@ menu "seL4 System Parameters"
         help
             The number of priority levels per domain
 
+    config NUM_CRITICALITIES
+        int "Number of criticality levels"
+        default 4
+        range 1 256
+        help
+            The number of criticality levels
+
 endmenu
 
 menu "Build Options"
-   
+
     config VERIFICATION_BUILD
         bool "Disable verification unfriendly features"
         default n
@@ -501,7 +488,7 @@ menu "Build Options"
         depends on ARCH_IA32
         default n
         help
-            On ia32 platforms, this option disables the L2 hardware prefetcher, the L2 
+            On ia32 platforms, this option disables the L2 hardware prefetcher, the L2
             adjacent cache line prefetcher, the DCU prefetcher and the DCU IP prefetcher.
             Currently unimplemented on other platforms.
 

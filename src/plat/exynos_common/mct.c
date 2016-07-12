@@ -22,13 +22,6 @@
  * replacing it with their own.
  */
 
-#define TIMER_INTERVAL_US  (CONFIG_TIMER_TICK_MS * 1000)
-#define TIMER_MHZ          24ULL
-#define TIMER_TICKS        (TIMER_MHZ * TIMER_INTERVAL_US)
-#if TIMER_TICKS > 0xffffffff
-#error MCT timer compare value out of range
-#endif
-
 #define GCNTWSTAT_CNTH       (1U << 1)
 #define GCNTWSTAT_CNTL       (1U << 0)
 
@@ -70,7 +63,10 @@
 #define LTWSTAT_TCOMP        (1U << 1)
 #define LTWSTAT_TCNT         (1U << 0)
 
-
+/* see tools/reciprocal.py for calculation of CLK_MAGIC and CLK_SHIFT */
+compile_assert(magic_will_work, TIMER_MHZ == 24llu);
+#define CLK_MAGIC 2863311531
+#define CLK_SHIFT 36
 
 struct mct_global_map {
     uint32_t reserved0[64];
@@ -157,11 +153,63 @@ volatile struct mct_map* mct = (volatile struct mct_map*)EXYNOS_MCT_PPTR;
    DONT_TRANSLATE
  */
 void
-resetTimer(void)
+setDeadline(ticks_t deadline)
 {
-    MCR(CNT_TVAL, TIMER_TICKS);
-    MCR(CNT_CTL, (1 << 0));
+    assert(deadline >= ksCurrentTime);
+    MCRR(CNTV_CVAL, deadline);
+    assert(deadline >= getCurrentTime());
 }
+
+ticks_t
+getCurrentTime(void)
+{
+    ticks_t time;
+    MRRC(CNTVCT, time);
+    return time;
+}
+
+/**
+   DONT_TRANSLATE
+ */
+void
+ackDeadlineIRQ(void)
+{
+    setDeadline(UINT64_MAX);
+}
+
+PURE time_t
+getMaxTimerUs(void)
+{
+    return UINT64_MAX / CLK_MAGIC;
+}
+
+CONST time_t
+getKernelWcetUs(void)
+{
+    return 10u;
+}
+
+PURE ticks_t
+getTimerPrecision(void)
+{
+    return TIMER_MHZ;
+}
+
+PURE ticks_t
+usToTicks(time_t us)
+{
+    assert(us <= getMaxTimerUs());
+    assert(us >= getKernelWcetUs());
+    return us * TIMER_MHZ;
+}
+
+PURE time_t
+ticksToUs(ticks_t ticks)
+{
+    /* simulate 64bit division using multiplication by reciprocal */
+    return (ticks * CLK_MAGIC) >> CLK_SHIFT;
+}
+
 
 /**
    DONT_TRANSLATE
@@ -181,8 +229,11 @@ initTimer(void)
     /* Setup compare register to trigger in about 10000 years from now */
     MCRR(CNT_CVAL, 0xffffffffffffffff);
 
-    /* Reset the count down timer */
-    resetTimer();
+    /* enable the timer */
+    MCR(CNTV_CTL, (1u << 0));
+    /* TODO remove once SELFOUR-365 is implemented
+     * allow user mode to read the timer (CNTPCT) */
+    MCR(CNTKCTL, 1u);
 }
 
 #else /* ARM_CORTEX_A15 */

@@ -22,6 +22,12 @@
 #include <machine/registerset.h>
 #include <arch/linker.h>
 
+/* We set bits 8 -- 15 to the current criticality, which is guaranteed to be higher than
+ * any lower criticality tcbs. First clear any bits previously adjusted by criticality,
+ * then  boost priority by new criticality
+ */
+#define SHIFT_PRIO_BY_CRIT(p) ((p  & 0xFF) | (ksCriticality << 8u))
+
 static seL4_MessageInfo_t
 transferCaps(seL4_MessageInfo_t info, extra_caps_t caps,
              endpoint_t *endpoint, tcb_t *receiver,
@@ -30,63 +36,34 @@ transferCaps(seL4_MessageInfo_t info, extra_caps_t caps,
 static inline bool_t PURE
 isBlocked(const tcb_t *thread)
 {
-    switch (thread_state_get_tsType(thread->tcbState)) {
-    case ThreadState_Inactive:
-    case ThreadState_BlockedOnReceive:
-    case ThreadState_BlockedOnSend:
-    case ThreadState_BlockedOnNotification:
-    case ThreadState_BlockedOnReply:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-static inline bool_t PURE
-isRunnable(const tcb_t *thread)
-{
-    switch (thread_state_get_tsType(thread->tcbState)) {
-    case ThreadState_Running:
-    case ThreadState_Restart:
-    case ThreadState_RunningVM:
-        return true;
-
-    default:
-        return false;
-    }
+    return thread_state_get_tsType(thread->tcbState) < ThreadState_Running;
 }
 
 BOOT_CODE void
 configureIdleThread(tcb_t *tcb)
 {
     Arch_configureIdleThread(tcb);
-    setThreadState(tcb, ThreadState_IdleThreadState);
+    setThreadState(tcb, ThreadState_Running);
+    tcb->tcbPriority = seL4_MinPrio;
+    tcb->tcbCrit     = seL4_MaxCrit;
 }
 
 void
 activateThread(void)
 {
-    switch (thread_state_get_tsType(ksCurThread->tcbState)) {
-    case ThreadState_Running:
-    case ThreadState_RunningVM:
-        break;
+    uint32_t state;
 
-    case ThreadState_Restart: {
+    assert(isRunnable(ksCurThread));
+
+    state = thread_state_get_tsType(ksCurThread->tcbState);
+    if (unlikely(state == ThreadState_YieldTo)) {
+        schedContext_completeYieldTo(ksCurThread);
+    } else if (unlikely(state == ThreadState_Restart)) {
         word_t pc;
 
         pc = getRestartPC(ksCurThread);
         setNextPC(ksCurThread, pc);
         setThreadState(ksCurThread, ThreadState_Running);
-        break;
-    }
-
-    case ThreadState_IdleThreadState:
-        Arch_activateIdleThread(ksCurThread);
-        break;
-
-    default:
-        fail("Current thread is blocked");
     }
 }
 
@@ -96,6 +73,14 @@ suspend(tcb_t *target)
     cancelIPC(target);
     setThreadState(target, ThreadState_Inactive);
     tcbSchedDequeue(target);
+    tcbReleaseRemove(target);
+    tcbCritDequeue(target);
+
+    /* like IPC, yieldTo is cancelled by suspension */
+    if (target->tcbYieldTo) {
+        target->tcbYieldTo->scYieldFrom = NULL;
+        target->tcbYieldTo = NULL;
+    }
 }
 
 void
@@ -105,8 +90,23 @@ restart(tcb_t *target)
         cancelIPC(target);
         setupReplyMaster(target);
         setThreadState(target, ThreadState_Restart);
-        tcbSchedEnqueue(target);
-        switchIfRequiredTo(target);
+        tcbCritEnqueue(target);
+
+        if (likely(target->tcbSchedContext) && target->tcbSchedContext->scBudget > 0) {
+            /* recharge sched context */
+            if (ready(target->tcbSchedContext)) {
+                recharge(target->tcbSchedContext);
+            }
+
+            if (target->tcbSchedContext->scRemaining < getKernelWcetTicks()) {
+                /* not enough budget */
+                postpone(target->tcbSchedContext);
+            } else {
+                /* ready to go */
+                tcbSchedEnqueue(target);
+                switchIfRequiredTo(target);
+            }
+        }
     }
 }
 
@@ -130,8 +130,58 @@ doIPCTransfer(tcb_t *sender, endpoint_t *endpoint, word_t badge,
 void
 doReplyTransfer(tcb_t *sender, tcb_t *receiver, cte_t *slot)
 {
+
     assert(thread_state_get_tsType(receiver->tcbState) ==
            ThreadState_BlockedOnReply);
+
+    /* if the call stack is set then the receiver donated a scheduling context
+     * over the reply cap, work out if we can return it */
+    if (likely(receiver->tcbCallStackNext && receiver->tcbSchedContext == NULL)) {
+        if (unlikely(receiver->tcbCallStackNext != sender)) {
+            /* we are replying on behalf of someone else */
+            if (receiver->tcbCallStackNext->tcbSchedContext) {
+                /* return the donated scheduling context back, but don't pop the
+                 * call stack as we don't know what it looks like - instead the
+                 * appropriate thread will be removed when the reply cap is cleaned up*/
+                schedContext_donate(receiver, receiver->tcbCallStackNext->tcbSchedContext);
+            } else if (sender->tcbSchedContext->scHome != sender) {
+                /* otherwise someone else is replying, if the sender doesn't hold its own
+                 * scheduling context, send it back to the receiver */
+                schedContext_donate(receiver, sender->tcbSchedContext);
+            }
+        } else {
+            /* this is a reply from the callee, send the scheduling context back */
+            schedContext_donate(receiver, sender->tcbSchedContext);
+            tcbCallStackPop(sender);
+        }
+    }
+
+    /* since the callee wasn't running, the scheduling context may not be active */
+    if (ready(receiver->tcbSchedContext)) {
+        recharge(receiver->tcbSchedContext);
+    }
+
+    if (receiver->tcbSchedContext &&
+            receiver->tcbSchedContext->scRemaining <= getKernelWcetTicks()) {
+        /* thread still has not enough budget to run */
+        cap_t tfep = getTemporalFaultHandler(receiver);
+        if (validTemporalFaultHandler(tfep) &&
+                fault_get_faultType(receiver->tcbFault) != fault_temporal) {
+            /* the context does not have enough budget and the thread we are
+             * switching to has a temporal fault handler, raise a temporal
+             * fault and abort the reply */
+            cteDeleteOne(slot);
+            current_fault = fault_temporal_new(receiver->tcbSchedContext->scData);
+            sendTemporalFaultIPC(receiver, tfep);
+            return;
+        } else {
+            /* the context doesn't have enough budget, but no temporal fault handler,
+            * just postpone it and continue to process the reply. The thread will
+            * pick it up once the scheduling context has its budget replenished.
+            */
+            postpone(receiver->tcbSchedContext);
+        }
+    }
 
     if (likely(fault_get_faultType(receiver->tcbFault) == fault_null_fault)) {
         doIPCTransfer(sender, NULL, 0, true, receiver);
@@ -162,13 +212,15 @@ doNormalTransfer(tcb_t *sender, word_t *sendBuffer, endpoint_t *endpoint,
 {
     word_t msgTransferred;
     seL4_MessageInfo_t tag;
+    word_t length;
     exception_t status;
     extra_caps_t caps;
 
     tag = messageInfoFromWord(getRegister(sender, msgInfoRegister));
+    length = seL4_MessageInfo_get_extraCaps(tag);
 
-    if (canGrant) {
-        status = lookupExtraCaps(sender, sendBuffer, tag);
+    if (unlikely(length > 0 && canGrant)) {
+        status = lookupExtraCaps(sender, sendBuffer, length);
         caps = current_extra_caps;
         if (unlikely(status != EXCEPTION_NONE)) {
             caps.excaprefs[0] = NULL;
@@ -181,7 +233,9 @@ doNormalTransfer(tcb_t *sender, word_t *sendBuffer, endpoint_t *endpoint,
     msgTransferred = copyMRs(sender, sendBuffer, receiver, receiveBuffer,
                              seL4_MessageInfo_get_length(tag));
 
-    tag = transferCaps(tag, caps, endpoint, receiver, receiveBuffer);
+    if (unlikely(length > 0)) {
+        tag = transferCaps(tag, caps, endpoint, receiver, receiveBuffer);
+    }
 
     tag = seL4_MessageInfo_set_length(tag, msgTransferred);
     setRegister(receiver, msgInfoRegister, wordFromMessageInfo(tag));
@@ -266,15 +320,18 @@ void doNBRecvFailedTransfer(tcb_t *thread)
 }
 
 static void
-nextDomain(void)
+setNextInterrupt(void)
 {
-    ksDomScheduleIdx++;
-    if (ksDomScheduleIdx >= ksDomScheduleLength) {
-        ksDomScheduleIdx = 0;
+    /* the next interrupt is when the current thread's budget expires */
+    time_t next_interrupt = ksCurrentTime + ksCurThread->tcbSchedContext->scRemaining;
+
+    /* or when the next thread in the release queue is due to awaken */
+    if (likely(ksReleaseHead != NULL &&
+               ksReleaseHead->tcbSchedContext->scNext < next_interrupt)) {
+        next_interrupt = ksReleaseHead->tcbSchedContext->scNext;
     }
-    ksWorkUnitsCompleted = 0;
-    ksCurDomain = ksDomSchedule[ksDomScheduleIdx].domain;
-    ksDomainTime = ksDomSchedule[ksDomScheduleIdx].length;
+
+    setDeadline(next_interrupt - getTimerPrecision());
 }
 
 void
@@ -282,124 +339,191 @@ schedule(void)
 {
     word_t action;
 
+    if (ksReprogram) {
+        /* wake any threads that need it */
+        awaken();
+    }
+
     action = (word_t)ksSchedulerAction;
     if (action == (word_t)SchedulerAction_ChooseNewThread) {
-        if (isRunnable(ksCurThread)) {
+        if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
-        }
-        if (ksDomainTime == 0) {
-            nextDomain();
         }
         chooseThread();
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     } else if (action != (word_t)SchedulerAction_ResumeCurrentThread) {
-        if (isRunnable(ksCurThread)) {
+        if (isSchedulable(ksCurThread)) {
             tcbSchedEnqueue(ksCurThread);
         }
         /* SwitchToThread */
         switchToThread(ksSchedulerAction);
         ksSchedulerAction = SchedulerAction_ResumeCurrentThread;
     }
+
+    switchSchedContext();
+
+    if (ksReprogram) {
+        setNextInterrupt();
+        ksReprogram = false;
+    }
+    assert(ksConsumed == 0);
+
+    /* ksCurThread is implicitly bound to ksCurSchedContext -
+     * this optimised scheduling context donation on the fastpath
+     */
+    ksCurThread->tcbSchedContext = NULL;
+    ksCurSchedContext->scTcb = NULL;
 }
 
 void
 chooseThread(void)
 {
     word_t prio;
-    word_t dom;
     tcb_t *thread;
 
-    if (CONFIG_NUM_DOMAINS > 1) {
-        dom = ksCurDomain;
-    } else {
-        dom = 0;
+    prio = highestPrio();
+    thread = ksReadyQueues[prio].head;
+
+    if (unlikely(thread->tcbCrit < ksCriticality)) {
+        thread = ksIdleThread;
     }
 
-    if (likely(ksReadyQueuesL1Bitmap[dom])) {
-        word_t l1index = (wordBits - 1) - clzl(ksReadyQueuesL1Bitmap[dom]);
-        word_t l2index = (wordBits - 1) - clzl(ksReadyQueuesL2Bitmap[dom][l1index]);
-        prio = l1index_to_prio(l1index) | l2index;
-        thread = ksReadyQueues[ready_queues_index(dom, prio)].head;
-        assert(thread);
-        assert(isRunnable(thread));
-        switchToThread(thread);
-    } else {
-        switchToIdleThread();
-    }
+    assert(thread);
+    assert(isRunnable(thread));
+    assert(isSchedulable(thread));
+    assert(thread->tcbSchedContext->scRemaining >= getKernelWcetTicks());
+
+    switchToThread(thread);
 }
 
 void
 switchToThread(tcb_t *thread)
 {
+    /* now switch */
+    if (unlikely(thread == ksIdleThread)) {
+        Arch_switchToIdleThread();
+    } else if (likely(thread != ksCurThread)) {
+        Arch_switchToThread(thread);
+    }
+
+    tcbSchedDequeue(thread);
+    assert(!thread_state_get_tcbInReleaseQueue(thread->tcbState));
+    assert(thread->tcbSchedContext->scRemaining >= getKernelWcetTicks());
+
 #ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
     benchmark_utilisation_switch(ksCurThread, thread);
 #endif
-    Arch_switchToThread(thread);
-    tcbSchedDequeue(thread);
+
     ksCurThread = thread;
 }
 
 void
-switchToIdleThread(void)
+switchSchedContext(void)
 {
-#ifdef CONFIG_BENCHMARK_TRACK_UTILISATION
-    benchmark_utilisation_switch(ksCurThread, ksIdleThread);
-#endif
-    Arch_switchToIdleThread();
-    ksCurThread = ksIdleThread;
+    assert(ksCurSchedContext->scRemaining >= ksConsumed);
+
+    if (unlikely(ksCurSchedContext != ksCurThread->tcbSchedContext)) {
+        /* we are changing scheduling contexts */
+        ksReprogram = true;
+        commitTime(ksCurSchedContext);
+    } else {
+        /* go back in time and skip reprogramming the timer */
+        rollbackTime();
+    }
+    ksCurSchedContext = ksCurThread->tcbSchedContext;
 }
 
 void
-setDomain(tcb_t *tptr, dom_t dom)
+setActivePriority(tcb_t *tptr, prio_t prio)
 {
-    tcbSchedDequeue(tptr);
-    tptr->tcbDomain = dom;
-    if (isRunnable(tptr)) {
-        tcbSchedEnqueue(tptr);
-    }
-    if (tptr == ksCurThread) {
-        rescheduleRequired();
-    }
-}
+    prio_t old_prio = tptr->tcbPriority;
 
-void
-setPriority(tcb_t *tptr, prio_t prio)
-{
+    if (old_prio == prio) {
+        return;
+    }
+
+    /* lazy dequeue */
     tcbSchedDequeue(tptr);
+    /* update prio */
     tptr->tcbPriority = prio;
-    if (isRunnable(tptr)) {
-        tcbSchedEnqueue(tptr);
+
+    switch (thread_state_ptr_get_tsType(&tptr->tcbState)) {
+    case ThreadState_BlockedOnReceive:
+    case ThreadState_BlockedOnSend:
+        reorderIPCQueue(tptr, old_prio);
+        break;
+    case ThreadState_BlockedOnNotification:
+        reorderNtfnQueue(tptr, old_prio);
+        break;
+    case ThreadState_Running:
+    case ThreadState_Restart:
+        if (!thread_state_get_tcbInReleaseQueue(tptr->tcbState)) {
+            if (tptr->tcbSchedContext) {
+                tcbSchedEnqueue(tptr);
+            }
+            if (tptr == ksCurThread || prio > ksCurThread->tcbPriority) {
+                rescheduleRequired();
+            }
+        }
+        break;
+    default:
+        /* nothing to do - thread is inactive, idle or blocked on reply */
+        break;
     }
-    if (tptr == ksCurThread) {
-        rescheduleRequired();
+}
+
+void
+setPriorityFields(tcb_t *tptr, seL4_Prio_t new_prio)
+{
+    prio_t activePrio;
+
+    /* lazy dequeue */
+    tcbCritDequeue(tptr);
+
+    tptr->tcbMCP = seL4_Prio_get_mcp(new_prio);
+    tptr->tcbCrit = seL4_Prio_get_crit(new_prio);
+    tptr->tcbMCC = seL4_Prio_get_mcc(new_prio);
+
+    activePrio = seL4_Prio_get_prio(new_prio);
+    if (tptr->tcbCrit >= ksCriticality) {
+        activePrio = SHIFT_PRIO_BY_CRIT(activePrio);
+    }
+
+    setActivePriority(tptr, activePrio);
+
+    if (thread_state_get_tsType(tptr->tcbState) != ThreadState_Inactive) {
+        tcbCritEnqueue(tptr);
     }
 }
 
 static void
 possibleSwitchTo(tcb_t* target, bool_t onSamePriority)
 {
-    dom_t curDom, targetDom;
     prio_t curPrio, targetPrio;
     tcb_t *action;
 
-    curDom = ksCurDomain;
     curPrio = ksCurThread->tcbPriority;
-    targetDom = target->tcbDomain;
     targetPrio = target->tcbPriority;
     action = ksSchedulerAction;
-    if (targetDom != curDom) {
-        tcbSchedEnqueue(target);
-    } else {
+
+    if (likely(target->tcbSchedContext != NULL) &&
+            !thread_state_get_tcbInReleaseQueue(target->tcbState)) {
         if ((targetPrio > curPrio || (targetPrio == curPrio && onSamePriority))
                 && action == SchedulerAction_ResumeCurrentThread) {
             ksSchedulerAction = target;
         } else {
             tcbSchedEnqueue(target);
         }
-        if (action != SchedulerAction_ResumeCurrentThread
-                && action != SchedulerAction_ChooseNewThread) {
+
+        if (action != SchedulerAction_ResumeCurrentThread &&
+                action != SchedulerAction_ChooseNewThread) {
+            rescheduleRequired();
+        } else if (ksCurThread->tcbSchedContext == NULL &&
+                   ksSchedulerAction == SchedulerAction_ResumeCurrentThread) {
             rescheduleRequired();
         }
+    } else {
+        rescheduleRequired();
     }
 }
 
@@ -433,34 +557,153 @@ scheduleTCB(tcb_t *tptr)
 }
 
 void
-timerTick(void)
+recharge(sched_context_t *sc)
 {
-    if (likely(thread_state_get_tsType(ksCurThread->tcbState) ==
-               ThreadState_Running)) {
-        if (ksCurThread->tcbTimeSlice > 1) {
-            ksCurThread->tcbTimeSlice--;
-        } else {
-            ksCurThread->tcbTimeSlice = CONFIG_TIME_SLICE;
-            tcbSchedAppend(ksCurThread);
-            rescheduleRequired();
-        }
-    }
+    sc->scRemaining = sc->scBudget;
+    assert(sc->scBudget > 0);
+    sc->scNext = ksCurrentTime + sc->scPeriod;
+}
 
-    if (CONFIG_NUM_DOMAINS > 1) {
-        ksDomainTime--;
-        if (ksDomainTime == 0) {
+void
+postpone(sched_context_t *sc)
+{
+    /* this isn't technically neccessary however
+     * we don't want to leave threads with budget when they
+     * have used / abadondoned it as various assertions around
+     * the kernel will cease to guard if this is not 0
+     */
+    sc->scRemaining = 0llu;
+    tcbReleaseEnqueue(sc->scTcb);
+}
+
+/* update the kernel timestamp and store much
+ * time we have consumed since the last update
+ */
+void
+updateTimestamp(void)
+{
+    time_t prev = ksCurrentTime;
+    ksCurrentTime = getCurrentTime();
+    ksConsumed = ksCurrentTime - prev;
+
+    /* restore sched context binding */
+    ksCurThread->tcbSchedContext = ksCurSchedContext;
+    ksCurSchedContext->scTcb = ksCurThread;
+}
+
+/*
+ * Check if the current threads budget has expired.
+ *
+ * If it has, bill the thread, add it to the scheduler
+ * and set up a reschedule.
+ *
+ * return true if the thread has enough budget to get through
+ *             the current kernel operation.
+ */
+bool_t
+checkBudget(void)
+{
+    /* does this thread have enough time to continue? */
+    if (unlikely(currentThreadExpired())) {
+        cap_t tfep = getTemporalFaultHandler(ksCurThread);
+        /* we enter this function on 2 different types of path:
+         * kernel entry (for whatever reason) and when handling
+         * a timer interrupt. For the
+         * former, all threads should be runnable on kernel entry.
+         * For the latter, all threads being preempted are currently
+         * doing something so they should be running
+         */
+        assert(isRunnable(ksCurThread));
+        commitTime(ksCurSchedContext);
+        if (validTemporalFaultHandler(tfep)) {
+            /* threads with temporal fault handlers should never run out of budget! */
+            current_fault = fault_temporal_new(ksCurSchedContext->scData);
+            sendTemporalFaultIPC(ksCurThread, tfep);
+        } else {
+            /* threads without fault handlers don't care if they ran out of budget */
+            endTimeslice(ksCurThread->tcbSchedContext);
             rescheduleRequired();
         }
+
+        return false;
+    } else {
+        /* thread is good to go to do whatever it is up to */
+        return true;
     }
+}
+
+void
+endTimeslice(sched_context_t *sc)
+{
+    assert(sc->scTcb != NULL);
+    assert(isSchedulable(sc->scTcb));
+
+    tcbSchedDequeue(sc->scTcb);
+
+    if (ready(sc)) {
+        /* refill budget */
+        recharge(sc);
+        /* apply round robin */
+        tcbSchedAppend(sc->scTcb);
+    } else {
+        /* schedule thread to wake up when budget is due to be recharged */
+        postpone(sc);
+    }
+    rescheduleRequired();
 }
 
 void
 rescheduleRequired(void)
 {
     if (ksSchedulerAction != SchedulerAction_ResumeCurrentThread
-            && ksSchedulerAction != SchedulerAction_ChooseNewThread) {
+            && ksSchedulerAction != SchedulerAction_ChooseNewThread
+            && isSchedulable(ksSchedulerAction)) {
+
         tcbSchedEnqueue(ksSchedulerAction);
     }
     ksSchedulerAction = SchedulerAction_ChooseNewThread;
+    ksReprogram = true;
 }
+
+/* wake any threads in the release queue that are ready to
+ * have their budgets replenished
+ */
+void
+awaken(void)
+{
+    tcb_t *awakened;
+
+    while (ksReleaseHead != NULL && ready(ksReleaseHead->tcbSchedContext)) {
+        awakened = tcbReleaseDequeue();
+        recharge(awakened->tcbSchedContext);
+        tcbSchedAppend(awakened);
+        switchIfRequiredTo(awakened);
+    }
+}
+
+void
+adjustPriorityByCriticality(tcb_t *tcb, bool_t up)
+{
+    /* this function should only be called on threads that are currently eligible to run */
+    assert(tcb->tcbCrit >= ksCriticality);
+    assert(tcb->tcbCrit > 0);
+
+    if (up &&
+            isSchedulable(tcb) &&
+            tcb->tcbSchedContext->scHome != tcb &&
+            tcb->tcbSchedContext->scHome->tcbCrit < ksCriticality) {
+
+        /* if we are adjusting the criticality up, we need to
+         * raise a temporal exception if a server is working
+         * on a request for a low criticality thread */
+        cap_t tfep = getTemporalFaultHandler(tcb);
+        if (validTemporalFaultHandler(tfep)) {
+            current_fault = fault_temporal_new(tcb->tcbSchedContext->scData);
+            sendTemporalFaultIPC(tcb, tfep);
+        }
+    }
+
+    setActivePriority(tcb, SHIFT_PRIO_BY_CRIT(tcb->tcbPriority));
+}
+
 

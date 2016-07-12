@@ -55,6 +55,7 @@ typedef struct boot_state {
     p_region_t   avail_p_reg; /* region of available physical memory on platform */
     p_region_t   ki_p_reg;    /* region where the kernel image is in */
     ui_info_t    ui_info;     /* info about userland images */
+    uint32_t     tsc_mhz;     /* frequency of the tsc */
     uint32_t     num_ioapic;  /* number of IOAPICs detected */
     paddr_t      ioapic_paddr[CONFIG_MAX_NUM_IOAPIC];
     uint32_t     num_drhu; /* number of IOMMUs */

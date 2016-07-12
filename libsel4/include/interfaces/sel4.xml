@@ -42,8 +42,10 @@
 			<param dir="in" name="arch_flags" type="seL4_Uint8"/>
 		</method>
 		<method id="TCBConfigure" name="Configure">
-			<param dir="in" name="fault_ep" type="seL4_Word"/>
-			<param dir="in" name="priority" type="seL4_Uint8"/>
+			<param dir="in" name="fault_ep" type="seL4_CPtr"/>
+			<param dir="in" name="temporal_fault_ep" type="seL4_CPtr"/>
+            <param dir="in" name="priority" type="seL4_Prio_t"/>
+            <param dir="in" name="sched_context" type="seL4_CPtr"/>
 			<param dir="in" name="cspace_root" type="seL4_CNode"/>
 			<param dir="in" name="cspace_root_data" type="seL4_CapData_t"/>
 			<param dir="in" name="vspace_root" type="seL4_CNode"/>
@@ -53,13 +55,24 @@
 		</method>
 		<method id="TCBSetPriority" name="SetPriority">
 			<param dir="in" name="priority" type="seL4_Uint8"/>
-		</method>
-		<method id="TCBSetIPCBuffer" name="SetIPCBuffer">
+        </method>
+        <method id="TCBSetMCPriority" name="SetMCPriority">
+            <param dir="in" name="max_priority" type="seL4_Uint8"/>
+        </method>
+        <method id="TCBSetCriticality" name="SetCriticality">
+			<param dir="in" name="criticality" type="seL4_Uint8"/>
+        </method>
+        <method id="TCBSetMCCriticality" name="SetMCCriticality">
+            <param dir="in" name="mcc" type="seL4_Uint8"/>
+        </method>
+	
+        <method id="TCBSetIPCBuffer" name="SetIPCBuffer">
 			<param dir="in" name="buffer" type="seL4_Word"/>
 			<param dir="in" name="bufferFrame" type="seL4_CPtr"/>
 		</method>
 		<method id="TCBSetSpace" name="SetSpace">
-			<param dir="in" name="fault_ep" type="seL4_Word"/>
+			<param dir="in" name="fault_ep" type="seL4_CPtr"/>
+			<param dir="in" name="temporal_fault_ep" type="seL4_CPtr"/>
 			<param dir="in" name="cspace_root" type="seL4_CNode"/>
 			<param dir="in" name="cspace_root_data" type="seL4_CapData_t"/>
 			<param dir="in" name="vspace_root" type="seL4_CNode"/>
@@ -133,11 +146,16 @@
 			<param dir="in" name="src_index" type="seL4_Word"/>
 			<param dir="in" name="src_depth" type="seL4_Uint8"/>
 		</method>
-		<method id="CNodeSaveCaller" name="SaveCaller">
+		<method id="CNodeSwapCaller" name="SwapCaller">
 			<param dir="in" name="index" type="seL4_Word"/>
 			<param dir="in" name="depth" type="seL4_Uint8"/>
 		</method>
-	</interface>
+        <method id="CNodeSwapTCBCaller" name="SwapTCBCaller">
+            <param dir="in" name="index" type="seL4_Word"/>
+            <param dir="in" name="depth" type="seL4_Uint8"/>
+            <param dir="in" name="tcb" type="seL4_CPtr" />
+        </method>
+    </interface>
     <interface name="seL4_IRQControl">
 		<method id="IRQIssueIRQHandler" name="Get">
 			<param dir="in" name="irq" type="int"/>
@@ -153,10 +171,31 @@
         </method>
 		<method id="IRQClearIRQHandler" name="Clear"/>
     </interface>
-	<interface name="seL4_DomainSet">
-		<method id="DomainSetSet" name="Set">
-			<param dir="in" name="domain" type="seL4_Uint8"/>
-			<param dir="in" name="thread" type="seL4_TCB"/>
-		</method>
-	</interface>
+    <interface name="seL4_SchedControl">
+        <method id="SchedControlConfigure" name="Configure">
+            <param dir="in" name="target" type="seL4_SchedContext" />
+            <param dir="in" name="budget" type="seL4_Time" />
+            <param dir="in" name="period" type="seL4_Time" />
+            <param dir="in" name="data" type="seL4_Word" />
+        </method>
+        <method id="SchedControlSetCriticality" name="SetCriticality">
+            <param dir="in" name="criticality" type="seL4_Uint32" />
+        </method>
+    </interface>
+    <interface name="seL4_SchedContext">
+        <method id="SchedContextYield" name="Yield"/>
+        <method id="SchedContextYieldTo" name="YieldTo">
+            <param dir="out" name="consumed" type="seL4_Time" />
+        </method>
+        <method id="SchedContextConsumed" name="Consumed">
+            <param dir="out" name="consumed" type="seL4_Time" />
+        </method>
+        <method id="SchedContextBind" name="Bind">
+            <param dir="in" name="cap" type="seL4_CPtr" />
+        </method>
+        <method id ="SchedContextUnbindObject" name="UnbindObject">
+            <param dir="in" name="cap" type="seL4_CPtr" />
+        </method>
+        <method id="SchedContextUnbind" name="Unbind"/>
+    </interface>
 </api>

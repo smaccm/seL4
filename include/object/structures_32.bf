@@ -109,10 +109,18 @@ block zombie_cap {
     field capType         8
 }
 
-block domain_cap {
-    padding 32
+block sched_context_cap {
+    field_high capPtr 28
+    padding            4
 
-    padding 24
+    padding           24
+    field  capType     8
+}
+
+block sched_control_cap {
+    padding       32
+
+    padding       24
     field capType 8
 }
 
@@ -130,10 +138,16 @@ block endpoint {
     field state 2
 }
 
--- Notification object: size = 16 bytes
+-- Notification object: size = 32 bytes
 block notification {
-    field_high ntfnBoundTCB 28
+    padding 96
+    
+    field_high ntfnSchedContext 28
     padding 4
+
+    field_high ntfnBoundTCB 28
+    field bound 1
+    padding 3
 
     field ntfnMsgIdentifier 32
 
@@ -261,10 +275,21 @@ block user_exception {
     field faultType 3
 }
 
+block temporal {
+    field data 32
+    padding 29
+    field faultType 3
+}
+
+block no_fault_handler {
+    padding 61
+    field faultType 3
+}
+
 -- Thread state: size = 12 bytes
 block thread_state(blockingIPCBadge, blockingIPCCanGrant, blockingIPCIsCall,
                    tcbQueued, blockingObject,
-                   tsType) {
+                   tcbInReleaseQueue, tcbCritQueued, tsType) {
     field blockingIPCBadge 28
     field blockingIPCCanGrant 1
     field blockingIPCIsCall 1
@@ -272,7 +297,10 @@ block thread_state(blockingIPCBadge, blockingIPCCanGrant, blockingIPCIsCall,
 
     -- this is fastpath-specific. it is useful to be able to write
     -- tsType and without changing tcbQueued
-    padding 31
+    -- or inReleaseQueue 
+    padding 29
+    field tcbCritQueued 1
+    field tcbInReleaseQueue 1
     field tcbQueued 1
 
     field_high blockingObject 28

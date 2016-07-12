@@ -8,13 +8,9 @@
  * @TAG(GD_GPL)
  */
 
-#include <object/structures.h>
-#include <model/statedata.h>
+#ifndef __ARCH_KERNEL_TSC_H
+#define __ARCH_KERNEL_TSC_H
 
-/* Default schedule. */
-const dschedule_t ksDomSchedule[] = {
-    { .domain = 0, .length = 1 },
-};
+uint32_t tsc_init(void);
 
-const word_t ksDomScheduleLength = sizeof(ksDomSchedule) / sizeof(dschedule_t);
-
+#endif

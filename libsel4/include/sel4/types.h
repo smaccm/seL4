@@ -31,6 +31,8 @@ typedef enum {
     seL4_VMFault,
     seL4_UnknownSyscall,
     seL4_UserException,
+    seL4_TemporalFault,
+    seL4_NoFaultHandler,
     SEL4_FORCE_LONG_ENUM(seL4_FaultType),
 } seL4_FaultType;
 
@@ -61,7 +63,8 @@ typedef seL4_CPtr seL4_IRQHandler;
 typedef seL4_CPtr seL4_IRQControl;
 typedef seL4_CPtr seL4_TCB;
 typedef seL4_CPtr seL4_Untyped;
-typedef seL4_CPtr seL4_DomainSet;
+typedef seL4_CPtr seL4_SchedContext;
+typedef seL4_CPtr seL4_SchedControl;
 
 #define seL4_NilData seL4_CapData_Badge_new(0)
 

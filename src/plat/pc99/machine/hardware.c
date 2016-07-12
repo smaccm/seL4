@@ -87,8 +87,149 @@ void handleSpuriousIRQ(void)
 }
 
 /* ============================== timer ============================== */
-
-void resetTimer(void)
+static CONST uint32_t
+clz64(uint64_t n)
 {
-    /* not necessary */
+    uint32_t upper_n = (uint32_t) (n >> 32llu);
+    uint32_t lz = 0;
+
+    if (upper_n != 0) {
+        lz += clzl(upper_n);
+    }
+
+    return lz + clzl((uint32_t) n);
 }
+
+static CONST uint64_t
+div64(uint64_t numerator, uint32_t denominator)
+{
+    uint64_t c;
+    uint64_t quotient;
+    uint64_t long_denom;
+
+    quotient = 0llu;
+    long_denom = (uint64_t) denominator;
+
+    if (unlikely(denominator > numerator)) {
+        return 0;
+    }
+
+    assert(denominator > 0);
+
+    /* align denominator to numerator */
+    c = 32u + clzl(denominator) - clz64(numerator);
+    long_denom = long_denom << c;
+
+    /* perform binary long division */
+    while (c < UINT64_MAX) {
+        if (numerator >= long_denom) {
+            numerator -= long_denom;
+            quotient |= (1llu << c);
+        }
+        c--;
+        long_denom = long_denom >> 1llu;
+    }
+
+    return quotient;
+}
+
+BOOT_CODE VISIBLE uint32_t
+tsc_init(void)
+{
+    uint32_t version_info = x86_cpuid_eax(0x1, 0x0);
+    uint32_t tsc_mhz;
+
+    if (MODEL_ID(version_info) == HASWELL_MODEL_ID ||
+            MODEL_ID(version_info) == IVY_BRIDGE_MODEL_ID) {
+        uint64_t info;
+        uint32_t ratio;
+
+        /* read tsc freq from the platform info msr */
+        info = x86_rdmsr(IA32_PLATFORM_INFO_MSR);
+        ratio = (((uint32_t) info) & 0xFF00) >> 8u;
+        tsc_mhz = ratio * 100u; // this gives Mhz
+    } else {
+        /* use the pit to find out the tsc freq */
+        time_t old_ticks, new_ticks, diff;
+        uint32_t cycles_per_ms;
+
+        pit_init();
+
+        /* wait for pit to wraparound */
+        pit_wait_wraparound();
+
+        /* read tsc */
+        old_ticks = x86_rdtsc();
+
+        /* measure how many tsc cycles pass while PIT wrapsaround */
+        pit_wait_wraparound();
+
+        new_ticks = x86_rdtsc();
+
+        diff = new_ticks - old_ticks;
+
+        /* sanity checks */
+        assert((uint32_t) diff == diff);
+        assert(new_ticks > old_ticks);
+
+        /* bravo, khz */
+        cycles_per_ms = (uint32_t) diff / PIT_WRAPAROUND_MS;
+
+        /* finally, return mhz */
+        tsc_mhz = cycles_per_ms / 1000u;
+    }
+
+    return tsc_mhz;
+}
+
+PURE time_t
+getMaxTimerUs(void)
+{
+    return div64(UINT64_MAX, x86KStscMhz);
+}
+
+CONST time_t
+getKernelWcetUs(void)
+{
+    return  10u;
+}
+
+PURE ticks_t
+getTimerPrecision(void)
+{
+    return x86KStscMhz;
+}
+
+PURE ticks_t
+usToTicks(time_t us)
+{
+    assert(x86KStscMhz > 0);
+    assert(us >= getKernelWcetUs() && us <= getMaxTimerUs());
+    return us * x86KStscMhz;
+}
+
+PURE time_t
+ticksToUs(ticks_t ticks)
+{
+    return div64(ticks, x86KStscMhz);
+}
+
+void
+ackDeadlineIRQ(void)
+{
+}
+
+ticks_t
+getCurrentTime(void)
+{
+    return x86_rdtsc();
+}
+
+void
+setDeadline(ticks_t deadline)
+{
+    assert(deadline > ksCurrentTime);
+    x86_wrmsr(IA32_TSC_DEADLINE_MSR, deadline);
+}
+
+

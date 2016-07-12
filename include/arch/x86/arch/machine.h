@@ -24,11 +24,12 @@
 #define IA32_SYSENTER_CS_MSR    0x174
 #define IA32_SYSENTER_ESP_MSR   0x175
 #define IA32_SYSENTER_EIP_MSR   0x176
-#define IA32_FS_BASE_MSR        0xC0000100
+#define IA32_TSC_DEADLINE_MSR   0x6e0
 #define IA32_GS_BASE_MSR        0xC0000101
 #define IA32_LSTAR_MSR          0xC0000082
 #define IA32_STAR_MSR           0xC0000081
 #define IA32_FMASK_MSR          0xC0000084
+#define IA32_PLATFORM_INFO_MSR  0xCE
 #define IA32_XSS_MSR            0xD0A
 
 #define BROADWELL_MODEL_ID      0xD4
@@ -123,6 +124,19 @@ static inline uint32_t x86_cpuid_ecx(uint32_t eax, uint32_t ecx)
                  : "a" (eax), "c" (ecx)
                  : "memory");
     return ecx;
+}
+
+static inline uint64_t x86_rdtsc(void)
+{
+    uint32_t hi, lo;
+
+    asm volatile (
+        "rdtsc"
+        : "=a" (lo),
+        "=d" (hi)
+    );
+
+    return ((uint64_t) hi) << 32llu | (uint64_t) lo;
 }
 
 static inline uint32_t x86_cpuid_ebx(uint32_t eax, uint32_t ecx)

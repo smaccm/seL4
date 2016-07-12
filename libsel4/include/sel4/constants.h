@@ -16,18 +16,20 @@
 enum priorityConstants {
     seL4_InvalidPrio = -1,
     seL4_MinPrio = 0,
-    seL4_MaxPrio = CONFIG_NUM_PRIORITIES - 1
+    seL4_MaxPrio = CONFIG_NUM_PRIORITIES - 1,
+    seL4_MinCrit = 0,
+    seL4_MaxCrit = CONFIG_NUM_CRITICALITIES - 1
 };
 
 /* seL4_MessageInfo_t defined in api/shared_types.bf */
 
 enum seL4_MsgLimits {
     seL4_MsgLengthBits = 7,
-    seL4_MsgExtraCapBits = 2
+    seL4_MsgExtraCapBits = 3
 };
 
 enum {
-    seL4_MsgMaxLength = 120,
+    seL4_MsgMaxLength = 116,
 };
 #define seL4_MsgMaxExtraCaps (LIBSEL4_BIT(seL4_MsgExtraCapBits)-1)
 

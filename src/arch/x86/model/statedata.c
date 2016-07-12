@@ -48,6 +48,9 @@ idt_entry_t x86KSidt[IDT_ENTRIES];
 /* A valid initial FPU state, copied to every new thread. */
 user_fpu_state_t x86KSnullFpuState ALIGN(MIN_FPU_ALIGNMENT);
 
+/* frequency of the tsc */
+uint32_t x86KStscMhz;
+
 /* Number of IOMMUs (DMA Remapping Hardware Units) */
 uint32_t x86KSnumDrhu;
 

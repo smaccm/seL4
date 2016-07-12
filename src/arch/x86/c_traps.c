@@ -17,6 +17,7 @@
 
 #include <api/syscall.h>
 
+void __attribute__((noreturn)) __attribute__((externally_visible)) slowpath_irq(irq_t irq);
 void __attribute__((noreturn)) __attribute__((externally_visible)) restore_user_context(void);
 void __attribute__((noreturn)) restore_vmx(void);
 
@@ -32,7 +33,7 @@ void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall
         handleUserLevelFault(irq, ksCurThread->tcbArch.tcbContext.registers[Error]);
     } else if (likely(irq < int_trap_min)) {
         x86KScurInterrupt = irq;
-        handleInterruptEntry();
+        fastpath_irq();
     } else if (irq == int_spurious) {
         /* fall through to restore_user_context and do nothing */
     } else {
@@ -45,6 +46,13 @@ void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall
         sys_num = (irq << 24) | (syscall & 0x00ffffff);
         handleUnknownSyscall(sys_num);
     }
+    restore_user_context();
+}
+
+void __attribute__((noreturn))
+slowpath_irq(irq_t irq)
+{
+    handleInterruptEntry(irq);
     restore_user_context();
 }
 
@@ -92,6 +100,8 @@ void __attribute__((externally_visible)) c_handle_syscall(word_t cptr, word_t ms
         fastpath_call(cptr, msgInfo);
     } else if (syscall == (syscall_t)SysReplyRecv) {
         fastpath_reply_recv(cptr, msgInfo);
+    } else if (syscall == SysSend) {
+        fastpath_signal(cptr);
     }
 #endif
     slowpath(syscall);

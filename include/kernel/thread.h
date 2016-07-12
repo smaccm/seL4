@@ -15,17 +15,7 @@
 #include <util.h>
 #include <object/structures.h>
 #include <arch/machine.h>
-
-static inline CONST word_t
-ready_queues_index(word_t dom, word_t prio)
-{
-    if (CONFIG_NUM_DOMAINS > 1) {
-        return dom * CONFIG_NUM_PRIORITIES + prio;
-    } else {
-        assert(dom == 0);
-        return prio;
-    }
-}
+#include <machine/timer.h>
 
 static inline CONST word_t
 prio_to_l1index(word_t prio)
@@ -37,6 +27,82 @@ static inline CONST word_t
 l1index_to_prio(word_t l1index)
 {
     return (l1index << wordRadix);
+}
+
+static inline CONST word_t
+invert_l1index(word_t l1index)
+{
+    word_t inverted = (L2_BITMAP_SIZE - 1 - l1index);
+    assert(inverted < L2_BITMAP_SIZE);
+    return inverted;
+}
+
+static inline PURE word_t
+highestPrio(void)
+{
+    word_t l1index;
+    word_t l2index;
+    word_t l1index_inverted;
+
+    /* it's undefined to call clzl on 0 */
+    assert(ksReadyQueuesL1Bitmap != 0);
+
+    l1index = wordBits - 1 - clzl(ksReadyQueuesL1Bitmap);
+    l1index_inverted = invert_l1index(l1index);
+    assert(ksReadyQueuesL2Bitmap[l1index_inverted] != 0);
+    l2index = wordBits - 1 - clzl(ksReadyQueuesL2Bitmap[l1index_inverted]);
+
+    return (l1index_to_prio(l1index) | l2index);
+}
+
+/* return true if the threads scheduling context's
+ * period has expired and the budget is ready to be
+ * recharged
+ */
+static inline bool_t
+ready(sched_context_t *sc)
+{
+    return (ksCurrentTime + getKernelWcetTicks()) >= sc->scNext;
+}
+
+static inline bool_t
+currentThreadExpired(void)
+{
+    return ksCurThread->tcbSchedContext->scRemaining < (ksConsumed + getKernelWcetTicks());
+}
+
+static inline bool_t PURE
+isRunnable(const tcb_t *thread)
+{
+    return thread_state_get_tsType(thread->tcbState) >= ThreadState_Running;
+}
+
+static inline bool_t PURE
+isSchedulable(const tcb_t *thread)
+{
+    return isRunnable(thread) && thread->tcbSchedContext != NULL &&
+           !thread_state_get_tcbInReleaseQueue(thread->tcbState);
+}
+
+static inline void
+commitTime(sched_context_t *sc)
+{
+    if (unlikely(ksCurSchedContext->scRemaining < ksConsumed)) {
+        ksCurSchedContext->scRemaining = 0llu;
+    } else {
+        ksCurSchedContext->scRemaining -= ksConsumed;
+    }
+
+    ksCurSchedContext->scConsumed += ksConsumed;
+    ksConsumed = 0llu;
+    ksCurrentTime += 1llu;
+}
+
+static inline void
+rollbackTime(void)
+{
+    ksCurrentTime -= ksConsumed;
+    ksConsumed = 0llu;
 }
 
 void configureIdleThread(tcb_t *tcb);
@@ -56,13 +122,19 @@ void schedule(void);
 void chooseThread(void);
 void switchToThread(tcb_t *thread) VISIBLE;
 void switchToIdleThread(void);
-void setDomain(tcb_t *tptr, dom_t dom);
-void setPriority(tcb_t *tptr, prio_t prio);
+void switchSchedContext(void) VISIBLE;
+void setPriorityFields(tcb_t *tptr, seL4_Prio_t prio);
+void setActivePriority(tcb_t *tptr, prio_t prio);
 void scheduleTCB(tcb_t *tptr);
 void attemptSwitchTo(tcb_t *tptr);
 void switchIfRequiredTo(tcb_t *tptr);
 void setThreadState(tcb_t *tptr, _thread_state_t ts) VISIBLE;
-void timerTick(void);
+void updateTimestamp(void);
+bool_t checkBudget(void);
+void endTimeslice(sched_context_t *sc);
 void rescheduleRequired(void);
-
+void recharge(sched_context_t *sc);
+void awaken(void);
+void postpone(sched_context_t *sc);
+void adjustPriorityByCriticality(tcb_t *tcb, bool_t up);
 #endif

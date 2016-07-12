@@ -38,13 +38,17 @@ ntfn_ptr_set_queue(notification_t *ntfnPtr, tcb_queue_t ntfn_queue)
     notification_ptr_set_ntfnQueue_tail(ntfnPtr, (word_t)ntfn_queue.end);
 }
 
-static inline void
-ntfn_set_active(notification_t *ntfnPtr, word_t badge)
+void
+reorderNtfnQueue(tcb_t *thread, prio_t old_prio)
 {
-    notification_ptr_set_state(ntfnPtr, NtfnState_Active);
-    notification_ptr_set_ntfnMsgIdentifier(ntfnPtr, badge);
-}
+    notification_t *ntfn;
+    tcb_queue_t queue;
 
+    ntfn = NTFN_PTR(thread_state_get_blockingObject(thread->tcbState));
+    queue = ntfn_ptr_get_queue(ntfn);
+    queue = tcbEPReorder(thread, queue, old_prio);
+    ntfn_ptr_set_queue(ntfn, queue);
+}
 
 void
 sendSignal(notification_t *ntfnPtr, word_t badge)
@@ -59,6 +63,7 @@ sendSignal(notification_t *ntfnPtr, word_t badge)
                 cancelIPC(tcb);
                 setThreadState(tcb, ThreadState_Running);
                 setRegister(tcb, badgeRegister, badge);
+                maybeDonateSchedContext(tcb, ntfnPtr);
                 switchIfRequiredTo(tcb);
             } else if (thread_state_ptr_get_tsType(&tcb->tcbState) == ThreadState_RunningVM) {
                 setThreadState(tcb, ThreadState_Running);
@@ -93,6 +98,7 @@ sendSignal(notification_t *ntfnPtr, word_t badge)
             notification_ptr_set_state(ntfnPtr, NtfnState_Idle);
         }
 
+        maybeDonateSchedContext(dest, ntfnPtr);
         setThreadState(dest, ThreadState_Running);
         setRegister(dest, badgeRegister, badge);
         switchIfRequiredTo(dest);
@@ -129,6 +135,11 @@ receiveSignal(tcb_t *thread, cap_t cap, bool_t isBlocking)
                                         ThreadState_BlockedOnNotification);
             thread_state_ptr_set_blockingObject(&thread->tcbState,
                                                 NTFN_REF(ntfnPtr));
+
+            /* return scheduling context */
+            maybeReturnSchedContext(ntfnPtr, thread);
+
+
             scheduleTCB(thread);
 
             /* Enqueue TCB */
@@ -149,6 +160,7 @@ receiveSignal(tcb_t *thread, cap_t cap, bool_t isBlocking)
             thread, badgeRegister,
             notification_ptr_get_ntfnMsgIdentifier(ntfnPtr));
         notification_ptr_set_state(ntfnPtr, NtfnState_Idle);
+        maybeDonateSchedContext(thread, ntfnPtr);
         break;
     }
 }
@@ -203,6 +215,7 @@ completeSignal(notification_t *ntfnPtr, tcb_t *tcb)
         badge = notification_ptr_get_ntfnMsgIdentifier(ntfnPtr);
         setRegister(tcb, badgeRegister, badge);
         notification_ptr_set_state(ntfnPtr, NtfnState_Idle);
+        maybeDonateSchedContext(tcb, ntfnPtr);
     } else {
         fail("tried to complete signal with inactive notification object");
     }
@@ -219,13 +232,19 @@ void
 unbindMaybeNotification(notification_t *ntfnPtr)
 {
     tcb_t *boundTCB;
+    sched_context_t *boundSC;
+
     boundTCB = (tcb_t*)notification_ptr_get_ntfnBoundTCB(ntfnPtr);
+    boundSC = (sched_context_t *) notification_ptr_get_ntfnSchedContext(ntfnPtr);
 
     if (boundTCB) {
         doUnbindNotification(ntfnPtr, boundTCB);
     }
-}
 
+    if (boundSC) {
+        schedContext_unbindNtfn(boundSC);
+    }
+}
 void
 unbindNotification(tcb_t *tcb)
 {
@@ -242,5 +261,27 @@ bindNotification(tcb_t *tcb, notification_t *ntfnPtr)
 {
     notification_ptr_set_ntfnBoundTCB(ntfnPtr, (word_t)tcb);
     tcb->tcbBoundNotification = ntfnPtr;
+}
+
+void
+maybeDonateSchedContext(tcb_t *tcb, notification_t *ntfnPtr)
+{
+    if (tcb->tcbSchedContext == NULL) {
+        sched_context_t *sc = SC_PTR(notification_ptr_get_ntfnSchedContext(ntfnPtr));
+        if (sc != NULL && sc->scTcb == NULL) {
+            assert(sc->scTcb == NULL);
+            schedContext_donate(tcb, sc);
+        }
+    }
+}
+
+void
+maybeReturnSchedContext(notification_t *ntfnPtr, tcb_t *thread)
+{
+    sched_context_t *sc = SC_PTR(notification_ptr_get_ntfnSchedContext(ntfnPtr));
+    if (sc == thread->tcbSchedContext) {
+        thread->tcbSchedContext = NULL;
+        sc->scTcb = NULL;
+    }
 }
 

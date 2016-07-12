@@ -27,23 +27,12 @@ handleFault(tcb_t *tptr)
     }
 }
 
-exception_t
-sendFaultIPC(tcb_t *tptr)
+static inline exception_t
+sendFaultIPCToHandler(tcb_t *tptr, bool_t canDonate, cap_t handlerCap)
 {
-    cptr_t handlerCPtr;
-    cap_t  handlerCap;
-    lookupCap_ret_t lu_ret;
     lookup_fault_t original_lookup_fault;
 
     original_lookup_fault = current_lookup_fault;
-
-    handlerCPtr = tptr->tcbFaultHandler;
-    lu_ret = lookupCap(tptr, handlerCPtr);
-    if (lu_ret.status != EXCEPTION_NONE) {
-        current_fault = fault_cap_fault_new(handlerCPtr, false);
-        return EXCEPTION_FAULT;
-    }
-    handlerCap = lu_ret.cap;
 
     if (cap_get_capType(handlerCap) == cap_endpoint_cap &&
             cap_endpoint_cap_get_capCanSend(handlerCap) &&
@@ -52,18 +41,30 @@ sendFaultIPC(tcb_t *tptr)
         if (fault_get_faultType(current_fault) == fault_cap_fault) {
             tptr->tcbLookupFailure = original_lookup_fault;
         }
-        sendIPC(true, false,
+        sendIPC(true, false, canDonate,
                 cap_endpoint_cap_get_capEPBadge(handlerCap),
                 true, tptr,
                 EP_PTR(cap_endpoint_cap_get_capEPPtr(handlerCap)));
 
         return EXCEPTION_NONE;
     } else {
-        current_fault = fault_cap_fault_new(handlerCPtr, false);
+        current_fault = fault_no_fault_handler_new();
         current_lookup_fault = lookup_fault_missing_capability_new(0);
 
         return EXCEPTION_FAULT;
     }
+}
+
+exception_t
+sendTemporalFaultIPC(tcb_t *tptr, cap_t tfep)
+{
+    return sendFaultIPCToHandler(tptr, false, tfep);
+}
+
+exception_t
+sendFaultIPC(tcb_t *tptr)
+{
+    return sendFaultIPCToHandler(tptr, true, TCB_PTR_CTE_PTR(tptr, tcbFaultHandler)->cap);
 }
 
 #ifdef CONFIG_PRINTING
@@ -93,6 +94,9 @@ print_fault(fault_t f)
         printf("user exception 0x%x code 0x%x",
                (unsigned int)fault_user_exception_get_number(f),
                (unsigned int)fault_user_exception_get_code(f));
+        break;
+    case fault_no_fault_handler:
+        printf("no fault handler");
         break;
     default:
         printf("unknown fault");

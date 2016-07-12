@@ -136,6 +136,9 @@ setMRs_fault(tcb_t *sender, tcb_t* receiver, word_t *receiveIPCBuffer)
                      fault_user_exception_get_code(sender->tcbFault));
     }
 
+    case fault_temporal:
+        return setMR(receiver, receiveIPCBuffer, 0, fault_temporal_get_data(sender->tcbFault));
+
 #ifdef CONFIG_ARM_HYPERVISOR_SUPPORT
     case fault_vgic_maintenance:
         if (fault_vgic_maintenance_get_idxValid(sender->tcbFault)) {

@@ -22,6 +22,8 @@ The basic services seL4 provides are as follows:
     \item[Threads] are an abstraction of CPU execution that supports
     running software;
 
+    \item[Scheduling contexts] are an abstraction of CPU execution time.
+
     \item[Address spaces] are virtual memory spaces that each contain an
     application. Applications are limited to accessing memory in their
     address space;
@@ -100,7 +102,7 @@ capabilities through the system is controlled by a
 \label{sec:sys_nbsend}
 \label{sec:sys_replyrecv}
 \label{sec:sys_nbrecv}
-\label{sec:sys_yield}
+\label{sec:sys_signalrecv}
 
 The seL4 kernel provides a message-passing service for communication between
 threads. This mechanism is also used for communication with kernel-provided
@@ -116,15 +118,14 @@ manner specific to the type of kernel object. For example, invoking a thread
 control block (TCB) capability with a correctly formatted message will suspend
 the target thread.
 
-Logically, the kernel provides three system calls, \emph{Send},
-\emph{Receive} and \emph{Yield}. However, there are also combinations
+Logically, the kernel provides two system calls, \emph{Send},
+\emph{Receive}. However, there are also combinations
 and variants of the basic \emph{Send} and \emph{Receive} calls, e.g.\
 the \emph{Call} operation, which consists of a send followed by a
 \emph{Receive} from the same object. Methods on kernel objects other
 than endpoints and notifications are all mapped to \emph{Send} or
 \emph{Call}, depending on whether or not the method returns a
-result. The \emph{Yield} system call is not associated with any kernel
-object and is the only operation that does not invoke a capability.
+result.
 
 The complete set of system calls is:
 \begin{description}
@@ -187,10 +188,10 @@ The complete set of system calls is:
 
     There is space for only one reply capability in each thread's TCB, so the
     \apifunc{seL4\_Reply}{sel4_reply} syscall can be used to reply to the most
-    recent caller only. The \apifunc{seL4\_CNode\_SaveCaller}{cnode_savecaller}
-    method that will be described later can be used to save the reply
+    recent caller only. The \apifunc{seL4\_CNode\_SwapCaller}{cnode_swapcaller}
+    and \apifunc{seL4\_CNode\_SwapTCBCaller}{cnode_swaptcbcaller} methods that will be described later can be used to swap the reply
     capability into regular capability space, where it can be used with
-    \apifunc{seL4\_Send}{sel4_send}.
+    \apifunc{seL4\_Send}{sel4_send} or swapped back in.
 
     \item[\apifunc{seL4\_ReplyRecv}{sel4_replyrecv}] combines \apifunc{seL4\_Reply}{sel4_reply} and
     \apifunc{seL4\_Recv}{sel4_recv}. It exists mostly for efficiency reasons: the common case of
@@ -204,12 +205,10 @@ The complete set of system calls is:
     capabilities, raising a fault (see section \ref{sec:faults}) when attempted
     with other capability types.
 
-    \item[\apifunc{seL4\_Yield}{sel4_yield}] is the only system call that does not require
-    a capability to be used. It forfeits the remainder of the calling thread's
-    timeslice and causes invocation of the kernel's scheduler.
-    If there are no other runnable threads with the same
-    priority as the caller, the calling thread will immediately be
-    scheduled with a fresh timeslice.
+    \item[\apifunc{seL4\_SignalRecv}{sel4_signalrecv}] combines a \apifunc{seL4\_NBSend}{sel4_nbsend} with a \apifunc{seL4\_Recv}{sel4_recv}, and can be called on two different objects (notification objects, reply caps or endpoints).
+    Regardless of the success of the non-blocking send, the receive operation will continue. The send operation does 
+    not transmit a message. 
+
 \end{description}
 
 \section{Kernel Objects}
@@ -233,6 +232,13 @@ manipulation, and combination of these kernel objects:
     execution in seL4. Threads are the unit of execution that is
     scheduled, blocked, unblocked, etc., depending on the application's
     interaction with other threads.
+
+   \item[Scheduling contexts] (\obj{SchedulingContext}s; see \autoref{ch:threads}) represent 
+       CPU time in seL4. Users can create scheduling contexts from untyped objects, however on
+       creation scheduling contexts are \textit{empty} and do not represent any time. 
+       Initially, there is a capability to \obj{SchedControl}, which 
+       allows scheduling context to be populated with parameters, which combined with priority
+       control threads access to CPU time. 
 
     \item[\obj{Endpoints}] (see \autoref{ch:ipc}) facilitate message-passing
     communication between threads. IPC is synchronous: A thread
