@@ -191,5 +191,6 @@ void NORETURN VISIBLE restore_user_context(void)
             : "memory"
         );
     }
-    while (1);
+
+    UNREACHABLE();
 }
