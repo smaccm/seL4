@@ -101,7 +101,7 @@ void __attribute__((externally_visible)) c_handle_syscall(word_t cptr, word_t ms
     } else if (syscall == (syscall_t)SysReplyRecv) {
         fastpath_reply_recv(cptr, msgInfo);
     } else if (syscall == SysSend) {
-        fastpath_signal(cptr);
+//        fastpath_signal(cptr);
     }
 #endif
     slowpath(syscall);

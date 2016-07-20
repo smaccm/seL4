@@ -483,6 +483,12 @@ fastpath_signal(word_t cptr)
             setRegister(dest, badgeRegister, badge);
             thread_state_ptr_set_tsType_np(&dest->tcbState, ThreadState_Running);
             tcbSchedEnqueue(dest);
+        } else if (dest && thread_state_get_tsType(dest->tcbState) ==  ThreadState_RunningVM) {
+            setRegister(dest, badgeRegister, badge);
+            setRegister(dest, msgInfoRegister, 0);
+            thread_state_ptr_set_tsType_np(&dest->tcbState, ThreadState_Running);
+            tcbSchedEnqueue(dest);
+            Arch_leaveVMAsyncTransfer(dest);
         } else {
             ntfn_set_active(ntfn_ptr, badge);
         }
@@ -653,6 +659,11 @@ fastpath_irq(void)
 
             setRegister(dest, badgeRegister, badge);
             thread_state_ptr_set_tsType_np(&dest->tcbState, ThreadState_Running);
+        } else if (thread_state_get_tsType(dest->tcbState) == ThreadState_RunningVM) {
+            setRegister(dest, badgeRegister, badge);
+            setRegister(dest, msgInfoRegister, 0);
+            thread_state_ptr_set_tsType_np(&dest->tcbState, ThreadState_Running);
+            Arch_leaveVMAsyncTransfer(dest);
         } else {
             ntfn_set_active(ntfn_ptr, badge);
             mask_ack_bail(irq);
