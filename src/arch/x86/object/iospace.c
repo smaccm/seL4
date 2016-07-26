@@ -211,7 +211,7 @@ decodeX86IOPTInvocation(
     }
 
     io_space     = excaps.excaprefs[0]->cap;
-    io_address   = getSyscallArg(0, buffer) & ~MASK(PAGE_BITS);
+    io_address   = getSyscallArg(0, buffer) & ~MASK(21);
 
     if (cap_io_page_table_cap_get_capIOPTIsMapped(cap)) {
         current_syscall_error.type = seL4_InvalidCapability;
