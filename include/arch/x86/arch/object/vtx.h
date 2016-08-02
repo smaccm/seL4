@@ -263,10 +263,13 @@ void invept(void* ept_pml4);
 static inline bool_t
 vmxon(paddr_t vmxon_region) {
     uint8_t error;
+    /* vmxon requires a 64bit memory address, so perform a
+     * cast here to guarantee this on 32-bit platforms */
+    uint64_t vmxonreg = vmxon_region;
     asm volatile(
         "vmxon %1; setnae %0"
         : "=g"(error)
-        : "m"(vmxon_region)
+        : "m"(vmxonreg)
         : "memory", "cc"
     );
     return !!error;
