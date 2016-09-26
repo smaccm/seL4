@@ -700,4 +700,58 @@ Arch_initBreakpointContext(user_breakpoint_state_t *uds)
                    | X86_DEBUG_BP3_ENABLE_BIT);
 }
 
+void Arch_initTcbContextAsVcpu(arch_tcb_t *at)
+{
+    /* This will make the kernel just restore the debug regs
+     * unconditionally.
+     */
+    at->tcbContext.breakpointState.used_breakpoints_bf = BIT(0)
+                                                         | BIT(1)
+                                                         | BIT(2)
+                                                         | BIT(3);
+}
+
+void Arch_deinitTcbContextAsVcpu(arch_tcb_t *at)
+{
+    /* And this will cause the kernel to return to only saving
+     * and restoring context on when needed.
+     */
+    at->tcbContext.breakpointState.used_breakpoints_bf = 0;
+}
+
+/** Saves debug register state to a TCB.
+ *
+ * This function is called from within ASM in traps.S
+ * in handle_vmexit(), so it's much easier to take a
+ * tcb_t* argument than an arch_tcb_t* argument.
+ * @param t TCB structure into which we are to store
+ *          the debug register state.
+ */
+void
+saveBreakpointState(tcb_t *t)
+{
+    asm volatile (
+        "movl %0, %%edx \n\t"
+        "movl %%dr0, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        "addl $4, %%edx \n\t"
+        "movl %%dr1, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        "addl $4, %%edx \n\t"
+        "movl %%dr2, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        "addl $4, %%edx \n\t"
+        "movl %%dr3, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        "addl $4, %%edx \n\t"
+        "movl %%dr6, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        "addl $4, %%edx \n\t"
+        "movl %%dr7, %%ecx \n\t"
+        "movl %%ecx, (%%edx) \n\t"
+        :
+        : "r" (t->tcbArch.tcbContext.breakpointState.dr)
+        : "ecx", "edx");
+}
+
 #endif

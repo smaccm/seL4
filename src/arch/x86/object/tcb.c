@@ -12,6 +12,7 @@
 #include <api/failures.h>
 #include <machine/registerset.h>
 #include <object/structures.h>
+#include <object/tcb.h>
 #include <arch/machine.h>
 #include <arch/object/tcb.h>
 

@@ -469,6 +469,17 @@ BEGIN_FUNC(handle_vmexit)
 
     # switch to kernel stack
     leal    kernel_stack_alloc + 4096, %esp
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    # Save the guest's debug state *before* moving into handleVmexit.
+    pushl %eax
+    movl $ksCurThread, %eax
+    movl (%eax), %eax
+    pushl %eax
+    call saveBreakpointState
+    addl $4, %eax
+    popl %eax
+#endif
+
     # Handle the vmexit.
     call    handleVmexit
     jmp     restore_user_context

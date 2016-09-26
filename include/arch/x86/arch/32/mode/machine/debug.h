@@ -103,7 +103,7 @@ writeDrReg(uint8_t reg, word_t val)
 /** Restore debug register context from a block of memory.
  *@param source The memory block from which to load the register values.
  */
-static void
+static inline void
 loadBreakpointState(arch_tcb_t *source)
 {
     /* Order does matter when restoring the registers: we want to restore the
@@ -133,5 +133,7 @@ loadBreakpointState(arch_tcb_t *source)
         : "r" (source->tcbContext.breakpointState.dr)
         : "edx", "ecx");
 }
+
+void saveBreakpointState(tcb_t *t);
 
 #endif /* CONFIG_HARDWARE_DEBUG_API */

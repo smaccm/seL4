@@ -93,7 +93,6 @@ void NORETURN VISIBLE restore_user_context(void)
         restore_vmx();
     }
 #endif
-    c_exit_hook();
 
     setKernelEntryStackPointer(ksCurThread);
 

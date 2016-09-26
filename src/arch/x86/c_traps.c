@@ -14,7 +14,6 @@
 #include <arch/machine/fpu.h>
 #include <arch/fastpath/fastpath.h>
 #include <arch/object/vcpu.h>
-#include <arch/kernel/traps.h>
 #include <machine/debug.h>
 #include <api/syscall.h>
 
@@ -30,7 +29,6 @@ void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall
     } else if (irq == int_page_fault) {
         /* Error code is in Error. Pull out bit 5, which is whether it was instruction or data */
         handleVMFaultEvent((ksCurThread->tcbArch.tcbContext.registers[Error] >> 4) & 1);
-        vm_fault_type_t type = (ksCurThread->tcbArch.tcbContext.registers[Error] >> 4u) & 1u;
 #ifdef CONFIG_HARDWARE_DEBUG_API
     } else if (irq == int_debug || irq == int_software_break_request) {
         /* Debug exception */

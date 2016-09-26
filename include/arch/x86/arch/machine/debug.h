@@ -180,4 +180,7 @@ Arch_decodeUnsetBreakpoint(arch_tcb_t *uds, uint16_t bp_num)
     return ret;
 }
 
+void Arch_initTcbContextAsVcpu(arch_tcb_t *at);
+void Arch_deinitTcbContextAsVcpu(arch_tcb_t *at);
+
 #endif /* CONFIG_HARDWARE_DEBUG_API */
