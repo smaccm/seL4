@@ -622,36 +622,42 @@ handleUserLevelDebugException(int int_vector)
     context = &ksCurThread->tcbArch;
 
     /* Software break request (INT3) is detected by the vector number */
-    if (int_vector == int_software_break_request) {
-        current_fault = fault_debug_exception_new(getRestartPC(ksCurThread),
-                                                  0, seL4_SoftwareBreakRequest);
-    } else {
-        /* Hardware breakpoint trigger is detected using DR6 */
-        active_bp = getAndResetActiveBreakpoint(context);
-        if (active_bp.bp_num >= 0) {
-            current_fault = fault_debug_exception_new(active_bp.vaddr,
-                                                      active_bp.bp_num,
-                                                      active_bp.reason);
+    updateTimestamp();
+    if (likely(checkBudget())) {
+        if (int_vector == int_software_break_request) {
+            current_fault = fault_debug_exception_new(getRestartPC(ksCurThread),
+                                                      0,
+                                                      seL4_SoftwareBreakRequest);
         } else {
-            single_step_info = testAndResetSingleStepException(context);
-            if (single_step_info.ret == true) {
-                /* If the caller asked us to skip over N instructions before
-                 * generating the next single-step breakpoint, we shouldn't
-                 * bother to construct a fault message until we've skipped N
-                 * instructions.
-                 */
-                if (singleStepFaultCounterReady(context) == false) {
-                    return EXCEPTION_NONE;
-                }
-                current_fault = fault_debug_exception_new(single_step_info.instr_vaddr,
-                                                          0, seL4_SingleStep);
+            /* Hardware breakpoint trigger is detected using DR6 */
+            active_bp = getAndResetActiveBreakpoint(context);
+            if (active_bp.bp_num >= 0) {
+                current_fault = fault_debug_exception_new(active_bp.vaddr,
+                                                          active_bp.bp_num,
+                                                          active_bp.reason);
             } else {
-                return EXCEPTION_SYSCALL_ERROR;
+                single_step_info = testAndResetSingleStepException(context);
+                if (single_step_info.ret == true) {
+                    /* If the caller asked us to skip over N instructions before
+                     * generating the next single-step breakpoint, we shouldn't
+                     * bother to construct a fault message until we've skipped N
+                     * instructions.
+                     */
+                    if (singleStepFaultCounterReady(context) == false) {
+                        return EXCEPTION_NONE;
+                    }
+                    current_fault = fault_debug_exception_new(single_step_info.instr_vaddr,
+                                                              0, seL4_SingleStep);
+                } else {
+                    return EXCEPTION_SYSCALL_ERROR;
+                }
             }
         }
+        handleFault(ksCurThread);
+    } else {
+        setThreadState(ksCurThread, ThreadState_Restart);
     }
 
-    handleFault(ksCurThread);
 
     schedule();
     activateThread();
