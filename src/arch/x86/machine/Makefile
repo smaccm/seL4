@@ -11,7 +11,9 @@
 DIRECTORIES += src/arch/$(ARCH)/machine
 
 ARCH_C_SOURCES += machine/hardware.c \
-                  machine/fpu.c
+                  machine/fpu.c \
+                  machine/cpu_identification.c \
+                  machine/breakpoint.c
 
 ifdef DEBUG
     ARCH_C_SOURCES += machine/capdl.c

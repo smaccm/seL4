@@ -15,7 +15,7 @@
 #include <api/failures.h>
 #include <object/structures.h>
 #include <object/schedcontext.h>
-
+#include <machine/registerset.h>
 #include <arch/object/tcb.h>
 #include <object/cnode.h>
 
@@ -29,6 +29,23 @@ struct tcb_queue {
     tcb_t *end;
 };
 typedef struct tcb_queue tcb_queue_t;
+
+static inline unsigned int
+setMR(tcb_t *receiver, word_t* receiveIPCBuffer,
+      unsigned int offset, word_t reg)
+{
+    if (offset >= n_msgRegisters) {
+        if (receiveIPCBuffer) {
+            receiveIPCBuffer[offset + 1] = reg;
+            return offset + 1;
+        } else {
+            return n_msgRegisters;
+        }
+    } else {
+        setRegister(receiver, msgRegisters[offset], reg);
+        return offset + 1;
+    }
+}
 
 static inline void
 tcbCallStackPush(tcb_t *tcb, tcb_t *stack)

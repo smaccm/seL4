@@ -14,7 +14,7 @@
 #include <arch/machine/fpu.h>
 #include <arch/fastpath/fastpath.h>
 #include <arch/object/vcpu.h>
-
+#include <machine/debug.h>
 #include <api/syscall.h>
 
 void __attribute__((noreturn)) __attribute__((externally_visible)) slowpath_irq(irq_t irq);
@@ -29,6 +29,11 @@ void __attribute__((externally_visible)) c_handle_interrupt(int irq, int syscall
     } else if (irq == int_page_fault) {
         /* Error code is in Error. Pull out bit 5, which is whether it was instruction or data */
         handleVMFaultEvent((ksCurThread->tcbArch.tcbContext.registers[Error] >> 4) & 1);
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    } else if (irq == int_debug || irq == int_software_break_request) {
+        /* Debug exception */
+        handleUserLevelDebugException(irq);
+#endif /* CONFIG_HARDWARE_DEBUG_API */
     } else if (irq < int_irq_min) {
         handleUserLevelFault(irq, ksCurThread->tcbArch.tcbContext.registers[Error]);
     } else if (likely(irq < int_trap_min)) {

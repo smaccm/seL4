@@ -15,6 +15,8 @@
 #include <arch/fastpath/fastpath.h>
 #include <arch/object/vtx.h>
 #include <arch/object/vcpu.h>
+#include <arch/machine/debug.h>
+#include <benchmark_track.h>
 
 #include <api/syscall.h>
 #include <util.h>
@@ -86,13 +88,14 @@ void __attribute__((noreturn)) restore_vmx(void)
 void NORETURN VISIBLE restore_user_context(void);
 void NORETURN VISIBLE restore_user_context(void)
 {
-    /* set the tss.esp0 */
-    tss_ptr_set_esp0(&x86KStss.tss, ((uint32_t)&ksCurThread->tcbArch.tcbContext.registers) + (n_contextRegisters * sizeof(word_t)));
 #ifdef CONFIG_VTX
     if (thread_state_ptr_get_tsType(&ksCurThread->tcbState) == ThreadState_RunningVM) {
         restore_vmx();
     }
 #endif
+
+    setKernelEntryStackPointer(ksCurThread);
+
     if (unlikely(ksCurThread == x86KSfpuOwner)) {
         /* We are using the FPU, make sure it is enabled */
         enableFpu();
@@ -103,9 +106,12 @@ void NORETURN VISIBLE restore_user_context(void)
         /* No-one (including us) is using the FPU, so we assume it
          * is currently disabled */
     }
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    restore_user_debug_context(ksCurThread);
+#endif
+
     /* see if we entered via syscall */
     if (likely(ksCurThread->tcbArch.tcbContext.registers[Error] == -1)) {
-        ksCurThread->tcbArch.tcbContext.registers[EFLAGS] &= ~0x200;
         asm volatile(
             // Set our stack pointer to the top of the tcb so we can efficiently pop
             "movl %0, %%esp\n"
@@ -128,7 +134,7 @@ void NORETURN VISIBLE restore_user_context(void)
             "jmp 2f\n"
             "1: addl $4, %%esp\n"
             "2:\n"
-            //es (if changed)
+            // es (if changed)
             "cmpl $0x23, (%%esp)\n"
             "je 1f\n"
             "popl %%es\n"
@@ -151,15 +157,11 @@ void NORETURN VISIBLE restore_user_context(void)
             "popl %%edx\n"
             // skip cs
             "addl $4,  %%esp\n"
+            "movl 4(%%esp), %%ecx\n"
             "popfl\n"
-            // reset interrupt bit
-            "orl $0x200, -4(%%esp)\n"
-            // restore esp
-            "pop %%ecx\n"
-            "sti\n"
             "sysexit\n"
             :
-            : "r"(&ksCurThread->tcbArch.tcbContext.registers[EAX])
+            : "r"(ksCurThread->tcbArch.tcbContext.registers)
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
             : "memory"
@@ -190,11 +192,12 @@ void NORETURN VISIBLE restore_user_context(void)
 #endif
             "iret\n"
             :
-            : "r"(&ksCurThread->tcbArch.tcbContext.registers[EAX])
+            : "r"(ksCurThread->tcbArch.tcbContext.registers)
             // Clobber memory so the compiler is forced to complete all stores
             // before running this assembler
             : "memory"
         );
     }
-    while (1);
+
+    UNREACHABLE();
 }

@@ -19,6 +19,7 @@
 #include <kernel/thread.h>
 #include <object/objecttype.h>
 #include <arch/machine/cpu_registers.h>
+#include <arch/machine/debug.h>
 #include <arch/model/statedata.h>
 #include <arch/object/vcpu.h>
 #include <arch/object/vtx.h>
@@ -285,6 +286,19 @@ associateVcpuTcb(tcb_t *tcb, vcpu_t *vcpu)
     }
     vcpu->tcb = tcb;
     tcb->tcbArch.vcpu = vcpu;
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    /* This association operation is the first hint we have
+     * that a particular TCB will be used as a VCPU.
+     *
+     * For native seL4 threads, we can assume that they will be
+     * manipulating the debug registers through seL4 API invocations.
+     * But for the guest VMs, they can access the debug-regs with no
+     * issues unless we trap debug register accesses. Se we should save
+     * and restore their debug state on VMExit and VMEnter.
+     */
+    Arch_initTcbContextAsVcpu(&tcb->tcbArch);
+#endif
 }
 
 void
@@ -295,6 +309,16 @@ dissociateVcpuTcb(tcb_t *tcb, vcpu_t *vcpu)
     }
     tcb->tcbArch.vcpu = NULL;
     vcpu->tcb = NULL;
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    /* And conversely, the dissociate operation is our hint that
+     * a particular TCB will no longer be used as a VCPU.
+     *
+     * So we no longer need to unconditionally save and restore all of its
+     * debug register context.
+     */
+    Arch_deinitTcbContextAsVcpu(&tcb->tcbArch);
+#endif
 }
 
 exception_t decodeIA32VCPUInvocation(

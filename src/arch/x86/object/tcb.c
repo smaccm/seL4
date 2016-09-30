@@ -12,6 +12,7 @@
 #include <api/failures.h>
 #include <machine/registerset.h>
 #include <object/structures.h>
+#include <object/tcb.h>
 #include <arch/machine.h>
 #include <arch/object/tcb.h>
 
@@ -138,6 +139,30 @@ word_t setMRs_fault(tcb_t *sender, tcb_t* receiver, word_t *receiveIPCBuffer)
     case fault_temporal:
         setRegister(receiver, msgRegisters[0], fault_temporal_get_data(sender->tcbFault));
         return 1u;
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+    case fault_debug_exception: {
+        unsigned int ret;
+        word_t reason = fault_debug_exception_get_exceptionReason(sender->tcbFault);
+
+        setMR(receiver, receiveIPCBuffer,
+              seL4_DebugException_FaultIP, getRestartPC(sender));
+        ret = setMR(receiver, receiveIPCBuffer,
+                    seL4_DebugException_ExceptionReason, reason);
+
+        if (reason != seL4_SingleStep && reason != seL4_SoftwareBreakRequest) {
+            ret = setMR(receiver, receiveIPCBuffer,
+                        seL4_DebugException_TriggerAddress,
+                        fault_debug_exception_get_breakpointAddress(sender->tcbFault));
+
+            /* Breakpoint messages also set a "breakpoint number" register. */
+            ret = setMR(receiver, receiveIPCBuffer,
+                        seL4_DebugException_BreakpointNumber,
+                        fault_debug_exception_get_breakpointNumber(sender->tcbFault));
+        }
+        return ret;
+    }
+#endif
 
     default:
         fail("Invalid fault");
